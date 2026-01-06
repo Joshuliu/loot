@@ -4,7 +4,6 @@ import UIKit
 struct ConfirmationView: View {
     let receiptName: String
     let amount: String
-    let payerUUID: String
     let participantCount: Int
     let splitMode: SplitDraft.Mode?
     
@@ -152,7 +151,7 @@ struct ConfirmationView: View {
                 BillCardView(
                     receiptName: receiptName,
                     displayAmount: displayAmount,
-                    payerUUID: payerUUID,
+                    displayName: myDisplayNameFromDefaults(),
                     participantCount: participantCount,
                     splitLabel: splitLabel
                 )

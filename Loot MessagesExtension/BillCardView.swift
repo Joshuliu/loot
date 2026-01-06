@@ -10,7 +10,7 @@ import UIKit
 struct BillCardView: View {
     let receiptName: String
     let displayAmount: String
-    let payerUUID: String
+    let displayName: String
     let participantCount: Int
     let splitLabel: String
 
@@ -50,7 +50,7 @@ struct BillCardView: View {
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
 
-                        Text(payerUUID)
+                        Text(displayName)
                             .font(.system(size: 13, weight: .regular))
                             .foregroundColor(.primary)
                             .lineLimit(1)

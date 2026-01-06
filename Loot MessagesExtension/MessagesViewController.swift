@@ -44,7 +44,6 @@ final class MessagesViewController: MSMessagesAppViewController {
 
         hostingController.rootView = RootContainerView(
             uiModel: uiModel,
-            payerUUID: payerUUID,
             participantCount: participantCount,
             onScan:   { print("Scan tapped") },
             onExpand: { [weak self] in self?.requestPresentationStyle(.expanded) },
@@ -77,7 +76,7 @@ extension MessagesViewController {
         let card = BillCardView(
             receiptName: receiptName,
             displayAmount: displayAmount,
-            payerUUID: payerUUID,
+            displayName: myDisplayNameFromDefaults(),
             participantCount: participantCount,
             splitLabel: "Split evenly"
         )

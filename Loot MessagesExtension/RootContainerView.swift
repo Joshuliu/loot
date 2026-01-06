@@ -7,13 +7,8 @@
 
 import SwiftUI
 
-private enum LootDefaultsKeys {
-    static let displayName = "loot_display_name"
-}
-
 struct RootContainerView: View {
-    @AppStorage(LootDefaultsKeys.displayName) private var displayName: String = ""
-
+    @AppStorage(DefaultsKeys.myDisplayName) private var myName: String = ""
     @ObservedObject var uiModel: LootUIModel
 
     @State private var screen: Screen = .tabview
@@ -22,10 +17,8 @@ struct RootContainerView: View {
     @State private var amountString: String = "0"
     @State private var returnScreen: Screen = .tabview
     @Namespace private var titleNamespace
-
-    let payerUUID: String
+    
     let participantCount: Int
-
     let onScan: () -> Void
     let onExpand: () -> Void
     let onCollapse: () -> Void
@@ -39,7 +32,6 @@ struct RootContainerView: View {
 
     init(uiModel: LootUIModel) {
         self.uiModel = uiModel
-        self.payerUUID = ""
         self.participantCount = 1
         self.onScan = {}
         self.onExpand = {}
@@ -49,7 +41,6 @@ struct RootContainerView: View {
 
     init(
         uiModel: LootUIModel,
-        payerUUID: String,
         participantCount: Int,
         onScan: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -57,7 +48,6 @@ struct RootContainerView: View {
         onSendBill: @escaping (String, String) -> Void
     ) {
         self.uiModel = uiModel
-        self.payerUUID = payerUUID
         self.participantCount = participantCount
         self.onScan = onScan
         self.onExpand = onExpand
@@ -172,7 +162,7 @@ struct RootContainerView: View {
         let updatedItems: [ReceiptDisplay.Item] = {
             switch draft.mode {
             case .byItems:
-                let slotNames = (0..<participantCount).map { $0 == 0 ? "You" : "Guest \($0 + 1)" }
+                let slotNames = (0..<participantCount).map { $0 == 0 ? myDisplayNameFromDefaults() : "Guest \($0 + 1)" }
                 return draft.items.map { it in
                     let responsible = it.assignedSlots.sorted().map { slotIdx in
                         ReceiptDisplay.Responsible(
@@ -212,11 +202,11 @@ struct RootContainerView: View {
 
     var body: some View {
         Group {
-            if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 IntroView(
                     onRequestExpand: onExpand,
                     onContinue: { name in
-                        displayName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        myName = name.trimmingCharacters(in: .whitespacesAndNewlines)
                     }
                 )
             } else {
@@ -269,7 +259,6 @@ struct RootContainerView: View {
                         ConfirmationView(
                             receiptName: receiptName,
                             amount: amountString,
-                            payerUUID: payerUUID,
                             participantCount: participantCount,
                             splitMode: splitDraft?.mode,
                             onBack: {

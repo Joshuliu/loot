@@ -97,7 +97,7 @@ struct SplitView: View {
     private var slotNames: [String] {
         guard participantCount > 0 else { return [] }
         return (0..<participantCount).map { i in
-            i == 0 ? "You" : "Guest \(i + 1)"
+            i == 0 ? myDisplayNameFromDefaults() : "Guest \(i + 1)"
         }
     }
 
