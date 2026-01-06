@@ -1,10 +1,11 @@
 import Foundation
 import Combine
+import UIKit
 
 // MARK: - Receipt display model (for ReceiptView preview)
 
 struct ReceiptDisplay: Identifiable {
-    
+
     struct Responsible: Hashable {
         let slotIndex: Int
         let displayName: String
@@ -13,7 +14,7 @@ struct ReceiptDisplay: Identifiable {
             return t.first.map { String($0).uppercased() } ?? String(slotIndex + 1)
         }
     }
-    
+
     struct Item: Identifiable {
         let id: String
         let label: String
@@ -67,61 +68,65 @@ final class LootUIModel: ObservableObject {
     // Scan output (Fill -> Confirmation prefill + issues)
     @Published var parsedReceipt: ParsedReceipt? = nil
 
+    @Published var scanImageOriginal: UIImage? = nil
+    @Published var scanImageCropped: UIImage? = nil
+    
     func resetForNewReceipt() {
         parsedReceipt = nil
         currentReceipt = nil
+        scanImageOriginal = nil
+        scanImageCropped = nil
     }
 }
 
-// MARK: - Scan parse result (LLM output)
+// MARK: - Scan parse result (LLM output) — SIMPLIFIED + CONSISTENT
 
+/// Matches the simplified schema:
+/// required: merchant, total_cents, items, issues
+/// optional: breakdown fields
 struct ParsedReceipt: Codable, Equatable {
+
     struct Item: Codable, Equatable {
         let label: String
-        let quantity: Int
-        let unit_price_cents: Int?
-        let line_total_cents: Int?
-        let confidence: Double
-    }
-
-    struct Verification: Codable, Equatable {
-        let items_sum_cents: Int?
-        let computed_total_cents: Int?
-        let delta_total_cents: Int?
-        let passed: Bool
+        let qty: Int
+        let cents: Int?   // line total cents (null if not readable)
     }
 
     let merchant: String?
-    let created_at_iso: String?
-    let currency: String?
-
-    let items: [Item]
+    let total_cents: Int?
 
     let subtotal_cents: Int?
     let tax_cents: Int?
-    let fees_cents: Int?
     let tip_cents: Int?
+    let fees_cents: Int?
     let discount_cents: Int?
-    let total_cents: Int?
 
-    let verification: Verification
+    let items: [Item]
     let issues: [String]
 }
 
 extension ParsedReceipt {
-    /// Best cents guess for an item: prefer line_total, else quantity * unit, else 0.
+
+    /// Best cents guess for an item: prefer explicit cents, else 0.
     fileprivate func itemCents(_ item: Item) -> Int {
-        if let lt = item.line_total_cents { return max(0, lt) }
-        if let unit = item.unit_price_cents { return max(0, unit) * max(1, item.quantity) }
-        return 0
+        max(0, item.cents ?? 0)
     }
 
     /// MVP helper: create simple display items for preview UI (no assignments).
     func toDisplayItems() -> [ReceiptDisplay.Item] {
         items.map { it in
-            ReceiptDisplay.Item(
+            // If qty > 1 and the label doesn’t already include it, we annotate (keeps UI simple).
+            let cleanLabel = it.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            let labelWithQty: String = {
+                guard it.qty > 1 else { return cleanLabel }
+                // avoid doubling if receipt already encodes qty in label
+                if cleanLabel.lowercased().contains("x\(it.qty)") { return cleanLabel }
+                return "\(cleanLabel) ×\(it.qty)"
+            }()
+
+            return ReceiptDisplay.Item(
                 id: UUID().uuidString,
-                label: it.label,
+                label: labelWithQty,
                 priceCents: itemCents(it),
                 responsible: []
             )
@@ -129,7 +134,7 @@ extension ParsedReceipt {
         .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    /// Best-effort breakdown with defaults.
+    /// Best-effort breakdown with defaults (never negative in UI).
     func breakdownDefaults() -> (fees: Int, tax: Int, tip: Int, discount: Int) {
         (
             fees: max(0, fees_cents ?? 0),
@@ -137,5 +142,26 @@ extension ParsedReceipt {
             tip: max(0, tip_cents ?? 0),
             discount: max(0, discount_cents ?? 0)
         )
+    }
+
+    /// Best-effort receipt title for UI.
+    func displayTitle(fallback: String = "New Receipt") -> String {
+        let t = (merchant ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? fallback : t
+    }
+
+    /// Best-effort total for UI (prefers total, else subtotal+tax+fees+tip-discount if present).
+    func bestTotalCents() -> Int {
+        if let t = total_cents { return max(0, t) }
+
+        // If total missing, try compute from whatever exists (conservative).
+        let sub = subtotal_cents
+        if sub == nil { return 0 }
+
+        let fees = fees_cents ?? 0
+        let tax = tax_cents ?? 0
+        let tip = tip_cents ?? 0
+        let disc = discount_cents ?? 0
+        return max(0, (sub ?? 0) + max(0, tax) + max(0, fees) + max(0, tip) - max(0, disc))
     }
 }

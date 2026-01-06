@@ -78,7 +78,8 @@ extension MessagesViewController {
             receiptName: receiptName,
             displayAmount: displayAmount,
             payerUUID: payerUUID,
-            participantCount: participantCount
+            participantCount: participantCount,
+            splitLabel: "Split evenly"
         )
         .background(Color(.systemBackground))
         .padding(.top, -50)

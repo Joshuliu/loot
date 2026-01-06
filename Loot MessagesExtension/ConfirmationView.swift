@@ -6,15 +6,27 @@ struct ConfirmationView: View {
     let amount: String
     let payerUUID: String
     let participantCount: Int
+    let splitMode: SplitDraft.Mode?
+    
     let onBack: () -> Void
     let onSend: () -> Void
     let onPreviewReceipt: () -> Void
+    
+    let onDeleteToLanding: () -> Void
+    let onGoToSplit: () -> Void
 
     @State private var cardOffset: CGSize = .zero
     @State private var cardRotation: Double = 0
     @State private var hasSent: Bool = false
     @State private var showSuccess: Bool = false
-
+    
+    private var splitLabel: String {
+        switch splitMode {
+        case .byItems: return "Split by items"
+        case .custom:  return "Custom amounts"
+        case .equally, .none: return "Split evenly"
+        }
+    }
     private var displayAmount: String { "$" + formatAmount(amount) }
 
     private func formatAmount(_ str: String) -> String {
@@ -32,8 +44,7 @@ struct ConfirmationView: View {
             return "\(trimmed).00"
         }
     }
-
-    private var swipeToSend: some Gesture {
+    private var swipeCardGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
                 guard !hasSent else { return }
@@ -47,35 +58,70 @@ struct ConfirmationView: View {
             .onEnded { value in
                 guard !hasSent else { return }
 
-                // Only “send” if it’s a strong upward swipe
                 let dx = value.translation.width
                 let dy = value.translation.height
-                let distance = hypot(dx, dy)
 
-                let sendDistance: CGFloat = 80
-                let mostlyUp = dy < -50 && abs(dx) < 120
+                // Thresholds
+                let horizontalTrigger: CGFloat = 120
+                let verticalTrigger: CGFloat = 80
 
-                guard distance > sendDistance, mostlyUp else {
+                // Decide intent by dominance (prevents diagonal confusion)
+                let isMostlyHorizontal = abs(dx) > abs(dy) * 1.2
+                let isMostlyVertical = abs(dy) > abs(dx) * 1.2
+
+                // ✅ Left swipe = delete -> landing
+                if isMostlyHorizontal, dx < -horizontalTrigger {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        cardOffset = .zero
-                        cardRotation = 0
+                        cardOffset = CGSize(width: -500, height: 0)
+                        cardRotation = -6
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        onDeleteToLanding()
                     }
                     return
                 }
 
-                hasSent = true
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                // ✅ Right swipe = go to SplitView
+                if isMostlyHorizontal, dx > horizontalTrigger {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    cardOffset = CGSize(width: 0, height: -400)
-                    cardRotation = 0
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        cardOffset = CGSize(width: 500, height: 0)
+                        cardRotation = 6
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        onGoToSplit()
+                    }
+                    return
                 }
 
-                withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
-                onSend()
+                // ✅ Up swipe = send (your existing logic)
+                if isMostlyVertical, dy < -max(verticalTrigger, 50), abs(dx) < 160 {
+                    hasSent = true
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                    withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        cardOffset = CGSize(width: 0, height: -400)
+                        cardRotation = 0
+                    }
+
+                    withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
+                    onSend()
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                        withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
+                    }
+                    return
+                }
+
+                // Otherwise snap back
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    cardOffset = .zero
+                    cardRotation = 0
                 }
             }
     }
@@ -107,11 +153,12 @@ struct ConfirmationView: View {
                     receiptName: receiptName,
                     displayAmount: displayAmount,
                     payerUUID: payerUUID,
-                    participantCount: participantCount
+                    participantCount: participantCount,
+                    splitLabel: splitLabel
                 )
                 .offset(cardOffset)
                 .rotationEffect(.degrees(cardRotation), anchor: .bottom)
-                .gesture(swipeToSend)
+                .gesture(swipeCardGesture)
                 .simultaneousGesture(TapGesture().onEnded { onPreviewReceipt() })
                 .contentShape(Rectangle())
                 .padding(.horizontal, 24)
@@ -147,3 +194,4 @@ struct ConfirmationView: View {
         }
     }
 }
+

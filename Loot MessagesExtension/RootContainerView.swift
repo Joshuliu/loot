@@ -5,16 +5,22 @@
 //  Created by Joshua Liu on 1/1/26.
 //
 
-
 import SwiftUI
 
+private enum LootDefaultsKeys {
+    static let displayName = "loot_display_name"
+}
+
 struct RootContainerView: View {
+    @AppStorage(LootDefaultsKeys.displayName) private var displayName: String = ""
+
     @ObservedObject var uiModel: LootUIModel
 
-    @State private var screen: Screen = .fill
+    @State private var screen: Screen = .tabview
     @State private var receiptName: String = ""
+    @State private var splitDraft: SplitDraft? = nil
     @State private var amountString: String = "0"
-    @State private var returnScreen: Screen = .fill
+    @State private var returnScreen: Screen = .tabview
     @Namespace private var titleNamespace
 
     let payerUUID: String
@@ -40,7 +46,7 @@ struct RootContainerView: View {
         self.onCollapse = {}
         self.onSendBill = { _, _ in }
     }
-    
+
     init(
         uiModel: LootUIModel,
         payerUUID: String,
@@ -104,99 +110,48 @@ struct RootContainerView: View {
 
     private func startScanFlow() {
         onScan()
-        showCamera = true
         analyzeError = nil
+        capturedImage = nil
+        showCamera = true
     }
 
     private func analyzeCaptured(image: UIImage) {
         isAnalyzing = true
         analyzeError = nil
-
-        let developerMessage = """
-You are a receipt-to-JSON extractor and verifier. Use ONLY the receipt image as evidence; never invent merchants, dates, items, or amounts—if unclear, set null and add an issue. Output ONLY valid JSON that matches the provided JSON Schema (no markdown, no extra keys). All money values must be integer cents; do the math checks to verify that items add up to totals; prefer conservative extraction over guessing.
-"""
-
-        let userMessage = """
-Parse the attached receipt image into the JSON Schema below, then verify the math.
-Rules:
-- Money → integer cents (e.g., $12.34 => 1234). Quantity is integer >= 1.
-- If you can’t confidently read a value, use null (or 0 only when the field truly doesn’t exist) and add an entry to issues[].
-- Do NOT “fix” the receipt by making numbers up to match—compute and report the mismatch.
-- Treat “Total” on the receipt as total_cents when present.
-
-JSON Schema:
-{
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["merchant", "created_at_iso", "currency", "items", "subtotal_cents", "tax_cents", "fees_cents", "tip_cents", "discount_cents", "total_cents", "verification", "issues"],
-  "properties": {
-    "merchant": { "type": ["string","null"] },
-    "created_at_iso": { "type": ["string","null"], "description": "ISO 8601 if visible, else null" },
-    "currency": { "type": ["string","null"], "description": "e.g., USD" },
-
-    "items": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["label", "quantity", "unit_price_cents", "line_total_cents", "confidence"],
-        "properties": {
-          "label": { "type": "string" },
-          "quantity": { "type": "integer", "minimum": 1 },
-          "unit_price_cents": { "type": ["integer","null"], "minimum": 0, "description": "null if not shown" },
-          "line_total_cents": { "type": ["integer","null"], "minimum": 0, "description": "null if not shown" },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
-        }
-      }
-    },
-
-    "subtotal_cents": { "type": ["integer","null"], "minimum": 0 },
-    "tax_cents": { "type": ["integer","null"], "minimum": 0 },
-    "fees_cents": { "type": ["integer","null"], "minimum": 0 },
-    "tip_cents": { "type": ["integer","null"], "minimum": 0 },
-    "discount_cents": { "type": ["integer","null"], "minimum": 0 },
-    "total_cents": { "type": ["integer","null"], "minimum": 0 },
-
-    "verification": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["items_sum_cents", "computed_total_cents", "delta_total_cents", "passed"],
-      "properties": {
-        "items_sum_cents": { "type": ["integer","null"], "minimum": 0, "description": "sum of line_total_cents when available; else null" },
-        "computed_total_cents": { "type": ["integer","null"], "minimum": 0, "description": "subtotal + tax + fees + tip - discount when those fields exist; else null" },
-        "delta_total_cents": { "type": ["integer","null"], "description": "total_cents - computed_total_cents when both exist; else null" },
-        "passed": { "type": "boolean", "description": "true if abs(delta_total_cents) <= 5 (rounding tolerance) OR delta is null due to missing values" }
-      }
-    },
-
-    "issues": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "human-readable problems/ambiguities, e.g. 'Could not read total', 'Subtotal missing', 'Total mismatch by 23 cents'"
-    }
-  }
-}
-"""
-
+        
         Task {
             defer { isAnalyzing = false }
             do {
-                let parsed = try await LLMClient.shared.analyzeReceipt(
-                    image: image,
-                    developerMessage: developerMessage,
-                    userMessage: userMessage
-                )
-
+                let parsed = try await LLMClient.shared.analyzeReceipt(image: image)
                 await MainActor.run {
                     uiModel.parsedReceipt = parsed
 
                     // Prefill form fields
-                    if let total = parsed.total_cents {
-                        amountString = String(format: "%.2f", Double(total) / 100.0)
-                    }
+                    let bestTotal = parsed.total_cents ?? parsed.bestTotalCents()
+                    amountString = String(format: "%.2f", Double(bestTotal) / 100.0)
+
                     if let merchant = parsed.merchant, !merchant.isEmpty {
                         receiptName = merchant
                     }
+
+                    let breakdown = parsed.breakdownDefaults()
+                    let total = parsed.bestTotalCents()
+                    let subtotal = max(0, parsed.subtotal_cents ?? total)
+
+                    uiModel.currentReceipt = ReceiptDisplay(
+                        id: UUID().uuidString,
+                        title: parsed.displayTitle(fallback: receiptName.isEmpty ? "New Receipt" : receiptName),
+                        createdAt: Date(),
+
+                        subtotalCents: subtotal,
+                        feesCents: breakdown.fees,
+                        taxCents: breakdown.tax,
+                        tipCents: breakdown.tip,
+                        discountCents: breakdown.discount,
+                        totalCents: total,
+
+                        items: parsed.toDisplayItems()
+                    )
 
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         screen = .confirmation
@@ -210,122 +165,216 @@ JSON Schema:
             }
         }
     }
+    @MainActor
+    private func applySplitDraftToCurrentReceipt(_ draft: SplitDraft) {
+        guard let r = uiModel.currentReceipt else { return }
 
+        let updatedItems: [ReceiptDisplay.Item] = {
+            switch draft.mode {
+            case .byItems:
+                let slotNames = (0..<participantCount).map { $0 == 0 ? "You" : "Guest \($0 + 1)" }
+                return draft.items.map { it in
+                    let responsible = it.assignedSlots.sorted().map { slotIdx in
+                        ReceiptDisplay.Responsible(
+                            slotIndex: slotIdx,
+                            displayName: slotNames.indices.contains(slotIdx) ? slotNames[slotIdx] : "Guest \(slotIdx + 1)"
+                        )
+                    }
+                    return ReceiptDisplay.Item(
+                        id: it.id.uuidString, // adjust if your Item.id type differs
+                        label: it.label,
+                        priceCents: it.priceCents,
+                        responsible: responsible
+                    )
+                }
+
+            case .equally, .custom:
+                return r.items.map { old in
+                    ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents, responsible: [])
+                }
+            }
+        }()
+
+        uiModel.currentReceipt = ReceiptDisplay(
+            id: r.id,
+            title: r.title,
+            createdAt: r.createdAt,
+            subtotalCents: updatedItems.reduce(0) { $0 + $1.priceCents },
+            feesCents: draft.feesCents,
+            taxCents: draft.taxCents,
+            tipCents: draft.tipCents,
+            discountCents: draft.discountCents,
+            totalCents: draft.totalCents,
+            items: updatedItems
+        )
+    }
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            switch screen {
-            case .fill:
-                FillReceiptView(
-                    viewModel: uiModel,
-                    receiptName: $receiptName,
-                    amountString: $amountString,
-                    onBack: {
-                        onCollapse()
-                    },
-                    onNext: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            screen = .confirmation
-                        }
-                    },
+        Group {
+            if displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                IntroView(
                     onRequestExpand: onExpand,
-                    onRequestCollapse: onCollapse,
-                    titleNamespace: titleNamespace
+                    onContinue: { name in
+                        displayName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
                 )
-                .transition(.opacity)
-                .overlay(alignment: .bottom) {
-                    // MVP Scan CTA (if FillReceiptView doesn’t already have it)
-                    Button {
-                        startScanFlow()
-                    } label: {
-                        Text("Scan receipt")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .background(Color(.secondarySystemBackground))
-                            .cornerRadius(14)
-                            .padding(.horizontal, 18)
-                            .padding(.bottom, 12)
+            } else {
+                ZStack {
+                    switch screen {
+                        
+                    case .tabview:
+                        TabView(
+                            tabName: Binding(
+                                get: { receiptName },
+                                set: { receiptName = $0 }
+                            ),
+                            onUpload: {
+                                // TODO: Change to upload image instead of scan flow
+                                startScanFlow()
+                            },
+                            onScan: {
+                                startScanFlow()
+                            },
+                            onFill: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .fill
+                                }
+                            }
+                        )
+                        .transition(.opacity)
+                        
+                    case .fill:
+                        FillReceiptView(
+                            viewModel: uiModel,
+                            receiptName: $receiptName,
+                            amountString: $amountString,
+                            onBack: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .tabview
+                                }
+                            },
+                            onNext: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .confirmation
+                                }
+                            },
+                            onRequestExpand: onExpand,
+                            onRequestCollapse: onCollapse,
+                            titleNamespace: titleNamespace
+                        )
+                        .transition(.opacity)
+                        
+                    case .confirmation:
+                        ConfirmationView(
+                            receiptName: receiptName,
+                            amount: amountString,
+                            payerUUID: payerUUID,
+                            participantCount: participantCount,
+                            splitMode: splitDraft?.mode,
+                            onBack: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .fill
+                                }
+                            },
+                            onSend: {
+                                onSendBill(receiptName, amountString)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        screen = .tabview
+                                    }
+                                }
+                            },
+                            onPreviewReceipt: {
+                                returnScreen = .confirmation
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .receipt
+                                }
+                            },
+                            onDeleteToLanding: {
+                                uiModel.resetForNewReceipt()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .tabview
+                                }
+                            },
+                            onGoToSplit: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .splitview
+                                }
+                            }
+                        )
+                        .transition(.opacity)
+                        
+                    case .receipt:
+                        if let receipt = uiModel.currentReceipt {
+                            ReceiptView(uiModel: uiModel, receipt: receipt) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = returnScreen
+                                }
+                            }
+                        } else {
+                            ProgressView("Loading…")
+                        }
+                        
+                    case .splitview:
+                        SplitView(
+                            uiModel: uiModel,
+                            amountString: amountString,
+                            participantCount: participantCount,
+                            initialDraft: splitDraft,
+                            onRequestExpand: onExpand,
+                            onBack: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .confirmation
+                                }
+                            },
+                            onApply: { draft in
+                                splitDraft = draft
+                                applySplitDraftToCurrentReceipt(draft)
+                            }
+                        )
+                        
                     }
                 }
-
-            case .confirmation:
-                ConfirmationView(
-                    receiptName: receiptName,
-                    amount: amountString,
-                    payerUUID: payerUUID,
-                    participantCount: participantCount,
-                    onBack: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            screen = .fill
+                .sheet(
+                    isPresented: $showCamera,
+                    onDismiss: {
+                        guard let img = capturedImage else { return }
+                        ReceiptCrop.run(img) { cropped in
+                            uiModel.scanImageOriginal = img
+                            uiModel.scanImageCropped = cropped
+                            analyzeCaptured(image: cropped)
                         }
-                    },
-                    onSend: {
-                        onSendBill(receiptName, amountString)
-
-                        // MVP reset back to fill for rapid repeats
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                screen = .fill
+                    }
+                ) { CameraPicker(image: $capturedImage).ignoresSafeArea() }
+                    .overlay {
+                        if isAnalyzing {
+                            ZStack {
+                                Color.black.opacity(0.25).ignoresSafeArea()
+                                ProgressView("Analyzing receipt…")
+                                    .padding()
+                                    .background(Color(.systemBackground))
+                                    .cornerRadius(12)
                             }
                         }
-                    },
-                    onPreviewReceipt: {
-                        uiModel.currentReceipt = makePreviewReceipt()
-                        returnScreen = .confirmation
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            screen = .receipt
-                        }
                     }
-                )
-                .transition(.opacity)
-
-            case .receipt:
-                if let receipt = uiModel.currentReceipt {
-                    ReceiptView(receipt: receipt) {
-                        uiModel.currentReceipt = nil
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            screen = returnScreen
-                        }
+                    .alert("Scan failed", isPresented: Binding(
+                        get: { analyzeError != nil },
+                        set: { _ in analyzeError = nil }
+                    )) {
+                        Button("OK", role: .cancel) {}
+                    } message: {
+                        Text(analyzeError ?? "")
                     }
-                } else {
-                    ProgressView("Loading…")
-                }
             }
-        }
-        .sheet(isPresented: $showCamera, onDismiss: {
-            if let img = capturedImage {
-                analyzeCaptured(image: img)
-            }
-        }) {
-            CameraPicker(image: $capturedImage)
-                .ignoresSafeArea()
-        }
-        .overlay {
-            if isAnalyzing {
-                ZStack {
-                    Color.black.opacity(0.25).ignoresSafeArea()
-                    ProgressView("Analyzing receipt…")
-                        .padding()
-                        .background(Color(.systemBackground))
-                        .cornerRadius(12)
-                }
-            }
-        }
-        .alert("Scan failed", isPresented: Binding(
-            get: { analyzeError != nil },
-            set: { _ in analyzeError = nil }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(analyzeError ?? "")
         }
     }
 }
 
 enum Screen {
+    case tabview
     case fill
     case confirmation
     case receipt
+    case splitview
 }

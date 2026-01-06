@@ -12,172 +12,257 @@ enum LLMError: Error {
 final class LLMClient {
     static let shared = LLMClient()
 
-    // TODO: set your endpoint + key here or via secrets
+    // Set this in your Info.plist (e.g. via an xcconfig or a Secrets.plist merged into the app target)
+    // Key name: GEMINI_API_KEY
     private let apiKey: String = {
-        guard let key = Bundle.main.object(forInfoDictionaryKey: "OPENAI_API_KEY") as? String,
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "GEMINI_API_KEY") as? String,
               !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
-            fatalError("Missing OPENAI_API_KEY")
+            fatalError("Missing GEMINI_API_KEY")
         }
         return key
     }()
-    private let baseURL = URL(string: "https://api.openai.com/v1/chat/completions")!
-    private let model = "gpt-5-mini"
+
+    // Gemini REST endpoint: POST /v1beta/models/{model}:generateContent
+    // Docs: https://ai.google.dev/api/generate-content
+    private let model = "gemini-3-flash-preview"
+    private var baseURL: URL {
+        URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
+    }
 
     // Diagnostics / behavior toggles
-    private let enableEmptyContentFallbackRetry = true   // retry once without response_format if empty content
-    private let jpegQuality: CGFloat = 0.9               // adjust if payload size seems to cause issues
-    private let maxTokensPrimary: Int = 2500
-    private let maxTokensFallback: Int = 5000
+    private let enableEmptyContentFallbackRetry = true
+    private let jpegQuality: CGFloat = 0.9
+    private let maxTokensPrimary: Int = 8000
+    private let maxTokensFallback: Int = 16000
+
+    private lazy var session: URLSession = {
+        let cfg = URLSessionConfiguration.default
+        // iMessage extensions can be a bit fickle; give the network some breathing room.
+        cfg.timeoutIntervalForRequest = 60
+        cfg.timeoutIntervalForResource = 120
+        return URLSession(configuration: cfg)
+    }()
 
     private init() {}
 
-    struct ChatMessage: Codable {
-        let role: String
-        let content: [ContentBlock]
+    // MARK: - Gemini request/response models
+
+    struct GenerateContentRequest: Codable {
+        let contents: [Content]
+        let systemInstruction: Content?
+        let generationConfig: GenerationConfig?
+
+        struct GenerationConfig: Codable {
+            let maxOutputTokens: Int?
+            let responseMimeType: String?
+            let temperature: Double?
+        }
     }
 
-    struct ContentBlock: Codable {
-        let type: String
+    struct Content: Codable {
+        let role: String?
+        let parts: [Part]
+    }
+
+    struct Part: Codable {
         let text: String?
-        let image_url: ImageURLPayload?
+        let inlineData: InlineData?
 
-        struct ImageURLPayload: Codable {
-            let url: String
+        enum CodingKeys: String, CodingKey {
+            case text
+            case inlineData = "inline_data"
         }
-    }
 
-    struct ChatRequest: Codable {
-        let model: String
-        let messages: [ChatMessage]
-        let max_completion_tokens: Int
-        let response_format: ResponseFormat?
+        struct InlineData: Codable {
+            let mimeType: String
+            let data: String
 
-        struct ResponseFormat: Codable {
-            let type: String
-        }
-    }
-
-    struct ChatResponse: Codable {
-        struct Choice: Codable {
-            struct Message: Codable {
-                let role: String
-                let content: String
-                // Some providers may return tool_calls or other fields; we ignore them here.
+            enum CodingKeys: String, CodingKey {
+                case mimeType = "mime_type"
+                case data
             }
-            let index: Int
-            let message: Message
-            let finish_reason: String?
         }
-        let choices: [Choice]
     }
+
+    struct GenerateContentResponse: Codable {
+        let candidates: [Candidate]?
+
+        struct Candidate: Codable {
+            let content: Content?
+            let finishReason: String?
+
+            enum CodingKeys: String, CodingKey {
+                case content
+                case finishReason
+            }
+        }
+    }
+
+    // MARK: - Public API
 
     func analyzeReceipt(
-        image: UIImage,
-        developerMessage: String,
-        userMessage: String
+        image: UIImage
     ) async throws -> ParsedReceipt {
+
+        let developerMessage = """
+        Extract receipt data into ONE minified JSON object (single line). Output ONLY JSON and NO extra keys.
+
+        Keys: required merchant,total_cents,items,issues. Optional (include ONLY if visible on receipt, even if 0): subtotal_cents,tax_cents,tip_cents,fees_cents,discount_cents.
+        Types: merchant string|null; *_cents int>=0|null; items=[{label:string,qty:int>=1,cents:int>=0|null}]; issues=[string].
+
+        Rules:
+        - Prefer exact visible values; never change a readable number to force math.
+        - If something needed is unreadable/missing, make a best guess and add issues including: estimated plus a reason (unreadable/blurred/cut_off/missing_line_total).
+        - Money is integer cents.
+        - Checks (if data present): if all item cents present, subtotal == sum(items.cents) else add partial_items; total == subtotal+tax+tip+fees-discount else add math_mismatch.
+        - Add issues whenever uncertain or any check fails.
+        """
+
+        let userMessage = "Parse the receipt image into the specified JSON object."
+
+//        let developerMessage = """
+//You extract receipt data into JSON. OUTPUT ONLY valid JSON that matches the provided schema exactly. No markdown, no commentary, no extra keys. Rules: - Use ONLY what is visible in the image. - All money values must be integer cents. - Ensure the math works
+//"""
+//        
+//        let userMessage = """
+//Parse the attached receipt image into the JSON schema below. JSON Schema: { "type": "object", "additionalProperties": false, "required": ["merchant", "total_cents", "items", "issues"], "properties": { "merchant": { "type": ["string", "null"] }, "total_cents": { "type": ["integer", "null"], "minimum": 0 }, "subtotal_cents": { "type": ["integer", "null"], "minimum": 0 }, "tax_cents": { "type": ["integer", "null"], "minimum": 0 }, "tip_cents": { "type": ["integer", "null"], "minimum": 0 }, "fees_cents": { "type": ["integer", "null"], "minimum": 0 }, "discount_cents": { "type": ["integer", "null"], "minimum": 0 }, "items": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["label", "qty", "cents"], "properties": { "label": { "type": "string" }, "qty": { "type": "integer", "minimum": 1 }, "cents": { "type": ["integer", "null"], "minimum": 0 } } } }, "issues": { "type": "array", "items": { "type": "string" } } } }
+//"""
+        
         guard let jpegData = image.jpegData(compressionQuality: jpegQuality) else {
             print("[LLM] JPEG encoding failed")
             throw LLMError.badResponse(status: -1, body: "Could not encode image as JPEG")
         }
 
         let b64 = jpegData.base64EncodedString()
-        let dataURL = "data:image/jpeg;base64,\(b64)"
 
-        let systemMsg = ChatMessage(
+        let systemInstruction = Content(
             role: "system",
-            content: [
-                ContentBlock(type: "text", text: developerMessage, image_url: nil)
-            ]
+            parts: [Part(text: developerMessage, inlineData: nil)]
         )
 
-        let userMsg = ChatMessage(
+        let userContent = Content(
             role: "user",
-            content: [
-                ContentBlock(type: "text", text: userMessage, image_url: nil),
-                ContentBlock(type: "image_url", text: nil, image_url: .init(url: dataURL))
+            parts: [
+                Part(text: userMessage, inlineData: nil),
+                Part(
+                    text: nil,
+                    inlineData: .init(mimeType: "image/jpeg", data: b64)
+                )
             ]
         )
 
-        // Primary request (with response_format)
-        let primaryReq = ChatRequest(
-            model: model,
-            messages: [systemMsg, userMsg],
-            max_completion_tokens: maxTokensPrimary,
-            response_format: .init(type: "json_object")
+        let primaryReq = GenerateContentRequest(
+            contents: [userContent],
+            systemInstruction: systemInstruction,
+            generationConfig: .init(
+                maxOutputTokens: maxTokensPrimary,
+                responseMimeType: "application/json",
+                temperature: 0.1
+            )
         )
 
-        do {
-            let (text, rawJSON, statusCode, finishReasons) = try await send(primaryReq)
+        let (text, rawJSON, statusCode, finishReasons) = try await send(primaryReq)
+        print("[LLM] finish_reason(s): \(finishReasons.joined(separator: ", "))")
 
-            if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                print("[LLM] Empty content in choices[0].message.content (status \(statusCode))")
-                if !finishReasons.isEmpty {
-                    print("[LLM] finish_reason(s): \(finishReasons.joined(separator: ", "))")
-                }
-                print("[LLM] Raw response (primary):\n\(rawJSON ?? "<nil>")")
+        // Gemini will usually put the JSON in candidates[0].content.parts[].text
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            print("[LLM] Empty response text (status \(statusCode))")
+            if !finishReasons.isEmpty {
+                print("[LLM] finish_reason(s): \(finishReasons.joined(separator: ", "))")
+            }
+            print("[LLM] Raw response (primary):\n\(rawJSON ?? "<nil>")")
 
-                if enableEmptyContentFallbackRetry {
-                    print("[LLM] Retrying without response_format…")
-                    let fallbackReq = ChatRequest(
-                        model: model,
-                        messages: [systemMsg, userMsg],
-                        max_completion_tokens: maxTokensFallback,
-                        response_format: nil // remove JSON object constraint to probe behavior
+            if enableEmptyContentFallbackRetry {
+                print("[LLM] Retrying with higher maxOutputTokens + plain text…")
+                let fallbackReq = GenerateContentRequest(
+                    contents: [userContent],
+                    systemInstruction: systemInstruction,
+                    generationConfig: .init(
+                        maxOutputTokens: maxTokensFallback,
+                        responseMimeType: nil,
+                        temperature: 0.1
                     )
-                    let (fallbackText, fallbackRaw, fallbackStatus, fallbackReasons) = try await send(fallbackReq)
+                )
 
-                    if fallbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        print("[LLM] Fallback also empty (status \(fallbackStatus))")
-                        if !fallbackReasons.isEmpty {
-                            print("[LLM] Fallback finish_reason(s): \(fallbackReasons.joined(separator: ", "))")
-                        }
-                        print("[LLM] Raw response (fallback):\n\(fallbackRaw ?? "<nil>")")
-                        throw LLMError.emptyText
-                    } else {
-                        // Try to decode ParsedReceipt from fallback text (should be JSON or at least parseable)
-                        do {
-                            let jsonData = Data(fallbackText.utf8)
-                            let parsed = try JSONDecoder().decode(ParsedReceipt.self, from: jsonData)
-                            return parsed
-                        } catch {
-                            print("[LLM] Fallback decode failed. Raw text:\n\(fallbackText)")
-                            throw LLMError.decodeFailed
-                        }
+                let (fallbackText, fallbackRaw, fallbackStatus, fallbackReasons) = try await send(fallbackReq)
+                if fallbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    print("[LLM] Fallback also empty (status \(fallbackStatus))")
+                    if !fallbackReasons.isEmpty {
+                        print("[LLM] Fallback finish_reason(s): \(fallbackReasons.joined(separator: ", "))")
                     }
-                } else {
+                    print("[LLM] Raw response (fallback):\n\(fallbackRaw ?? "<nil>")")
                     throw LLMError.emptyText
                 }
-            }
 
-            // Primary path had non-empty content; decode it
-            do {
-                let jsonData = Data(text.utf8)
-                return try JSONDecoder().decode(ParsedReceipt.self, from: jsonData)
-            } catch {
-                print("[LLM] Failed to decode ParsedReceipt from model output text")
-                print("[LLM] Raw text:\n\(text)")
+                if let parsed = tryDecodeParsedReceipt(from: fallbackText) {
+                    return parsed
+                }
+                if let extracted = extractFirstJSONObject(from: fallbackText),
+                   let parsed = tryDecodeParsedReceipt(from: extracted) {
+                    return parsed
+                }
+
+                print("[LLM] finish_reason(s): \(finishReasons.joined(separator: ", "))")
+                print("[LLM] Fallback decode failed. Raw text:\n\(fallbackText)")
                 throw LLMError.decodeFailed
             }
-        } catch let err as LLMError {
-            throw err
-        } catch {
-            print("[LLM] Transport error: \(error.localizedDescription)")
-            throw error
+
+            throw LLMError.emptyText
         }
+
+        // Strict decode first
+        if let parsed = tryDecodeParsedReceipt(from: text) {
+            return parsed
+        }
+
+        // Fallback: extract first JSON object and try again
+        if let extracted = extractFirstJSONObject(from: text),
+           let parsed = tryDecodeParsedReceipt(from: extracted) {
+            return parsed
+        }
+
+        print("[LLM] Decode failed. Raw text:\n\(text)")
+        throw LLMError.decodeFailed
+    }
+
+    // MARK: - JSON helpers
+
+    private func tryDecodeParsedReceipt(from text: String) -> ParsedReceipt? {
+        do {
+            return try JSONDecoder().decode(ParsedReceipt.self, from: Data(text.utf8))
+        } catch {
+            print("[LLM] Decode error: \(error)")
+            print("[LLM] Text:\n\(text)")
+            return nil
+        }
+    }
+
+
+    private func extractFirstJSONObject(from text: String) -> String? {
+        // Strip common code-fence wrappers if the model ignores JSON mode.
+        let cleaned = text
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+
+        guard let start = cleaned.firstIndex(of: "{"),
+              let end = cleaned.lastIndex(of: "}"),
+              start < end else {
+            return nil
+        }
+        return String(cleaned[start...end])
     }
 
     // MARK: - Internal network helper with diagnostics
 
-    private func send(_ req: ChatRequest) async throws -> (text: String, rawJSON: String?, status: Int, finishReasons: [String]) {
+    private func send(_ req: GenerateContentRequest) async throws -> (text: String, rawJSON: String?, status: Int, finishReasons: [String]) {
         var request = URLRequest(url: baseURL)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(req)
 
-        let (data, resp) = try await URLSession.shared.data(for: request)
+        let (data, resp) = try await session.data(for: request)
 
         guard let http = resp as? HTTPURLResponse else {
             print("[LLM] No HTTPURLResponse")
@@ -193,19 +278,21 @@ final class LLMClient {
             throw LLMError.badResponse(status: status, body: raw)
         }
 
-        // Decode to extract content and finish_reason
-        let decoded: ChatResponse
+        let decoded: GenerateContentResponse
         do {
-            decoded = try JSONDecoder().decode(ChatResponse.self, from: data)
+            decoded = try JSONDecoder().decode(GenerateContentResponse.self, from: data)
         } catch {
-            print("[LLM] Decode ChatResponse failed. Raw body:\n\(raw ?? "<nil>")")
+            print("[LLM] Decode GenerateContentResponse failed. Raw body:\n\(raw ?? "<nil>")")
             throw LLMError.decodeFailed
         }
 
-        let content = decoded.choices.first?.message.content ?? ""
-        let reasons = decoded.choices.compactMap { $0.finish_reason }
+        let candidates = decoded.candidates ?? []
+        let first = candidates.first
 
-        // When everything looks fine but content is empty, return diagnostics
-        return (content, raw, status, reasons)
+        let parts = first?.content?.parts ?? []
+        let text = parts.compactMap { $0.text }.joined()
+        let reasons = candidates.compactMap { $0.finishReason }
+
+        return (text, raw, status, reasons)
     }
 }

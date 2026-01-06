@@ -28,6 +28,9 @@ struct CameraPicker: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.delegate = context.coordinator
+        picker.allowsEditing = false
+        picker.mediaTypes = ["public.image"]
+        picker.modalPresentationStyle = .fullScreen
 
         #if targetEnvironment(simulator)
         picker.sourceType = .photoLibrary
@@ -35,12 +38,13 @@ struct CameraPicker: UIViewControllerRepresentable {
         if UIImagePickerController.isSourceTypeAvailable(.camera) {
             picker.sourceType = .camera
             picker.cameraCaptureMode = .photo
+            picker.cameraDevice = .rear
+            picker.cameraFlashMode = .off
         } else {
             picker.sourceType = .photoLibrary
         }
         #endif
 
-        picker.allowsEditing = false
         return picker
     }
 

@@ -12,6 +12,7 @@ struct BillCardView: View {
     let displayAmount: String
     let payerUUID: String
     let participantCount: Int
+    let splitLabel: String
 
     var body: some View {
         VStack(spacing: 0) {
@@ -67,7 +68,7 @@ struct BillCardView: View {
                             .lineLimit(1)
                     }
 
-                    Text("Split evenly")
+                    Text(splitLabel)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                 }

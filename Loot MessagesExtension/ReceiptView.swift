@@ -6,10 +6,18 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ReceiptView: View {
+    @ObservedObject var uiModel: LootUIModel
     let receipt: ReceiptDisplay
     let onBack: () -> Void
+
+    @State private var showCapture: Bool = false
+
+    private var captureImage: UIImage? {
+        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -80,15 +88,79 @@ struct ReceiptView: View {
                     // Totals box
                     TotalsBox(receipt: receipt)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 20)
-
+                        .padding(.bottom, 90) // ✅ leave space for bottom button
                 }
+            }
+            .overlay(alignment: .bottom) {
+                Button {
+                    showCapture = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.viewfinder")
+                        Text("View capture")
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(14)
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
+                }
+                .buttonStyle(.plain)
+                .opacity(captureImage == nil ? 0 : 1) // hide if no image
+                .allowsHitTesting(captureImage != nil)
+            }
+        }
+        .sheet(isPresented: $showCapture) {
+            CapturePreviewView(image: captureImage) {
+                showCapture = false
             }
         }
     }
 }
 
-// MARK: - Small UI bits
+// MARK: - Capture preview sheet
+
+private struct CapturePreviewView: View {
+    let image: UIImage?
+    let onClose: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 26))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .padding(14)
+            }
+
+            if let image {
+                GeometryReader { geo in
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .background(Color.black.opacity(0.9))
+                }
+                .ignoresSafeArea(edges: .bottom)
+            } else {
+                Spacer()
+                Text("No capture available")
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+        }
+        .background(Color.black.opacity(0.9))
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - Small UI bits (unchanged)
 
 private struct CircleBadge: View {
     let text: String
