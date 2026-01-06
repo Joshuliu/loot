@@ -22,7 +22,7 @@ final class LLMClient {
         }
         return key
     }()
-// penis
+    
     // Gemini REST endpoint: POST /v1beta/models/{model}:generateContent
     // Docs: https://ai.google.dev/api/generate-content
     private let model = "gemini-3-flash-preview"
