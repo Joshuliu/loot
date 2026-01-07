@@ -162,14 +162,25 @@ struct RootContainerView: View {
         let updatedItems: [ReceiptDisplay.Item] = {
             switch draft.mode {
             case .byItems:
-                let slotNames = (0..<participantCount).map { $0 == 0 ? myDisplayNameFromDefaults() : "Guest \($0 + 1)" }
-                return draft.items.map { it in
-                    let responsible = it.assignedSlots.sorted().map { slotIdx in
-                        ReceiptDisplay.Responsible(
-                            slotIndex: slotIdx,
-                            displayName: slotNames.indices.contains(slotIdx) ? slotNames[slotIdx] : "Guest \(slotIdx + 1)"
-                        )
+                let activeGuests = draft.activeGuests
+                func displayName(_ g: SplitGuest, at activeIndex: Int) -> String {
+                    let t = g.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                    if g.isMe {
+                        let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+                        return me.isEmpty ? "Me" : me
                     }
+                    return "Guest \(activeIndex + 1)"
+                }
+
+                return draft.items.map { it in
+                    let responsible = it.assignedGuestIds.compactMap { gid -> ReceiptDisplay.Responsible? in
+                        guard let idx = activeGuests.firstIndex(where: { $0.id == gid }) else { return nil }
+                        return ReceiptDisplay.Responsible(
+                            slotIndex: idx,
+                            displayName: displayName(activeGuests[idx], at: idx)
+                        )
+                    }.sorted(by: { $0.slotIndex < $1.slotIndex })
                     return ReceiptDisplay.Item(
                         id: it.id.uuidString, // adjust if your Item.id type differs
                         label: it.label,
