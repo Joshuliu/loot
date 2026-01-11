@@ -55,9 +55,9 @@ struct SplitGuestDrawer: View {
     }
 
     private func sheetHeight(maxH: CGFloat) -> CGFloat {
-        let rowH: CGFloat = 56
+        let rowH: CGFloat = 55
         let addRowH: CGFloat = (mode == .some(.splitWith)) ? 48 : 0
-        let saveH: CGFloat = 74
+        let saveH: CGFloat = 75
         let estimated = collapsedHeight + addRowH + (rowH * CGFloat(guests.count)) + saveH
         return min(maxH, estimated)
     }
@@ -219,89 +219,91 @@ struct SplitGuestDrawer: View {
     private func expandedBody() -> some View {
         
         VStack(spacing: 0) {
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(Array(guests.enumerated()), id: \.element.id) { (idx, _) in
-                        let g = guests[idx]
-
-                        HStack(spacing: 12) {
-                            if mode == .splitWith, !g.isMe {
-                                Button { removeGuest(at: idx) } label: {
-                                    Image(systemName: "minus.circle")
-                                        .font(.system(size: 18, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                            } else {
-                                Color.clear.frame(width: (mode == .splitWith ? 22 : 0), height: 1)
+            List {
+                ForEach(Array(guests.enumerated()), id: \.element.id) { (idx, _) in
+                    let g = guests[idx]
+                    
+                    HStack(spacing: 12) {
+                        ZStack(alignment: .leading) {
+                            if g.trimmedName.isEmpty && !g.isMe {
+                                Text(defaultLabel(for: idx))
+                                    .foregroundStyle(.secondary)
                             }
-
-                            ZStack(alignment: .leading) {
-                                if g.trimmedName.isEmpty && !g.isMe {
-                                    Text(defaultLabel(for: idx))
-                                        .foregroundStyle(.secondary)
-                                }
-                                TextField("", text: Binding(
-                                    get: { guests[idx].name },
-                                    set: { guests[idx].name = $0 }
-                                ))
-                                .disabled(g.isMe)
-                                .textInputAutocapitalization(.words)
-                                .focused($focusedGuestId, equals: g.id)
-                                .submitLabel(.done)
-                                .foregroundStyle((g.trimmedName.isEmpty && !g.isMe) ? .secondary : .primary)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture { if !g.isMe { focusedGuestId = g.id } }
-
-                            Spacer(minLength: 8)
-
-                            if mode == .splitWith {
-                                Button { toggleIncluded(at: idx) } label: {
-                                    Image(systemName: guests[idx].isIncluded ? "checkmark.circle.fill" : "circle")
-                                        .font(.system(size: 22, weight: .semibold))
-                                        .foregroundStyle(guests[idx].isIncluded ? Color.blue : .secondary)
-                                }
-                                .buttonStyle(.plain)
-                            } else {
-                                if payerGuestId == g.id {
-                                    Text("Payer")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .padding(.horizontal, 10)
-                                        .padding(.vertical, 6)
-                                        .background(Color(.tertiarySystemFill))
-                                        .clipShape(Capsule())
-                                }
-                            }
+                            TextField("", text: Binding(
+                                get: { guests[idx].name },
+                                set: { guests[idx].name = $0 }
+                            ))
+                            .disabled(g.isMe)
+                            .textInputAutocapitalization(.words)
+                            .focused($focusedGuestId, equals: g.id)
+                            .submitLabel(.done)
+                            .foregroundStyle((g.trimmedName.isEmpty && !g.isMe) ? .secondary : .primary)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
                         .contentShape(Rectangle())
-                        .onTapGesture {
-                            if mode == .paidBy { tapPaidBy(at: idx) }
-                        }
-
-                        if idx != guests.count - 1 {
-                            Divider()
+                        .onTapGesture { if !g.isMe { focusedGuestId = g.id } }
+                        
+                        Spacer(minLength: 8)
+                        
+                        if mode == .splitWith {
+                            Button { toggleIncluded(at: idx) } label: {
+                                Image(systemName: guests[idx].isIncluded ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(guests[idx].isIncluded ? Color.blue : .secondary)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            if payerGuestId == g.id {
+                                Text("Payer")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(Capsule())
+                            }
                         }
                     }
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 16)
+                    .contentShape(Rectangle())
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        if mode == .splitWith, !g.isMe {
+                            Button(role: .destructive) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                                    // clear focus if needed (prevents “focused index” bugs)
+                                    if focusedGuestId == g.id { focusedGuestId = nil }
+                                    removeGuest(at: idx)
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .onTapGesture {
+                        if mode == .paidBy { tapPaidBy(at: idx) }
+                    }
                 }
+                .background(Color(.secondarySystemBackground))
+                .listRowInsets(EdgeInsets())
+                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
             }
-            Divider()
+            .listStyle(.plain)
             
             if mode == .splitWith {
                 Button { addGuest() } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Add guest").font(.system(size: 15, weight: .semibold))
-                        Spacer()
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 13, weight: .bold))
+                        Text("Add guest")
+                            .font(.system(size: 13, weight: .semibold))
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color.blue.opacity(0.15))
+                    .foregroundStyle(Color.blue)
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.blue.opacity(0.25), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                Divider()
             }
 
             Button {
