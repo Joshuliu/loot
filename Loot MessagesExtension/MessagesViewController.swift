@@ -31,6 +31,7 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
+        applySelectedMessageIfAny(conversation: conversation)
 
         // Minimal context for the UI
         let payerUUID = conversation.localParticipantIdentifier.uuidString
@@ -39,7 +40,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         // (Optional) clear any “deep link” state — MVP has no loading/fetching
         uiModel.currentReceipt = nil
 
-        // Keep expansion state in sync (used by your FillReceiptView numpad)
+        // Keep expansion state in sync (used by your ManualInputView numpad)
         uiModel.isExpanded = (presentationStyle == .expanded)
 
         hostingController.rootView = RootContainerView(
@@ -63,12 +64,51 @@ final class MessagesViewController: MSMessagesAppViewController {
         super.didTransition(to: presentationStyle)
         uiModel.isExpanded = (presentationStyle == .expanded)
     }
+    
+    override func didSelect(_ message: MSMessage, conversation: MSConversation) {
+        super.didSelect(message, conversation: conversation)
+        applySelectedMessageIfAny(conversation: conversation)
+    }
 }
 
 // MARK: - Card render + sending (no backend, no storage)
 
 extension MessagesViewController {
+    private func applySelectedMessageIfAny(conversation: MSConversation) {
+        let payerUUID = conversation.localParticipantIdentifier.uuidString
+        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
+        // expansion state
+        uiModel.isExpanded = (presentationStyle == .expanded)
+
+        if let msg = conversation.selectedMessage,
+           let url = msg.url,
+           let payload = LootMessageCodec.payload(from: url) {
+
+            uiModel.openedMessagePayload = payload
+            uiModel.currentReceipt = payload.toReceiptDisplay()
+        } else {
+            uiModel.openedMessagePayload = nil
+            uiModel.currentReceipt = nil
+        }
+
+        hostingController.rootView = RootContainerView(
+            uiModel: uiModel,
+            participantCount: participantCount,
+            onScan:   { print("Scan tapped") },
+            onExpand: { [weak self] in self?.requestPresentationStyle(.expanded) },
+            onCollapse: { [weak self] in self?.requestPresentationStyle(.compact) },
+            onSendBill: { [weak self] receiptName, amount in
+                self?.sendBillMessage(
+                    receiptName: receiptName,
+                    amount: amount,
+                    payerUUID: payerUUID,
+                    participantCount: participantCount
+                )
+            }
+        )
+    }
+    
     func renderCardImage(receiptName: String,
                          displayAmount: String,
                          payerUUID: String,
@@ -104,24 +144,60 @@ extension MessagesViewController {
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
 
-        // MVP: encode everything in the message URL (no DB).
+        // Base URL (keep your current structure)
         var components = URLComponents()
         components.scheme = "https"
         components.host = "bill.example"
         components.path = "/loot"
+
+        // Build a “portable” receipt + split payload
+        let fallbackTotalCents = centsFromAmountString(amount)
+        let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
+            id: UUID().uuidString,
+            title: receiptName.isEmpty ? "New Receipt" : receiptName,
+            createdAt: Date(),
+            subtotalCents: fallbackTotalCents,
+            feesCents: 0,
+            taxCents: 0,
+            tipCents: 0,
+            discountCents: 0,
+            totalCents: fallbackTotalCents,
+            items: []
+        )
+
+        let draft = uiModel.currentSplitDraft
+        let splitPayload = SplitPayload.from(draft: draft,
+                                             participantCount: participantCount,
+                                             totalCents: receiptDisplay.totalCents)
+
+        let receiptPayload = ReceiptPayload.from(receipt: receiptDisplay, split: splitPayload)
+
+        let payload = LootMessagePayload(receipt: receiptPayload, split: splitPayload)
+
+        // Put legacy fields too (nice for debugging / older messages)
         components.queryItems = [
-            URLQueryItem(name: "title", value: receiptName),
-            URLQueryItem(name: "amount", value: amount)
+            URLQueryItem(name: "title", value: receiptDisplay.title),
+            URLQueryItem(name: "amount", value: formattedDisplayAmount(from: amount))
         ]
+        LootMessageCodec.writePayload(into: &components, payload: payload)
+
+        let splitLabel: String = {
+            switch splitPayload.mode {
+            case .byItems: return "Split by items with"
+            case .custom:  return "Split by amounts with"
+            case .equally: return "Split evenly with"
+            }
+        }()
 
         let layout = MSMessageTemplateLayout()
         layout.image = renderCardImage(
-            receiptName: receiptName,
-            displayAmount: formattedDisplayAmount(from: amount),
+            receiptName: receiptDisplay.title,
+            displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
             payerUUID: payerUUID,
             participantCount: participantCount
         )
-        layout.caption = receiptName.isEmpty ? "New split" : receiptName
+//        layout.caption = receiptDisplay.title.isEmpty ? "New split" : receiptDisplay.title
+//        layout.subcaption = splitLabel
 
         let message = MSMessage(session: MSSession())
         message.layout = layout
@@ -146,5 +222,315 @@ extension MessagesViewController {
             return "$\(dollars).\(String(fixed.prefix(2)))"
         }
         return "$\(cleaned).00"
+    }
+}
+
+private func centsFromAmountString(_ raw: String) -> Int {
+    let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: "$", with: "")
+        .replacingOccurrences(of: ",", with: "")
+    guard !s.isEmpty else { return 0 }
+    if s.contains(".") {
+        let parts = s.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let dollars = Int(parts.first ?? "0") ?? 0
+        let centsRaw = parts.count > 1 ? String(parts[1]) : ""
+        let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
+        let cents = Int(String(cents2.prefix(2))) ?? 0
+        return max(0, dollars * 100 + cents)
+    }
+    return max(0, (Int(s) ?? 0) * 100)
+}
+
+// MARK: - Payload -> ReceiptDisplay
+
+private extension LootMessagePayload {
+    func toReceiptDisplay() -> ReceiptDisplay {
+        let r = receipt
+        let items: [ReceiptDisplay.Item] = r.items.map { it in
+            let responsible: [ReceiptDisplay.Responsible] = it.responsibleSlots.map { slot in
+                let nm: String = {
+                    guard split.guests.indices.contains(slot) else { return "Guest \(slot + 1)" }
+                    let g = split.guests[slot]
+                    let t = g.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                    return g.isMe ? "Me" : "Guest \(slot + 1)"
+                }()
+                return ReceiptDisplay.Responsible(slotIndex: slot, displayName: nm)
+            }
+            .sorted(by: { $0.slotIndex < $1.slotIndex })
+
+            return ReceiptDisplay.Item(
+                id: it.id,
+                label: it.label,
+                priceCents: it.priceCents,
+                responsible: responsible
+            )
+        }
+
+        return ReceiptDisplay(
+            id: r.id,
+            title: r.title,
+            createdAt: Date(timeIntervalSince1970: r.createdAtEpoch),
+            subtotalCents: r.subtotalCents,
+            feesCents: r.feesCents,
+            taxCents: r.taxCents,
+            tipCents: r.tipCents,
+            discountCents: r.discountCents,
+            totalCents: r.totalCents,
+            items: items
+        )
+    }
+}
+
+// MARK: - Build SplitPayload / ReceiptPayload from your in-app models
+
+private extension SplitPayload {
+    static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
+        // Seed guests if no draft
+        let guests: [Guest] = {
+            if let d = draft, !d.guests.isEmpty {
+                return d.guests.map { Guest(name: $0.name, included: $0.isIncluded, isMe: $0.isMe) }
+            }
+            // default: me + N-1 unnamed
+            var out: [Guest] = [Guest(name: myDisplayNameFromDefaults(), included: true, isMe: true)]
+            if participantCount > 1 {
+                for _ in 1..<participantCount {
+                    out.append(Guest(name: "", included: true, isMe: false))
+                }
+            }
+            return out
+        }()
+
+        let payerIndex: Int = {
+            guard let d = draft else { return 0 }
+            return d.guests.firstIndex(where: { $0.id == d.payerGuestId }) ?? 0
+        }()
+
+        let mode: Mode = {
+            guard let d = draft else { return .equally }
+            switch d.mode {
+            case .equally: return .equally
+            case .custom: return .custom
+            case .byItems: return .byItems
+            }
+        }()
+
+        let fees = draft?.feesCents ?? 0
+        let tax = draft?.taxCents ?? 0
+        let tip = draft?.tipCents ?? 0
+        let discount = draft?.discountCents ?? 0
+
+        // Encode by-items assignments using SLOT INDICES (stable across devices)
+        let items: [Item] = {
+            guard let d = draft, d.mode == .byItems else { return [] }
+            let slotIndexByUUID: [UUID: Int] = Dictionary(uniqueKeysWithValues: d.guests.enumerated().map { ($0.element.id, $0.offset) })
+            return d.items.map { it in
+                let slots = it.assignedGuestIds.compactMap { slotIndexByUUID[$0] }.sorted()
+                return Item(label: it.label, priceCents: it.priceCents, assignedSlots: slots)
+            }
+        }()
+
+        // Compute owed (always) and force sum to total by adjusting payer
+        let owed = SplitMath.computeOwedCents(
+            mode: mode,
+            guests: guests,
+            payerIndex: payerIndex,
+            totalCents: totalCents,
+            perGuestActive: draft?.perGuestCents,
+            items: items,
+            feesCents: fees,
+            taxCents: tax,
+            tipCents: tip,
+            discountCents: discount
+        )
+
+        return SplitPayload(
+            mode: mode,
+            guests: guests,
+            payerIndex: payerIndex,
+            owedCents: owed,
+            items: items,
+            feesCents: fees,
+            taxCents: tax,
+            tipCents: tip,
+            discountCents: discount,
+            totalCents: totalCents
+        )
+    }
+}
+
+private extension ReceiptPayload {
+    static func from(receipt: ReceiptDisplay, split: SplitPayload) -> ReceiptPayload {
+        let isByItems = (split.mode == .byItems)
+
+        let items: [ReceiptItemPayload] = {
+            if isByItems, !split.items.isEmpty {
+                // Use split items so the Receipt screen shows the same assignments.
+                return split.items.map { it in
+                    ReceiptItemPayload(
+                        id: UUID().uuidString,
+                        label: it.label,
+                        priceCents: it.priceCents,
+                        responsibleSlots: it.assignedSlots
+                    )
+                }
+            } else {
+                // Use receipt items (no responsibilities)
+                return receipt.items.map { it in
+                    ReceiptItemPayload(
+                        id: it.id,
+                        label: it.label,
+                        priceCents: it.priceCents,
+                        responsibleSlots: []
+                    )
+                }
+            }
+        }()
+
+        return ReceiptPayload(
+            id: receipt.id,
+            title: receipt.title,
+            createdAtEpoch: receipt.createdAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970,
+            subtotalCents: receipt.subtotalCents,
+            feesCents: receipt.feesCents,
+            taxCents: receipt.taxCents,
+            tipCents: receipt.tipCents,
+            discountCents: receipt.discountCents,
+            totalCents: receipt.totalCents,
+            items: items
+        )
+    }
+}
+
+// MARK: - Math (equal/custom/by-items) with stable cents
+
+private enum SplitMath {
+    static func computeOwedCents(
+        mode: SplitPayload.Mode,
+        guests: [SplitPayload.Guest],
+        payerIndex: Int,
+        totalCents: Int,
+        perGuestActive: [Int]?,
+        items: [SplitPayload.Item],
+        feesCents: Int,
+        taxCents: Int,
+        tipCents: Int,
+        discountCents: Int
+    ) -> [Int] {
+
+        let included = guests.indices.filter { guests[$0].included }
+        guard !included.isEmpty else { return Array(repeating: 0, count: guests.count) }
+
+        let safePayer = included.contains(payerIndex) ? payerIndex : (included.first ?? 0)
+
+        func clampToTotal(_ owed: inout [Int]) {
+            var sum = owed.reduce(0, +)
+            let diff = totalCents - sum
+            if diff != 0, owed.indices.contains(safePayer) {
+                owed[safePayer] = max(0, owed[safePayer] + diff)
+                sum = owed.reduce(0, +)
+            }
+            // still mismatched? (shouldn’t happen, but keep safe)
+            if sum != totalCents, let first = included.first {
+                owed[first] = max(0, owed[first] + (totalCents - sum))
+            }
+        }
+
+        // Start with all zeros for full guest list
+        var owed = Array(repeating: 0, count: guests.count)
+
+        switch mode {
+        case .equally:
+            let shares = splitEvenly(total: totalCents, count: included.count)
+            for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
+            clampToTotal(&owed)
+            return owed
+
+        case .custom:
+            // custom comes as active-only in your app; map in order of included guests
+            if let perGuestActive, perGuestActive.count == included.count {
+                for (i, idx) in included.enumerated() { owed[idx] = max(0, perGuestActive[i]) }
+            } else {
+                let shares = splitEvenly(total: totalCents, count: included.count)
+                for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
+            }
+            clampToTotal(&owed)
+            return owed
+
+        case .byItems:
+            // 1) subtotal from items (split shared items evenly among assigned)
+            var subtotals = Array(repeating: 0, count: guests.count)
+
+            for it in items {
+                let assigned = it.assignedSlots.filter { guests.indices.contains($0) && guests[$0].included }
+                let targets = assigned.isEmpty ? [safePayer] : assigned.sorted()
+                let parts = splitEvenly(total: max(0, it.priceCents), count: targets.count)
+                for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
+            }
+
+            // 2) allocate extras (fees+tax+tip-discount) proportional to subtotal (or evenly if subtotal=0)
+            let extras = max(0, feesCents) + max(0, taxCents) + max(0, tipCents) - max(0, discountCents)
+            let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
+
+            for idx in included {
+                owed[idx] = max(0, subtotals[idx] + extrasAlloc[idx])
+            }
+
+            clampToTotal(&owed)
+            return owed
+        }
+    }
+
+    private static func splitEvenly(total: Int, count: Int) -> [Int] {
+        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
+        var out = Array(repeating: total / count, count: count)
+        let remainder = total - out.reduce(0, +)
+        if remainder > 0 {
+            for i in 0..<min(remainder, count) { out[i] += 1 }
+        }
+        return out
+    }
+
+    private static func allocateProportional(total: Int, base: [Int], included: [Int]) -> [Int] {
+        var out = Array(repeating: 0, count: base.count)
+        guard total != 0 else { return out }
+
+        let sumBase = included.reduce(0) { $0 + max(0, base[$1]) }
+        if sumBase <= 0 {
+            // evenly across included
+            let shares = splitEvenly(total: total, count: included.count)
+            for (i, idx) in included.enumerated() { out[idx] = shares[i] }
+            return out
+        }
+
+        // proportional with remainder distribution by fractional part
+        var floors: [Int] = []
+        var fracs: [(idx: Int, frac: Double)] = []
+
+        var used = 0
+        for idx in included {
+            let b = Double(max(0, base[idx]))
+            let raw = (Double(total) * b) / Double(sumBase)
+            let f = Int(floor(raw))
+            floors.append(f)
+            used += f
+            fracs.append((idx: idx, frac: raw - Double(f)))
+        }
+
+        for (i, idx) in included.enumerated() {
+            out[idx] = floors[i]
+        }
+
+        var rem = total - used
+        if rem > 0 {
+            fracs.sort { $0.frac > $1.frac }
+            var j = 0
+            while rem > 0 && !fracs.isEmpty {
+                out[fracs[j % fracs.count].idx] += 1
+                rem -= 1
+                j += 1
+            }
+        }
+        return out
     }
 }

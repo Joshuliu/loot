@@ -62,22 +62,28 @@ struct ReceiptDisplay: Identifiable {
 final class LootUIModel: ObservableObject {
     @Published var isExpanded: Bool = false
 
-    // Preview-only receipt (ReceiptView)
     @Published var currentReceipt: ReceiptDisplay? = nil
-
-    // Scan output (Fill -> Confirmation prefill + issues)
     @Published var parsedReceipt: ParsedReceipt? = nil
 
     @Published var scanImageOriginal: UIImage? = nil
     @Published var scanImageCropped: UIImage? = nil
-    
+
+    // NEW: last split draft while creating (used by sender to encode into message)
+    @Published var currentSplitDraft: SplitDraft? = nil
+
+    // NEW: decoded message payload when user taps a Loot message
+    @Published var openedMessagePayload: LootMessagePayload? = nil
+
     func resetForNewReceipt() {
         parsedReceipt = nil
         currentReceipt = nil
         scanImageOriginal = nil
         scanImageCropped = nil
+        currentSplitDraft = nil
+        openedMessagePayload = nil
     }
 }
+
 
 // MARK: - Scan parse result (LLM output) — SIMPLIFIED + CONSISTENT
 

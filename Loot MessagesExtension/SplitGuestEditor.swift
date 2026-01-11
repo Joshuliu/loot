@@ -56,10 +56,9 @@ struct SplitGuestDrawer: View {
 
     private func sheetHeight(maxH: CGFloat) -> CGFloat {
         let rowH: CGFloat = 56
-        let addRowH: CGFloat = (mode == .some(.splitWith)) ? 52 : 0
-        let saveH: CGFloat = 86
-        let topPadding: CGFloat = 10
-        let estimated = collapsedHeight + addRowH + (rowH * CGFloat(guests.count)) + saveH + topPadding
+        let addRowH: CGFloat = (mode == .some(.splitWith)) ? 48 : 0
+        let saveH: CGFloat = 74
+        let estimated = collapsedHeight + addRowH + (rowH * CGFloat(guests.count)) + saveH
         return min(maxH, estimated)
     }
 
@@ -72,7 +71,6 @@ struct SplitGuestDrawer: View {
     private func addGuest() {
         let new = SplitGuest(name: "", isIncluded: true, isMe: false)
         guests.append(new)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedGuestId = new.id }
     }
 
     private func removeGuest(at index: Int) {
@@ -175,8 +173,8 @@ struct SplitGuestDrawer: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: targetH, alignment: .top)   // ✅ fit-to-content height
-                .clipped()                                  // ✅ hides expanded body when collapsed
+                .frame(height: targetH, alignment: .top)
+                .clipped()
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
                 .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
@@ -221,19 +219,6 @@ struct SplitGuestDrawer: View {
     private func expandedBody() -> some View {
         
         VStack(spacing: 0) {
-            if mode == .splitWith {
-                Button { addGuest() } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: "plus.circle.fill")
-                        Text("Add guest").font(.system(size: 15, weight: .semibold))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-                .buttonStyle(.plain)
-                Divider()
-            }
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -298,13 +283,26 @@ struct SplitGuestDrawer: View {
                         }
 
                         if idx != guests.count - 1 {
-                            Divider().padding(.leading, 16)
+                            Divider()
                         }
                     }
                 }
             }
-
             Divider()
+            
+            if mode == .splitWith {
+                Button { addGuest() } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add guest").font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(.plain)
+                Divider()
+            }
 
             Button {
                 onSave()
@@ -318,10 +316,10 @@ struct SplitGuestDrawer: View {
                     .padding(.vertical, 14)
                     .background(canSave ? Color.blue : Color(.systemGray4))
                     .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                     .padding(.horizontal, 18)
                     .padding(.top, 12)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, 20)
             }
             .buttonStyle(.plain)
             .disabled(!canSave)

@@ -246,7 +246,7 @@ struct RootContainerView: View {
                         .transition(.opacity)
                         
                     case .fill:
-                        FillReceiptView(
+                        ManualInputView(
                             viewModel: uiModel,
                             receiptName: $receiptName,
                             amountString: $amountString,
@@ -301,7 +301,8 @@ struct RootContainerView: View {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .splitview
                                 }
-                            }
+                            },
+                            onRequestCollapse: onCollapse
                         )
                         .transition(.opacity)
                         
@@ -330,10 +331,25 @@ struct RootContainerView: View {
                             },
                             onApply: { draft in
                                 splitDraft = draft
+                                uiModel.currentSplitDraft = draft
                                 applySplitDraftToCurrentReceipt(draft)
                             }
                         )
-                        
+                    case .messageViewer:
+                        if let payload = uiModel.openedMessagePayload {
+                            MessageReceiptViewer(
+                                uiModel: uiModel,
+                                payload: payload,
+                                onClose: {
+                                    uiModel.openedMessagePayload = nil
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        screen = .tabview
+                                    }
+                                }
+                            )
+                        } else {
+                            ProgressView("Loading…")
+                        }
                     }
                 }
                 .sheet(
@@ -347,25 +363,37 @@ struct RootContainerView: View {
                         }
                     }
                 ) { CameraPicker(image: $capturedImage).ignoresSafeArea() }
-                    .overlay {
-                        if isAnalyzing {
-                            ZStack {
-                                Color.black.opacity(0.25).ignoresSafeArea()
-                                ProgressView("Analyzing receipt…")
-                                    .padding()
-                                    .background(Color(.systemBackground))
-                                    .cornerRadius(12)
-                            }
+                .overlay {
+                    if isAnalyzing {
+                        ZStack {
+                            Color.black.opacity(0.25).ignoresSafeArea()
+                            ProgressView("Analyzing receipt…")
+                                .padding()
+                                .background(Color(.systemBackground))
+                                .cornerRadius(12)
                         }
                     }
-                    .alert("Scan failed", isPresented: Binding(
-                        get: { analyzeError != nil },
-                        set: { _ in analyzeError = nil }
-                    )) {
-                        Button("OK", role: .cancel) {}
-                    } message: {
-                        Text(analyzeError ?? "")
+                }
+                .alert("Scan failed", isPresented: Binding(
+                    get: { analyzeError != nil },
+                    set: { _ in analyzeError = nil }
+                )) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(analyzeError ?? "")
+                }
+                .onAppear {
+                    if uiModel.openedMessagePayload != nil {
+                        screen = .messageViewer
                     }
+                }
+                .onChange(of: uiModel.openedMessagePayload) { _, newValue in
+                    if newValue != nil {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            screen = .messageViewer
+                        }
+                    }
+                }
             }
         }
     }
@@ -377,4 +405,5 @@ enum Screen {
     case confirmation
     case receipt
     case splitview
+    case messageViewer
 }

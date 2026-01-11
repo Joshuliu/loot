@@ -45,8 +45,19 @@ struct BillCardView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 6) {
+
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Who pays")
+                        Text(splitLabel)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+
+                        Text("\(participantCount) \(participantCount == 1 ? "person" : "people")")
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Paid by")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
 
@@ -56,21 +67,6 @@ struct BillCardView: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Split with")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-
-                        Text("\(participantCount) \(participantCount == 1 ? "person" : "people")")
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-                    }
-
-                    Text(splitLabel)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

@@ -9,10 +9,12 @@ struct ConfirmationView: View {
     
     let onBack: () -> Void
     let onSend: () -> Void
-    let onPreviewReceipt: () -> Void
     
+    let onPreviewReceipt: () -> Void
     let onDeleteToLanding: () -> Void
     let onGoToSplit: () -> Void
+    
+    let onRequestCollapse: () -> Void
 
     @State private var cardOffset: CGSize = .zero
     @State private var cardRotation: Double = 0
@@ -22,7 +24,7 @@ struct ConfirmationView: View {
     private var splitLabel: String {
         switch splitMode {
         case .byItems: return "Split by items"
-        case .custom:  return "Custom amounts"
+        case .custom: return "Split by amounts"
         case .equally, .none: return "Split evenly"
         }
     }
@@ -183,6 +185,9 @@ struct ConfirmationView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .transition(.opacity)
             }
+        }
+        .task {
+            onRequestCollapse()
         }
         .onAppear {
             // Reset state each time

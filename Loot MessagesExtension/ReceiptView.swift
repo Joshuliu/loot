@@ -13,6 +13,7 @@ struct ReceiptView: View {
     let receipt: ReceiptDisplay
     let onBack: () -> Void
 
+    var showBackRow: Bool = true
     @State private var showCapture: Bool = false
 
     private var captureImage: UIImage? {
@@ -21,19 +22,20 @@ struct ReceiptView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Inline back row so it’s always visible without NavigationStack
-            HStack {
-                Button(action: onBack) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
+            if showBackRow {
+                HStack {
+                    Button(action: onBack) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .padding(.leading, 12)
+                    Spacer()
                 }
-                .buttonStyle(.plain)
-                .padding(.leading, 12)
-                Spacer()
+                .padding(.vertical, 10)
             }
-            .padding(.vertical, 10)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {

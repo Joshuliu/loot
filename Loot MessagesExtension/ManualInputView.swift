@@ -1,5 +1,5 @@
 //
-//  FillReceiptView.swift
+//  ManualInputView.swift
 //  Bill
 //
 //  Created by Joshua Liu on 12/9/25.
@@ -9,7 +9,7 @@ import SwiftUI
 import Combine
 import UIKit
 
-struct FillReceiptView: View {
+struct ManualInputView: View {
     @ObservedObject var viewModel: LootUIModel
     @Binding var receiptName: String
     @Binding var amountString: String
@@ -172,7 +172,7 @@ struct FillReceiptView: View {
 
 // MARK: - Hold-to-repeat logic
 
-private extension FillReceiptView {
+private extension ManualInputView {
     func startHolding(increment: Bool) {
         if holdTimer != nil { return }
 
@@ -203,7 +203,7 @@ private extension FillReceiptView {
 
 // MARK: - Amount helpers
 
-private extension FillReceiptView {
+private extension ManualInputView {
     func incrementAmount() {
         if amountString.contains(".") {
             // Preserve cents, bump only the dollar part
