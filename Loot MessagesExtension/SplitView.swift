@@ -39,7 +39,8 @@ struct SplitDraft: Equatable {
 
 struct SplitView: View {
     @ObservedObject var uiModel: LootUIModel
-
+    @State private var haptic = UIImpactFeedbackGenerator(style: .light)
+        @State private var lastHapticCents: Int = 0
     let amountString: String
     let participantCount: Int
     let initialDraft: SplitDraft?
@@ -370,6 +371,19 @@ struct SplitView: View {
                                     .rotationEffect(.degrees(-90))
                                     .frame(width: size, height: size)
                             }
+                            if i > 0 {
+                                let ang = -(.pi / 1.99) + (startFrac * 2 * .pi)
+                                let hx = center.x + handleRadius * cos(ang)
+                                let hy = center.y + handleRadius * sin(ang)
+
+                                Circle()
+                                    .fill(colorForSlot(i - 1))
+                                    .overlay(
+                                            Circle().stroke(colorForSlot(i - 1), lineWidth: 0.05)
+                                        )
+                                    .frame(width: 30, height: 30)
+                                    .position(x: hx, y: hy)
+                            }
                         }
                     }
 
@@ -412,6 +426,7 @@ struct SplitView: View {
                                         if donutDrag == nil {
                                             let curEnd = Double(sumThrough(guestSelectedIndex)) / Double(totalCents)
                                             donutDrag = DonutDrag(lastRawFrac: rawFrac, endFracUnwrapped: curEnd)
+                                            haptic.prepare()
                                         }
 
                                         var d = donutDrag!
@@ -426,6 +441,16 @@ struct SplitView: View {
 
                                         var newCents = Int(round((endClamped - startFrac) * Double(totalCents)))
                                         newCents = min(max(newCents, 0), maxAlloc)
+                            // ✅ Add haptic feedback on significant changes
+                                        let centsDiff = abs(newCents - lastHapticCents)
+                                        
+                                        // Light tap every $1 (100 cents)
+                                        if centsDiff >= 100 {
+                                            haptic.impactOccurred(intensity: 0.7)
+                                            lastHapticCents = newCents
+                                            haptic.prepare()
+                                        }
+                                        
                                         guestAmountsCents[guestSelectedIndex] = newCents
                                     }
                                     .onEnded { _ in donutDrag = nil }

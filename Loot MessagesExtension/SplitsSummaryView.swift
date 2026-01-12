@@ -89,20 +89,22 @@ struct SplitsSummaryView: View {
                                         .rotationEffect(.degrees(-90))
                                         .frame(width: size, height: size)
                                 }
+                                if count > 0, i > 0 {
+                                    let ang = -(.pi / 1.99) + (start * 2 * .pi)
+                                    let hx = center.x + handleRadius * cos(ang)
+                                    let hy = center.y + handleRadius * sin(ang)
+                                    
+                                    Circle()
+                                        .fill(colorForSlot(i - 1))
+                                        .overlay(
+                                                Circle().stroke(colorForSlot(i - 1), lineWidth: 0.05)
+                                            )
+                                        .frame(width: 30, height: 30)
+                                        .position(x: hx, y: hy)
+                                }
                             }
                         }
-
-                        if safeTotal > 0, count > 0 {
-                            let ang = -(.pi / 2.0)
-                            let hx = center.x + handleRadius * cos(ang)
-                            let hy = center.y + handleRadius * sin(ang)
-
-                            Circle()
-                                .fill(colorForSlot(0))
-                                .frame(width: 30, height: 30)
-                                .position(x: hx, y: hy)
-                        }
-
+                
                         VStack(spacing: 6) {
                             Text("\(displayName(for: selectedGuestIndex)) owes")
                                 .font(.system(size: 14, weight: .semibold))
