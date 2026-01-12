@@ -15,6 +15,8 @@ struct RootContainerView: View {
     @State private var receiptName: String = ""
     @State private var splitDraft: SplitDraft? = nil
     @State private var amountString: String = "0"
+    @State private var tipAmount: String = ""
+    @State private var subtotalString: String = ""
     @State private var returnScreen: Screen = .tabview
     @Namespace private var titleNamespace
     
@@ -83,19 +85,42 @@ struct RootContainerView: View {
     }
 
     private func makePreviewReceipt() -> ReceiptDisplay {
-        let cents = amountToCents(amountString)
-        return ReceiptDisplay(
-            id: "preview",
-            title: receiptName.isEmpty ? "New Receipt" : receiptName,
-            createdAt: Date(),
-            subtotalCents: cents,
-            feesCents: 0,
-            taxCents: 0,
-            tipCents: 0,
-            discountCents: 0,
-            totalCents: cents,
-            items: []
-        )
+        let hasTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
+        
+        if hasTip {
+            // When there's a tip, amountString is the TOTAL
+            let totalCents = amountToCents(amountString)
+            let tipCents = amountToCents(tipAmount)
+            let subtotalCents = max(0, totalCents - tipCents)
+            
+            return ReceiptDisplay(
+                id: "preview",
+                title: receiptName.isEmpty ? "New Receipt" : receiptName,
+                createdAt: Date(),
+                subtotalCents: subtotalCents,
+                feesCents: 0,
+                taxCents: 0,
+                tipCents: tipCents,
+                discountCents: 0,
+                totalCents: totalCents,
+                items: []
+            )
+        } else {
+            // No tip, amountString is treated as total
+            let cents = amountToCents(amountString)
+            return ReceiptDisplay(
+                id: "preview",
+                title: receiptName.isEmpty ? "New Receipt" : receiptName,
+                createdAt: Date(),
+                subtotalCents: cents,
+                feesCents: 0,
+                taxCents: 0,
+                tipCents: 0,
+                discountCents: 0,
+                totalCents: cents,
+                items: []
+            )
+        }
     }
 
     private func startScanFlow() {
@@ -250,19 +275,54 @@ struct RootContainerView: View {
                             viewModel: uiModel,
                             receiptName: $receiptName,
                             amountString: $amountString,
+                            tipAmount: $tipAmount,
                             onBack: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .tabview
                                 }
                             },
                             onNext: {
+                                // Create receipt before transitioning
+                                uiModel.currentReceipt = makePreviewReceipt()
+                                
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .confirmation
+                                }
+                            },
+                            onAddTip: {
+                                // Save subtotal and go to tip view
+                                subtotalString = amountString
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .tipview
                                 }
                             },
                             onRequestExpand: onExpand,
                             onRequestCollapse: onCollapse,
                             titleNamespace: titleNamespace
+                        )
+                        .transition(.opacity)
+                        
+                    case .tipview:
+                        TipView(
+                            subtotalString: subtotalString,
+                            onBack: {
+                                // Return to fill without changes
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .fill
+                                }
+                            },
+                            onNext: { tip, total in
+                                // Apply tip changes
+                                tipAmount = tip
+                                amountString = total  // Update to new total
+                                
+                                // Create receipt with tip breakdown
+                                uiModel.currentReceipt = makePreviewReceipt()
+                                
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    screen = .confirmation
+                                }
+                            }
                         )
                         .transition(.opacity)
                         
@@ -402,6 +462,7 @@ struct RootContainerView: View {
 enum Screen {
     case tabview
     case fill
+    case tipview
     case confirmation
     case receipt
     case splitview

@@ -1,5 +1,5 @@
 //
-//  ManualInputView.swift
+//  ManualInputView.swift (UPDATED with Tip functionality)
 //  Bill
 //
 //  Created by Joshua Liu on 12/9/25.
@@ -13,9 +13,11 @@ struct ManualInputView: View {
     @ObservedObject var viewModel: LootUIModel
     @Binding var receiptName: String
     @Binding var amountString: String
+    @Binding var tipAmount: String
     
     let onBack: () -> Void
     let onNext: () -> Void
+    let onAddTip: () -> Void
     let onRequestExpand: () -> Void
     let onRequestCollapse: () -> Void
     let titleNamespace: Namespace.ID
@@ -34,6 +36,10 @@ struct ManualInputView: View {
 
     private var displayAmount: String {
         "$" + (amountString.isEmpty ? "0" : amountString)
+    }
+    
+    private var hasTip: Bool {
+        !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
     }
 
     var body: some View {
@@ -135,19 +141,41 @@ struct ManualInputView: View {
                 .padding(.top, 16)
             }
 
-            // Next button
-            Button(action: {
-                onNext()
-            }) {
-                Text("Next")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color(.systemBlue))
-                    .foregroundColor(.white)
-                    .cornerRadius(18)
-                    .padding(.horizontal, 40)
+            // Buttons
+            HStack(spacing: 12) {
+                Button(action: onBack) {
+                    Text("Back")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(18)
+                }
+                
+                // Add a tip button
+                Button(action: onAddTip) {
+                    Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(18)
+                }
+                .disabled(displayAmount == "$0" || amountString.isEmpty || amountString == "0")
+                .opacity((displayAmount == "$0" || amountString.isEmpty || amountString == "0") ? 0.4 : 1.0)
+                
+                // Next button
+                Button(action: onNext) {
+                    Text("Next")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color(.systemBlue))
+                        .cornerRadius(18)
+                }
             }
+            .padding(.horizontal, 40)
             .padding(.top, 16)
 
             Spacer()
