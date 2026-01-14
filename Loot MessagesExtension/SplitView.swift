@@ -441,12 +441,12 @@ struct SplitView: View {
 
                                         var newCents = Int(round((endClamped - startFrac) * Double(totalCents)))
                                         newCents = min(max(newCents, 0), maxAlloc)
-                            // ✅ Add haptic feedback on significant changes
+                                        // ✅ Add haptic feedback on significant changes
                                         let centsDiff = abs(newCents - lastHapticCents)
                                         
-                                        // Light tap every $1 (100 cents)
-                                        if centsDiff >= 100 {
-                                            haptic.impactOccurred(intensity: 0.7)
+                                        // Tap occurs 100 times in the donut
+                                        if centsDiff >= totalCents/100 {
+                                            haptic.impactOccurred(intensity: 1.5)
                                             lastHapticCents = newCents
                                             haptic.prepare()
                                         }
