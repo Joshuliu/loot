@@ -181,14 +181,6 @@ extension MessagesViewController {
         ]
         LootMessageCodec.writePayload(into: &components, payload: payload)
 
-        let splitLabel: String = {
-            switch splitPayload.mode {
-            case .byItems: return "Split by items with"
-            case .custom:  return "Split by amounts with"
-            case .equally: return "Split evenly with"
-            }
-        }()
-
         let layout = MSMessageTemplateLayout()
         layout.image = renderCardImage(
             receiptName: receiptDisplay.title,

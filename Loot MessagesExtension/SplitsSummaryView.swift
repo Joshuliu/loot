@@ -164,7 +164,7 @@ struct SplitsSummaryView: View {
                 Spacer().frame(height: 24)
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 20)
+            .padding(.vertical, 20)
         }
     }
 

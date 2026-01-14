@@ -238,7 +238,7 @@ struct RootContainerView: View {
 
     var body: some View {
         Group {
-            if myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if myName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 IntroView(
                     onRequestExpand: onExpand,
                     onContinue: { name in

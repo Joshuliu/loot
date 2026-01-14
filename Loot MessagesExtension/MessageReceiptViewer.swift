@@ -54,7 +54,7 @@ struct MessageReceiptViewer: View {
                 bottomTabButton("Receipt", system: "doc.text.fill", selected: tab == .receipt) { tab = .receipt }
             }
             .padding(.horizontal, 14)
-            .padding(.top, 10)
+            .padding(.top, 40)
             .padding(.bottom, 14)
             .background(Color(.systemBackground).opacity(0.95))
         }
