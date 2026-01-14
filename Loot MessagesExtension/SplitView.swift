@@ -446,7 +446,7 @@ struct SplitView: View {
                                         
                                         // Tap occurs 100 times in the donut
                                         if centsDiff >= totalCents/100 {
-                                            haptic.impactOccurred(intensity: 1.5)
+                                            haptic.impactOccurred(intensity: 10.0)
                                             lastHapticCents = newCents
                                             haptic.prepare()
                                         }

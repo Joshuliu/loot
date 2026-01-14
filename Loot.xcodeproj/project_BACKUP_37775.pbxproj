@@ -265,7 +265,11 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+<<<<<<< HEAD
 				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot.MessagesExtension;
+=======
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
+>>>>>>> a588ac02eb92ad4292ac9128d88ae86b28ff4803
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -303,7 +307,11 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
+<<<<<<< HEAD
+				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot.MessagesExtension;
+=======
 				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
+>>>>>>> a588ac02eb92ad4292ac9128d88ae86b28ff4803
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -459,7 +467,11 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
+<<<<<<< HEAD
 				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot;
+=======
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
+>>>>>>> a588ac02eb92ad4292ac9128d88ae86b28ff4803
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -488,7 +500,11 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
+<<<<<<< HEAD
 				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot;
+=======
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
+>>>>>>> a588ac02eb92ad4292ac9128d88ae86b28ff4803
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
