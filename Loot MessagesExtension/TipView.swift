@@ -54,77 +54,53 @@ struct TipView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Top bar
-            HStack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                    Text("Back")
-                }
-                .padding(.leading, 16)
-                Spacer()
-            }
-            .padding(.vertical, 12)
-            
             ScrollView {
-                VStack(spacing: 24) {
-                    // Title
-                    Text("Add Tip")
-                        .font(.system(size: 24, weight: .semibold))
-                        .padding(.top, 8)
-                    
-                    // Equation display (horizontal)
-                    HStack(spacing: 12) {
-                        // Subtotal
-                        VStack(alignment: .leading, spacing: 4) {
+                VStack(spacing: 12) {
+                    // Receipt-style breakdown
+                    VStack(spacing: 0) {
+                        // Subtotal row
+                        HStack {
                             Text("Subtotal")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 15, weight: .regular))
+                            Spacer()
                             Text(formatMoney(subtotalCents))
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.system(size: 15, weight: .regular))
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                         
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 4)
-                        
-                        // Tip
-                        VStack(alignment: .leading, spacing: 4) {
+                        // Tip row
+                        HStack {
                             Text("Tip (\(String(format: "%.0f", tipPercent))%)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 15, weight: .regular))
+                            Spacer()
                             Text(formatMoney(tipCents))
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.system(size: 15, weight: .regular))
                                 .foregroundColor(.blue)
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                         
-                        Image(systemName: "equal")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 4)
+                        Divider()
+                            .padding(.horizontal, 16)
                         
-                        // Total
-                        VStack(alignment: .leading, spacing: 4) {
+                        // Total row
+                        HStack {
                             Text("Total")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 17, weight: .semibold))
+                            Spacer()
                             Text(formatMoney(totalCents))
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.system(size: 17, weight: .semibold))
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                     }
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 16)
-                    .frame(maxWidth: .infinity)
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(16)
                     .padding(.horizontal, 24)
                     
                     // Percentage slider
                     VStack(spacing: 16) {
-                        Text("Scroll to adjust tip")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
-                        
                         PercentageSlider(
                             percent: $tipPercent,
                             minPercent: minPercent,
@@ -132,6 +108,10 @@ struct TipView: View {
                         )
                         .frame(height: 60)
                         .padding(.horizontal, 24)
+                        
+                        Text("Scroll to adjust tip")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
                     
                     Spacer().frame(height: 20)
@@ -150,7 +130,7 @@ struct TipView: View {
                 }
                 
                 Button(action: {
-                    onNext(formatMoney(tipCents), formatMoney(totalCents))
+                    onNext(formatMoney(tipCents).replacingOccurrences(of: "$", with: ""), formatMoney(totalCents).replacingOccurrences(of: "$", with: ""))
                 }) {
                     Text("Next")
                         .font(.system(size: 17, weight: .semibold))
@@ -168,32 +148,56 @@ struct TipView: View {
     }
 }
 
-// MARK: - Percentage Slider Component
 struct PercentageSlider: View {
     @Binding var percent: Double
     let minPercent: Double
     let maxPercent: Double
-    
+
+    private let itemWidth: CGFloat = 60
+    private let dotWidth: CGFloat = 5.866667
+    private var stride: CGFloat { itemWidth + dotWidth }
+
+    @State private var isReadyToTrackScroll = false
+
     var body: some View {
         GeometryReader { geometry in
-            let itemWidth: CGFloat = 60
             let centerX = geometry.size.width / 2
-            
+            let sidePad = centerX - itemWidth / 2
+
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 0) {
-                        Color.clear.frame(width: centerX - itemWidth / 2)
-                        
-                        itemsView(itemWidth: itemWidth)
-                        
-                        Color.clear.frame(width: centerX - itemWidth / 2)
+                        Color.clear.frame(width: sidePad)
+
+                        HStack(spacing: 0) {
+                            ForEach(Int(minPercent)...Int(maxPercent), id: \.self) { value in
+                                HStack(spacing: 0) {
+                                    Text("\(value)%")
+                                        .font(.system(size: 17, weight: .medium))
+                                        .foregroundStyle(abs(Double(value) - percent) < 0.5 ? .blue : .secondary)
+                                        .frame(width: itemWidth)
+                                        .id(value)
+
+                                    if value < Int(maxPercent) {
+                                        Text("•")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(.blue)
+                                            .frame(width: dotWidth) // critical: makes stride deterministic
+                                    }
+                                }
+                            }
+                        }
+
+                        Color.clear.frame(width: sidePad)
                     }
                     .background(
                         GeometryReader { scrollGeo in
                             Color.clear
                                 .onChange(of: scrollGeo.frame(in: .named("scroll")).minX) { _, offset in
-                                    let index = -offset / 65.66
-                                    let newPercent = minPercent + index
+                                    guard isReadyToTrackScroll else { return }
+
+                                    let index = (-offset) / stride
+                                    let newPercent = minPercent + Double(index)
                                     if newPercent >= minPercent && newPercent <= maxPercent {
                                         percent = newPercent
                                     }
@@ -204,45 +208,18 @@ struct PercentageSlider: View {
                 .coordinateSpace(name: "scroll")
                 .overlay(centerLine(height: geometry.size.height, centerX: centerX))
                 .onAppear {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        proxy.scrollTo(Int(percent), anchor: .center)
+                    // Preserve initial value (e.g. 15%) without layout overwriting it.
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(Int(percent.rounded()), anchor: .center)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                            isReadyToTrackScroll = true
+                        }
                     }
                 }
             }
         }
     }
-    
-    private func itemsView(itemWidth: CGFloat) -> some View {
-        ForEach(Int(minPercent)...Int(maxPercent), id: \.self) { value in
-            itemRow(value: value, itemWidth: itemWidth)
-        }
-    }
-    
-    private func itemRow(value: Int, itemWidth: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            Text("\(value)%")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundColor(abs(Double(value) - percent) < 0.5 ? .blue : .secondary)
-                .frame(width: itemWidth)
-                .id(value)
-            
-            if value < Int(maxPercent) {
-                Text("•")
-                    .font(.system(size: 12))
-                    .foregroundColor(.blue)
-            }
-        }
-    }
-    
-    private func offsetReader() -> some View {
-        GeometryReader { scrollGeo in
-            Color.clear.preference(
-                key: ScrollOffsetKey.self,
-                value: scrollGeo.frame(in: .named("scroll")).minX
-            )
-        }
-    }
-    
+
     private func centerLine(height: CGFloat, centerX: CGFloat) -> some View {
         Rectangle()
             .fill(Color.blue)
@@ -250,20 +227,5 @@ struct PercentageSlider: View {
             .position(x: centerX, y: height / 2)
             .allowsHitTesting(false)
     }
-    
-    private func updatePercent(offset: CGFloat, centerX: CGFloat, itemWidth: CGFloat) {
-        let adjustedOffset = -offset + centerX - itemWidth / 2
-        let index = adjustedOffset / itemWidth
-        let newPercent = minPercent + index
-        if newPercent >= minPercent && newPercent <= maxPercent {
-            percent = newPercent
-        }
-    }
 }
 
-struct ScrollOffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
