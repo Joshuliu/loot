@@ -25,14 +25,14 @@ final class LLMClient {
     
     // Gemini REST endpoint: POST /v1beta/models/{model}:generateContent
     // Docs: https://ai.google.dev/api/generate-content
-    private let model = "gemini-3-flash-preview"
+    private let model = "gemini-2.5-flash-lite"
     private var baseURL: URL {
         URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent")!
     }
 
     // Diagnostics / behavior toggles
     private let enableEmptyContentFallbackRetry = true
-    private let jpegQuality: CGFloat = 0.9
+    private let jpegQuality: CGFloat = 0.6
     private let maxTokensPrimary: Int = 8000
     private let maxTokensFallback: Int = 16000
 
@@ -57,6 +57,22 @@ final class LLMClient {
             let maxOutputTokens: Int?
             let responseMimeType: String?
             let temperature: Double?
+            let thinkingConfig: ThinkingConfig?
+            
+            enum CodingKeys: String, CodingKey {
+                case maxOutputTokens
+                case responseMimeType
+                case temperature
+                case thinkingConfig = "thinking_config"
+            }
+            
+            struct ThinkingConfig: Codable {
+                let thinkingBudget: Int
+                
+                enum CodingKeys: String, CodingKey {
+                    case thinkingBudget = "thinking_budget"
+                }
+            }
         }
     }
 
@@ -104,30 +120,21 @@ final class LLMClient {
     func analyzeReceipt(
         image: UIImage
     ) async throws -> ParsedReceipt {
-
         let developerMessage = """
-        Extract receipt data into ONE minified JSON object (single line). Output ONLY JSON and NO extra keys.
+        Extract receipt data into ONE minified JSON object.
 
-        Keys: required merchant,total_cents,items,issues. Optional (include ONLY if visible on receipt, even if 0): subtotal_cents,tax_cents,tip_cents,fees_cents,discount_cents.
-        Types: merchant string|null; *_cents int>=0|null; items=[{label:string,qty:int>=1,cents:int>=0|null}]; issues=[string].
+        REQUIRED fields: merchant, total_cents, items, issues
+        OPTIONAL fields: subtotal_cents, tax_cents, tip_cents, fees_cents, discount_cents
+        EXAMPLE: {"merchant":"Store","total_cents":1500,"items":[{"label":"Item","qty":1,"cents":500}],"issues":[]}
 
         Rules:
-        - Prefer exact visible values; never change a readable number to force math.
-        - If something needed is unreadable/missing, make a best guess and add issues including: estimated plus a reason (unreadable/blurred/cut_off/missing_line_total).
-        - Money is integer cents.
-        - Checks (if data present): if all item cents present, subtotal == sum(items.cents) else add partial_items; total == subtotal+tax+tip+fees-discount else add math_mismatch.
-        - Add issues whenever uncertain or any check fails.
+        - Include EVERY line item that has a price next to it.
+        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
+        - Money is integer cents, and each item's cents is total after quantity.
+        - Add "Unknown" if item name is unreadable but price is visible.
         """
 
         let userMessage = "Parse the receipt image into the specified JSON object."
-
-//        let developerMessage = """
-//You extract receipt data into JSON. OUTPUT ONLY valid JSON that matches the provided schema exactly. No markdown, no commentary, no extra keys. Rules: - Use ONLY what is visible in the image. - All money values must be integer cents. - Ensure the math works
-//"""
-//        
-//        let userMessage = """
-//Parse the attached receipt image into the JSON schema below. JSON Schema: { "type": "object", "additionalProperties": false, "required": ["merchant", "total_cents", "items", "issues"], "properties": { "merchant": { "type": ["string", "null"] }, "total_cents": { "type": ["integer", "null"], "minimum": 0 }, "subtotal_cents": { "type": ["integer", "null"], "minimum": 0 }, "tax_cents": { "type": ["integer", "null"], "minimum": 0 }, "tip_cents": { "type": ["integer", "null"], "minimum": 0 }, "fees_cents": { "type": ["integer", "null"], "minimum": 0 }, "discount_cents": { "type": ["integer", "null"], "minimum": 0 }, "items": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["label", "qty", "cents"], "properties": { "label": { "type": "string" }, "qty": { "type": "integer", "minimum": 1 }, "cents": { "type": ["integer", "null"], "minimum": 0 } } } }, "issues": { "type": "array", "items": { "type": "string" } } } }
-//"""
         
         guard let jpegData = image.jpegData(compressionQuality: jpegQuality) else {
             print("[LLM] JPEG encoding failed")
@@ -158,7 +165,9 @@ final class LLMClient {
             generationConfig: .init(
                 maxOutputTokens: maxTokensPrimary,
                 responseMimeType: "application/json",
-                temperature: 0.1
+                temperature: 0.1,
+                thinkingConfig: .init(thinkingBudget: -1)
+                
             )
         )
 
@@ -181,7 +190,8 @@ final class LLMClient {
                     generationConfig: .init(
                         maxOutputTokens: maxTokensFallback,
                         responseMimeType: nil,
-                        temperature: 0.1
+                        temperature: 0.1,
+                        thinkingConfig: .init(thinkingBudget: -1)
                     )
                 )
 
@@ -229,27 +239,59 @@ final class LLMClient {
     // MARK: - JSON helpers
 
     private func tryDecodeParsedReceipt(from text: String) -> ParsedReceipt? {
+        let repaired = repairJSON(text)
         do {
-            return try JSONDecoder().decode(ParsedReceipt.self, from: Data(text.utf8))
+            return try JSONDecoder().decode(ParsedReceipt.self, from: Data(repaired.utf8))
         } catch {
             print("[LLM] Decode error: \(error)")
-            print("[LLM] Text:\n\(text)")
+            print("[LLM] Text:\n\(repaired)")
             return nil
         }
     }
-
+    
+    private func repairJSON(_ text: String) -> String {
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        // Remove common trailing quote issues
+        if cleaned.hasSuffix("\"}") {
+            cleaned = String(cleaned.dropLast(2)) + "}"
+        }
+        
+        // Remove markdown code fences
+        cleaned = cleaned
+            .replacingOccurrences(of: "```json", with: "")
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        return cleaned
+    }
 
     private func extractFirstJSONObject(from text: String) -> String? {
-        // Strip common code-fence wrappers if the model ignores JSON mode.
         let cleaned = text
             .replacingOccurrences(of: "```json", with: "")
             .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        guard let start = cleaned.firstIndex(of: "{"),
-              let end = cleaned.lastIndex(of: "}"),
-              start < end else {
-            return nil
+        guard let start = cleaned.firstIndex(of: "{") else { return nil }
+        
+        // Count braces to find matching close
+        var depth = 0
+        var endIndex: String.Index? = nil
+        
+        for index in cleaned.indices[start...] {
+            let char = cleaned[index]
+            if char == "{" {
+                depth += 1
+            } else if char == "}" {
+                depth -= 1
+                if depth == 0 {
+                    endIndex = index
+                    break
+                }
+            }
         }
+        
+        guard let end = endIndex else { return nil }
         return String(cleaned[start...end])
     }
 

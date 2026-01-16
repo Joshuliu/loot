@@ -35,7 +35,7 @@ struct MessageReceiptViewer: View {
             // Content
             ZStack {
                 if tab == .splits {
-                    SplitsSummaryView(split: payload.split)
+                    SplitsSummaryView(split: payload.s)
                         .transition(.opacity)
                 } else {
                     if let receipt = uiModel.currentReceipt {

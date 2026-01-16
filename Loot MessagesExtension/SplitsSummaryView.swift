@@ -14,24 +14,24 @@ struct SplitsSummaryView: View {
     @State private var selectedIndex: Int = 0
 
     private var includedIndices: [Int] {
-        split.guests.indices.filter { split.guests[$0].included }
+        split.g.indices.filter { split.g[$0].inc }
     }
 
     private var safeTotal: Int {
-        max(0, split.totalCents)
+        max(0, split.tot)
     }
 
     private func displayName(for idx: Int) -> String {
-        let g = split.guests[idx]
-        let t = g.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let g = split.g[idx]
+        let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
         if !t.isEmpty { return t }
-        if g.isMe { return "Me" }
+        if g.me { return "Me" }
         return "Guest \(idx + 1)"
     }
 
     private func owed(for idx: Int) -> Int {
-        guard split.owedCents.indices.contains(idx) else { return 0 }
-        return max(0, split.owedCents[idx])
+        guard split.o.indices.contains(idx) else { return 0 }
+        return max(0, split.o[idx])
     }
 
     private func percentText(_ cents: Int) -> String {
@@ -155,8 +155,8 @@ struct SplitsSummaryView: View {
                     }
                 }
 
-                // Tiny “by items” hint (optional but useful)
-                if split.mode == .byItems {
+                // Tiny "by items" hint (optional but useful)
+                if split.m == .byItems {
                     Text("Items are saved per person inside this message.")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
