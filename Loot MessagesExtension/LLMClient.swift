@@ -130,7 +130,7 @@ final class LLMClient {
         Rules:
         - Include EVERY line item that has a price next to it.
         - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
-        - Money is integer cents, and each item's cents is total after quantity.
+        - Money is integer cents, and each item's cents is final after quantity/discounts.
         - Add "Unknown" if item name is unreadable but price is visible.
         """
 
