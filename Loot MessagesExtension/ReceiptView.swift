@@ -107,10 +107,13 @@ struct ReceiptView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(14)
                     .padding(.horizontal, 18)
-                    .padding(.bottom, 12)
+//                    .padding(.bottom, 12)
                 }
                 .buttonStyle(.plain)
                 .opacity(captureImage == nil ? 0 : 1) // hide if no image
+                .padding(.horizontal, 14)
+                .padding(.top, 40)
+                .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 0.95))
                 .allowsHitTesting(captureImage != nil)
             }
         }
