@@ -223,23 +223,16 @@ struct SplitView: View {
         return ("\(sign)$\(d).", String(format: "%02d", c))
     }
 
-    // MARK: - Palette
-    private let palette: [Color] = [.blue, .green, .orange, .pink, .purple, .teal, .indigo, .mint]
-    private func colorForSlot(_ i: Int) -> Color { palette[i % palette.count] }
-
-    private func colorForGuestId(_ id: UUID) -> Color {
-        guard let idx = activeGuests.firstIndex(where: { $0.id == id }) else { return palette[0] }
-        return colorForSlot(idx)
+    // MARK: - Use shared BadgeColors
+    private func colorForSlot(_ i: Int) -> Color {
+        BadgeColors.color(for: i)
     }
 
-    private func initials(_ name: String, fallback: Int) -> String {
-        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { return String(fallback + 1) }
-        let parts = t.split(separator: " ")
-        if parts.count >= 2 {
-            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+    private func colorForGuestId(_ id: UUID) -> Color {
+        guard let idx = activeGuests.firstIndex(where: { $0.id == id }) else {
+            return BadgeColors.palette[0]
         }
-        return String(t.prefix(1)).uppercased()
+        return colorForSlot(idx)
     }
 
     // MARK: - Seed By-Items from receipt used by ReceiptView
@@ -491,7 +484,7 @@ struct SplitView: View {
                     } label: {
                         HStack {
                             ColoredCircleBadge(
-                                text: initials(displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)), fallback: i),
+                                text: BadgeColors.initials(from: displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)), fallback: i),
                                 color: colorForSlot(i)
                             )
 
@@ -505,6 +498,7 @@ struct SplitView: View {
                         .padding(.vertical, 12)
                         .background(i == guestSelectedIndex && mode == .custom ? Color(.secondarySystemBackground) : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -581,7 +575,7 @@ struct SplitView: View {
                                     let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
                                     let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
                                     ColoredCircleBadge(
-                                        text: initials(name, fallback: fallbackIndex),
+                                        text: BadgeColors.initials(from: name, fallback: fallbackIndex),
                                         color: colorForGuestId(gid)
                                     )
                                 }
@@ -624,7 +618,7 @@ struct SplitView: View {
                         } label: {
                             HStack {
                                 ColoredCircleBadge(
-                                    text: initials(displayName(for: activeGuests[slotIndex], fallbackIndexInAllGuests: guests.firstIndex(where: { $0.id == gid })), fallback: slotIndex),
+                                    text: BadgeColors.initials(from: displayName(for: activeGuests[slotIndex], fallbackIndexInAllGuests: guests.firstIndex(where: { $0.id == gid })), fallback: slotIndex),
                                     color: colorForSlot(slotIndex)
                                 )
                                 Text(displayName(for: activeGuests[slotIndex], fallbackIndexInAllGuests: guests.firstIndex(where: { $0.id == gid })))
@@ -638,6 +632,7 @@ struct SplitView: View {
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
                             .background(gid == byItemSelectedGuestId ? Color(.tertiarySystemFill) : Color.clear)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
 
@@ -853,24 +848,6 @@ struct SplitView: View {
                 draftGuests = guests
                 draftPayerGuestId = payerGuestId
             }
-        }
-    }
-}
-
-// MARK: - Reusable badge
-
-private struct ColoredCircleBadge: View {
-    let text: String
-    let color: Color
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(color.opacity(0.85))
-                .frame(width: 28, height: 28)
-            Text(text)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.white)
         }
     }
 }

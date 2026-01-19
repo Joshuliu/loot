@@ -71,7 +71,10 @@ struct ReceiptView: View {
 
                                 HStack(spacing: 6) {
                                     ForEach(item.responsible, id: \.slotIndex) { who in
-                                        CircleBadge(text: who.badgeText)
+                                        ColoredCircleBadge(
+                                            text: who.badgeText,
+                                            color: BadgeColors.color(for: who.slotIndex)
+                                        )
                                     }
                                 }
                             }
@@ -90,7 +93,7 @@ struct ReceiptView: View {
                     // Totals box
                     TotalsBox(receipt: receipt)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 90) // ✅ leave space for bottom button
+                        .padding(.bottom, 90)
                 }
             }
             .overlay(alignment: .bottom) {
@@ -165,21 +168,7 @@ private struct CapturePreviewView: View {
     }
 }
 
-// MARK: - Small UI bits (unchanged)
-
-private struct CircleBadge: View {
-    let text: String
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color(.tertiarySystemFill))
-                .frame(width: 28, height: 28)
-            Text(text)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(.primary)
-        }
-    }
-}
+// MARK: - Totals box
 
 private struct TotalsBox: View {
     let receipt: ReceiptDisplay

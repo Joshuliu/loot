@@ -22,10 +22,6 @@ struct SplitGuest: Identifiable, Equatable {
 
 // MARK: - Bottom bar
 enum GuestEditorMode { case splitWith, paidBy }
-private struct HeightKey: PreferenceKey {
-  static var defaultValue: CGFloat = 0
-  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
-}
 
 struct SplitGuestDrawer: View {
     // Drawer state
@@ -40,10 +36,13 @@ struct SplitGuestDrawer: View {
     let canSave: Bool
     let onSave: () -> Void
 
-    @State private var measuredExpandedHeight: CGFloat = 0
     private let collapsedHeight: CGFloat = 132
     
     @FocusState private var focusedGuestId: UUID?
+    @State private var pendingPayerGuestId: UUID?  // Track guest we're trying to make payer (waiting for name)
+    
+    // Keyboard height tracking
+    @State private var keyboardHeight: CGFloat = 0
 
     // MARK: - Header computed values
     private var splitCount: Int { guests.filter { $0.isIncluded }.count }
@@ -55,10 +54,12 @@ struct SplitGuestDrawer: View {
     }
 
     private func sheetHeight(maxH: CGFloat) -> CGFloat {
-        let rowH: CGFloat = 55
-        let addRowH: CGFloat = (mode == .some(.splitWith)) ? 48 : 0
+        let rowH: CGFloat = 58
+        let addRowH: CGFloat = (mode == .some(.splitWith)) ? 48 : 8
         let saveH: CGFloat = 75
         let estimated = collapsedHeight + addRowH + (rowH * CGFloat(guests.count)) + saveH
+        
+        // Don't reduce height for keyboard - we'll offset instead
         return min(maxH, estimated)
     }
 
@@ -85,15 +86,20 @@ struct SplitGuestDrawer: View {
     }
 
     private func toggleMode(_ m: GuestEditorMode) {
+        // Check pending payer before any mode change
+        checkPendingPayerChange()
+        
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
             if mode == m {
                 // pressing same button again -> turn off + collapse
                 mode = nil
                 isExpanded = false
+                focusedGuestId = nil  // Dismiss keyboard
             } else {
                 // switch to other mode -> expand
                 mode = m
                 isExpanded = true
+                focusedGuestId = nil  // Dismiss keyboard when switching
             }
         }
     }
@@ -115,12 +121,105 @@ struct SplitGuestDrawer: View {
     private func tapPaidBy(at index: Int) {
         guard guests.indices.contains(index) else { return }
         let g = guests[index]
+        
+        // If guest has no name and isn't "Me", focus field and set as pending payer
         if g.trimmedName.isEmpty && !g.isMe {
-            focusedGuestId = g.id
+            pendingPayerGuestId = g.id
+            // Defer focus slightly so TextField disabled state updates first
+            DispatchQueue.main.async {
+                focusedGuestId = g.id
+            }
             return
         }
-        if !guests[index].isIncluded { guests[index].isIncluded = true }
+        
+        // Guest has a name (or is "Me"), set as payer immediately
+        if !guests[index].isIncluded {
+            guests[index].isIncluded = true
+        }
         payerGuestId = g.id
+        pendingPayerGuestId = nil  // Clear any pending payer
+    }
+    
+    // MARK: - Keyboard navigation
+    private func focusNextGuest(after currentId: UUID) {
+        guard let currentIndex = guests.firstIndex(where: { $0.id == currentId }) else { return }
+        
+        // Find next editable guest (excluding "Me")
+        let nextEditableIndex = guests[(currentIndex + 1)...].firstIndex { guest in
+            !guest.isMe
+        }
+        
+        if let nextIndex = nextEditableIndex {
+            focusedGuestId = guests[nextIndex].id
+        } else {
+            // No more guests, dismiss keyboard
+            focusedGuestId = nil
+        }
+    }
+    
+    private func focusPreviousGuest(before currentId: UUID) {
+        guard let currentIndex = guests.firstIndex(where: { $0.id == currentId }) else { return }
+        
+        // Find previous editable guest (excluding "Me")
+        // Search backwards from current index
+        var prevIndex: Int? = nil
+        for i in (0..<currentIndex).reversed() {
+            if !guests[i].isMe {
+                prevIndex = i
+                break
+            }
+        }
+        
+        if let index = prevIndex {
+            focusedGuestId = guests[index].id
+        }
+    }
+    
+    private func toolbarDisplayName(for guestId: UUID) -> String {
+        guard let index = guests.firstIndex(where: { $0.id == guestId }) else { return "" }
+        let guest = guests[index]
+        
+        let trimmed = guest.trimmedName
+        if !trimmed.isEmpty {
+            return trimmed
+        }
+        
+        // Default to "Guest #"
+        return defaultLabel(for: index)
+    }
+    
+    private func checkPendingPayerChange() {
+        // If we have a pending payer and they now have a name, set them as payer
+        if let pendingId = pendingPayerGuestId,
+           let index = guests.firstIndex(where: { $0.id == pendingId }) {
+            
+            let guest = guests[index]
+            if !guest.trimmedName.isEmpty {
+                // Guest now has a name, set as payer
+                if !guests[index].isIncluded {
+                    guests[index].isIncluded = true
+                }
+                payerGuestId = guest.id
+            }
+            // If still no name, do nothing (payer doesn't change)
+            
+            // Clear pending payer
+            pendingPayerGuestId = nil
+        }
+        
+        // Also check if current payer has no name - if so, revert to default
+        let payerId = payerGuestId
+        if let index = guests.firstIndex(where: { $0.id == payerId }) {
+            let payer = guests[index]
+            if payer.trimmedName.isEmpty && !payer.isMe {
+                // Current payer has no name, revert to Me or first guest
+                if let me = guests.first(where: { $0.isMe && $0.isIncluded }) {
+                    payerGuestId = me.id
+                } else if let first = guests.first(where: { $0.isIncluded }) {
+                    payerGuestId = first.id
+                }
+            }
+        }
     }
 
     // MARK: - UI pieces
@@ -156,9 +255,13 @@ struct SplitGuestDrawer: View {
                     Color.black.opacity(0.25)
                         .ignoresSafeArea()
                         .onTapGesture {
+                            // Check pending payer before closing
+                            checkPendingPayerChange()
+                            
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                                 isExpanded = false
                                 mode = nil
+                                focusedGuestId = nil  // Dismiss keyboard
                             }
                         }
                 }
@@ -178,10 +281,32 @@ struct SplitGuestDrawer: View {
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
                 .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
+                .offset(y: -keyboardHeight)  // ✅ Push entire sheet up by keyboard height
                 .animation(.spring(response: 0.35, dampingFraction: 0.9), value: isExpanded)
+                .animation(.easeInOut(duration: 0.25), value: keyboardHeight)  // ✅ Animate keyboard offset
                 .animation(.easeInOut(duration: 0.15), value: mode)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+        .onAppear {
+            // Subscribe to keyboard notifications
+            NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillShowNotification,
+                object: nil,
+                queue: .main
+            ) { notification in
+                if let keyboardFrame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                    keyboardHeight = keyboardFrame.height
+                }
+            }
+            
+            NotificationCenter.default.addObserver(
+                forName: UIResponder.keyboardWillHideNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                keyboardHeight = 0
+            }
         }
     }
 
@@ -219,74 +344,154 @@ struct SplitGuestDrawer: View {
     private func expandedBody() -> some View {
         
         VStack(spacing: 0) {
-            List {
-                ForEach(Array(guests.enumerated()), id: \.element.id) { (idx, _) in
-                    let g = guests[idx]
-                    
-                    HStack(spacing: 12) {
-                        ZStack(alignment: .leading) {
-                            if g.trimmedName.isEmpty && !g.isMe {
-                                Text(defaultLabel(for: idx))
-                                    .foregroundStyle(.secondary)
-                            }
-                            TextField("", text: Binding(
-                                get: { guests[idx].name },
-                                set: { guests[idx].name = $0 }
-                            ))
-                            .disabled(g.isMe)
-                            .textInputAutocapitalization(.words)
-                            .focused($focusedGuestId, equals: g.id)
-                            .submitLabel(.done)
-                            .foregroundStyle((g.trimmedName.isEmpty && !g.isMe) ? .secondary : .primary)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { if !g.isMe { focusedGuestId = g.id } }
+            ScrollViewReader { proxy in
+                List {
+                    ForEach(Array(guests.enumerated()), id: \.element.id) { (idx, _) in
+                        let g = guests[idx]
                         
-                        Spacer(minLength: 8)
-                        
-                        if mode == .splitWith {
-                            Button { toggleIncluded(at: idx) } label: {
-                                Image(systemName: guests[idx].isIncluded ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(guests[idx].isIncluded ? Color.blue : .secondary)
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            if payerGuestId == g.id {
-                                Text("Payer")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(Color(.tertiarySystemFill))
-                                    .clipShape(Capsule())
-                            }
-                        }
-                    }
-                    .padding(.vertical, 14)
-                    .padding(.horizontal, 16)
-                    .contentShape(Rectangle())
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        if mode == .splitWith, !g.isMe {
-                            Button(role: .destructive) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                                    // clear focus if needed (prevents “focused index” bugs)
-                                    if focusedGuestId == g.id { focusedGuestId = nil }
-                                    removeGuest(at: idx)
+                        HStack(spacing: 12) {
+                            ZStack(alignment: .leading) {
+                                if g.trimmedName.isEmpty && !g.isMe {
+                                    Text(defaultLabel(for: idx))
+                                        .foregroundStyle(.secondary)
                                 }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                                TextField("", text: Binding(
+                                    get: { guests[idx].name },
+                                    set: { guests[idx].name = $0 }
+                                ))
+                                .disabled(g.isMe || (mode == .paidBy && pendingPayerGuestId != g.id))
+                                .textInputAutocapitalization(.words)
+                                .focused($focusedGuestId, equals: g.id)
+                                .submitLabel(.done)  // Use .done to prevent default behavior
+                                .foregroundStyle((g.trimmedName.isEmpty && !g.isMe) ? .secondary : .primary)
+                            }
+                            
+                            Spacer(minLength: 8)
+                            
+                            // Right side - consistent height container
+                            ZStack(alignment: .trailing) {
+                                if mode == .splitWith {
+                                    Button { toggleIncluded(at: idx) } label: {
+                                        Image(systemName: guests[idx].isIncluded ? "checkmark.circle.fill" : "circle")
+                                            .font(.system(size: 22, weight: .semibold))
+                                            .foregroundStyle(guests[idx].isIncluded ? Color.blue : .secondary)
+                                    }
+                                    .buttonStyle(.plain)
+                                } else {
+                                    // In Paid by mode
+                                    if payerGuestId == g.id {
+                                        Text("Payer")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(Color(.tertiarySystemFill))
+                                            .clipShape(Capsule())
+                                    } else {
+                                        // Empty space to maintain consistent row height
+                                        Color.clear.frame(width: 1, height: 30)
+                                    }
+                                }
+                            }
+                            .frame(minWidth: 44, minHeight: 30)  // Consistent minimum size
+                        }
+                        .padding(.vertical, 14)
+                        .padding(.horizontal, 16)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Handle taps on entire row
+                            if mode == .splitWith {
+                                if !g.isMe { focusedGuestId = g.id }
+                            } else if mode == .paidBy {
+                                tapPaidBy(at: idx)
+                            }
+                        }
+                        .id(g.id)  // For ScrollViewReader
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            if mode == .splitWith, !g.isMe {
+                                Button(role: .destructive) {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                                        // clear focus if needed (prevents "focused index" bugs)
+                                        if focusedGuestId == g.id { focusedGuestId = nil }
+                                        removeGuest(at: idx)
+                                    }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             }
                         }
                     }
-                    .onTapGesture {
-                        if mode == .paidBy { tapPaidBy(at: idx) }
+                    .background(Color(.secondarySystemBackground))
+                    .listRowInsets(EdgeInsets())
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                }
+                .listStyle(.plain)
+                .onChange(of: focusedGuestId) { oldValue, newValue in
+                    // Check if we should apply pending payer change
+                    // (when navigating away from a pending payer field)
+                    if let pendingId = pendingPayerGuestId, oldValue == pendingId, newValue != pendingId {
+                        checkPendingPayerChange()
+                    }
+                    
+                    // Scroll to focused field when keyboard appears
+                    if let guestId = newValue {
+                        withAnimation {
+                            proxy.scrollTo(guestId, anchor: .center)
+                        }
                     }
                 }
-                .background(Color(.secondarySystemBackground))
-                .listRowInsets(EdgeInsets())
-                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                .onChange(of: guests) { oldValue, newValue in
+                    // Watch for changes to pending payer's name
+                    if let pendingId = pendingPayerGuestId,
+                       let index = newValue.firstIndex(where: { $0.id == pendingId }) {
+                        let guest = newValue[index]
+                        if !guest.trimmedName.isEmpty {
+                            // Guest now has a name, set as payer immediately
+                            if !guests[index].isIncluded {
+                                guests[index].isIncluded = true
+                            }
+                            payerGuestId = guest.id
+                            pendingPayerGuestId = nil
+                        }
+                    }
+                }
             }
-            .listStyle(.plain)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    // Only show toolbar when editing a non-Me guest
+                    if let currentFocusedId = focusedGuestId,
+                       let currentIndex = guests.firstIndex(where: { $0.id == currentFocusedId }),
+                       !guests[currentIndex].isMe {
+                        
+                        // Previous button
+                        Button {
+                            focusPreviousGuest(before: currentFocusedId)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .disabled(currentIndex == 0 || guests[..<currentIndex].allSatisfy { $0.isMe })
+                        
+                        Spacer()
+                        
+                        // Current guest name (live updating)
+                        Text(toolbarDisplayName(for: currentFocusedId))
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        
+                        Spacer()
+                        
+                        // Next button
+                        Button {
+                            focusNextGuest(after: currentFocusedId)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .disabled(guests[(currentIndex + 1)...].allSatisfy { $0.isMe })
+                    }
+                }
+            }
             
             if mode == .splitWith {
                 Button { addGuest() } label: {
@@ -304,12 +509,17 @@ struct SplitGuestDrawer: View {
                     .overlay(Capsule().stroke(Color.blue.opacity(0.25), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
+                .padding(.top, 8)
             }
 
             Button {
+                // Check pending payer before saving
+                checkPendingPayerChange()
+                
                 onSave()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                     isExpanded = false
+                    focusedGuestId = nil  // Dismiss keyboard
                 }
             } label: {
                 Text("Save")

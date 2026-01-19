@@ -32,4 +32,23 @@ enum BadgeColors {
     static func color(for slotIndex: Int) -> Color {
         palette[slotIndex % palette.count]
     }
+    
+    /// Generate initials for a badge from a name
+    /// - For empty names: returns the fallback number (e.g., "1", "2")
+    /// - For single word names: returns first letter (e.g., "Guest" → "G")
+    /// - For multi-word names: returns first letter of first two words (e.g., "Guest 1" → "G1", "John Doe" → "JD")
+    static func initials(from name: String, fallback: Int) -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if trimmed.isEmpty {
+            return String(fallback + 1)
+        }
+        
+        let parts = trimmed.split(separator: " ")
+        if parts.count >= 2 {
+            return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
+        }
+        
+        return String(trimmed.prefix(1)).uppercased()
+    }
 }

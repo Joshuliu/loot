@@ -37,8 +37,10 @@ final class MessagesViewController: MSMessagesAppViewController {
         let payerUUID = conversation.localParticipantIdentifier.uuidString
         let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
-        // (Optional) clear any "deep link" state — MVP has no loading/fetching
-        uiModel.currentReceipt = nil
+        // Only clear receipt state if no message is selected
+        if conversation.selectedMessage == nil {
+            uiModel.currentReceipt = nil
+        }
 
         // Keep expansion state in sync (used by your ManualInputView numpad)
         uiModel.isExpanded = (presentationStyle == .expanded)

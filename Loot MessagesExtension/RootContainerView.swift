@@ -14,11 +14,21 @@ struct RootContainerView: View {
     @State private var screen: Screen = .tabview
     @State private var receiptName: String = ""
     @State private var splitDraft: SplitDraft? = nil
-    @State private var amountString: String = "0"
-    @State private var tipAmount: String = ""
-    @State private var subtotalString: String = ""
+    @State private var amountString: String = "0"  // Always represents SUBTOTAL
+    @State private var tipAmount: String = ""       // Tip amount
     @State private var returnScreen: Screen = .tabview
     @Namespace private var titleNamespace
+    
+    // Computed total: subtotal + tip
+    private var totalAmount: String {
+        guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
+            return amountString  // No tip, subtotal = total
+        }
+        let subtotal = amountToCents(amountString)
+        let tip = amountToCents(tipAmount)
+        let total = subtotal + tip
+        return String(format: "%.2f", Double(total) / 100.0)
+    }
     
     let participantCount: Int
     let onScan: () -> Void
@@ -29,6 +39,11 @@ struct RootContainerView: View {
     // Camera sheet state
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
+    
+    // Photo library state
+    @State private var showPhotoLibrary: Bool = false
+    @State private var photoLibraryImage: UIImage? = nil
+    
     @State private var isAnalyzing: Bool = false
     @State private var analyzeError: String?
 
@@ -87,40 +102,22 @@ struct RootContainerView: View {
     private func makePreviewReceipt() -> ReceiptDisplay {
         let hasTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
         
-        if hasTip {
-            // When there's a tip, amountString is the TOTAL
-            let totalCents = amountToCents(amountString)
-            let tipCents = amountToCents(tipAmount)
-            let subtotalCents = max(0, totalCents - tipCents)
-            
-            return ReceiptDisplay(
-                id: "preview",
-                title: receiptName.isEmpty ? "New Receipt" : receiptName,
-                createdAt: Date(),
-                subtotalCents: subtotalCents,
-                feesCents: 0,
-                taxCents: 0,
-                tipCents: tipCents,
-                discountCents: 0,
-                totalCents: totalCents,
-                items: []
-            )
-        } else {
-            // No tip, amountString is treated as total
-            let cents = amountToCents(amountString)
-            return ReceiptDisplay(
-                id: "preview",
-                title: receiptName.isEmpty ? "New Receipt" : receiptName,
-                createdAt: Date(),
-                subtotalCents: cents,
-                feesCents: 0,
-                taxCents: 0,
-                tipCents: 0,
-                discountCents: 0,
-                totalCents: cents,
-                items: []
-            )
-        }
+        let subtotalCents = amountToCents(amountString)
+        let tipCents = hasTip ? amountToCents(tipAmount) : 0
+        let totalCents = subtotalCents + tipCents
+        
+        return ReceiptDisplay(
+            id: "preview",
+            title: receiptName.isEmpty ? "New Receipt" : receiptName,
+            createdAt: Date(),
+            subtotalCents: subtotalCents,
+            feesCents: 0,
+            taxCents: 0,
+            tipCents: tipCents,
+            discountCents: 0,
+            totalCents: totalCents,
+            items: []
+        )
     }
 
     private func startScanFlow() {
@@ -128,6 +125,12 @@ struct RootContainerView: View {
         analyzeError = nil
         capturedImage = nil
         showCamera = true
+    }
+
+    private func startPhotoLibraryFlow() {
+        analyzeError = nil
+        photoLibraryImage = nil
+        showPhotoLibrary = true
     }
 
     private func analyzeCaptured(image: UIImage) {
@@ -141,17 +144,21 @@ struct RootContainerView: View {
                 await MainActor.run {
                     uiModel.parsedReceipt = parsed
 
-                    // Prefill form fields
-                    let bestTotal = parsed.total_cents ?? parsed.bestTotalCents()
-                    amountString = String(format: "%.2f", Double(bestTotal) / 100.0)
+                    // Prefill form fields with SUBTOTAL (not total)
+                    let breakdown = parsed.breakdownDefaults()
+                    let total = parsed.bestTotalCents()
+                    let subtotal = max(0, parsed.subtotal_cents ?? (total - breakdown.tax - breakdown.fees - breakdown.tip + breakdown.discount))
+                    
+                    amountString = String(format: "%.2f", Double(subtotal) / 100.0)
+                    
+                    // Prefill tip if present
+                    if breakdown.tip > 0 {
+                        tipAmount = String(format: "%.2f", Double(breakdown.tip) / 100.0)
+                    }
 
                     if let merchant = parsed.merchant, !merchant.isEmpty {
                         receiptName = merchant
                     }
-
-                    let breakdown = parsed.breakdownDefaults()
-                    let total = parsed.bestTotalCents()
-                    let subtotal = max(0, parsed.subtotal_cents ?? total)
 
                     uiModel.currentReceipt = ReceiptDisplay(
                         id: UUID().uuidString,
@@ -256,8 +263,7 @@ struct RootContainerView: View {
                                 set: { receiptName = $0 }
                             ),
                             onUpload: {
-                                // TODO: Change to upload image instead of scan flow
-                                startScanFlow()
+                                startPhotoLibraryFlow()
                             },
                             onScan: {
                                 startScanFlow()
@@ -290,8 +296,7 @@ struct RootContainerView: View {
                                 }
                             },
                             onAddTip: {
-                                // Save subtotal and go to tip view
-                                subtotalString = amountString
+                                // Go to tip view (amountString is already the subtotal)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .tipview
                                 }
@@ -304,17 +309,16 @@ struct RootContainerView: View {
                         
                     case .tipview:
                         TipView(
-                            subtotalString: subtotalString,
+                            subtotalString: amountString,  // Pass the subtotal directly
                             onBack: {
                                 // Return to fill without changes
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .fill
                                 }
                             },
-                            onNext: { tip, total in
-                                // Apply tip changes
+                            onNext: { tip, _ in
+                                // Only update the tip amount, subtotal stays in amountString
                                 tipAmount = tip
-                                amountString = total  // Update to new total
                                 
                                 // Create receipt with tip breakdown
                                 uiModel.currentReceipt = makePreviewReceipt()
@@ -329,7 +333,7 @@ struct RootContainerView: View {
                     case .confirmation:
                         ConfirmationView(
                             receiptName: receiptName,
-                            amount: amountString,
+                            amount: totalAmount,  // Use computed total for display
                             participantCount: participantCount,
                             splitMode: splitDraft?.mode,
                             onBack: {
@@ -338,7 +342,7 @@ struct RootContainerView: View {
                                 }
                             },
                             onSend: {
-                                onSendBill(receiptName, amountString)
+                                onSendBill(receiptName, totalAmount)  // Send the total amount
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                         screen = .tabview
@@ -380,7 +384,7 @@ struct RootContainerView: View {
                     case .splitview:
                         SplitView(
                             uiModel: uiModel,
-                            amountString: amountString,
+                            amountString: totalAmount,  // Use total for split calculations
                             participantCount: participantCount,
                             initialDraft: splitDraft,
                             onRequestExpand: onExpand,
@@ -423,6 +427,17 @@ struct RootContainerView: View {
                         }
                     }
                 ) { CameraPicker(image: $capturedImage).ignoresSafeArea() }
+                .sheet(
+                    isPresented: $showPhotoLibrary,
+                    onDismiss: {
+                        guard let img = photoLibraryImage else { return }
+                        ReceiptCrop.run(img) { cropped in
+                            uiModel.scanImageOriginal = img
+                            uiModel.scanImageCropped = cropped
+                            analyzeCaptured(image: cropped)
+                        }
+                    }
+                ) { PhotoLibraryPicker(image: $photoLibraryImage).ignoresSafeArea() }
                 .overlay {
                     if isAnalyzing {
                         ZStack {

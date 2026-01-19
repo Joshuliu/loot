@@ -1,3 +1,11 @@
+//
+//  PhotoLibraryPicker.swift
+//  Loot
+//
+//  Created by Joshua Liu on 1/18/26.
+//
+
+
 // PhotoLibraryPicker.swift
 import SwiftUI
 import UIKit

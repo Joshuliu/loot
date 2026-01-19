@@ -40,9 +40,10 @@ struct SplitsSummaryView: View {
         return String(format: "%.0f%%", p)
     }
 
-    // Simple palette similar vibe to SplitView
-    private let palette: [Color] = [.blue, .green, .orange, .pink, .purple, .teal, .indigo, .mint]
-    private func colorForSlot(_ i: Int) -> Color { palette[i % palette.count] }
+    // Use shared BadgeColors
+    private func colorForSlot(_ i: Int) -> Color {
+        BadgeColors.color(for: i)
+    }
 
     private func sumBeforeIncludedSlot(_ includedSlot: Int) -> Int {
         guard includedSlot > 0 else { return 0 }
@@ -131,14 +132,10 @@ struct SplitsSummaryView: View {
                             selectedIndex = i
                         } label: {
                             HStack {
-                                ZStack {
-                                    Circle()
-                                        .fill(colorForSlot(i).opacity(0.85))
-                                        .frame(width: 28, height: 28)
-                                    Text(initials(displayName(for: gi), fallback: gi))
-                                        .font(.system(size: 13, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
+                                ColoredCircleBadge(
+                                    text: BadgeColors.initials(from: displayName(for: gi), fallback: gi),
+                                    color: colorForSlot(i)
+                                )
 
                                 Text(displayName(for: gi))
                                     .font(.system(size: 15, weight: i == selectedIndex ? .semibold : .regular))
@@ -150,6 +147,7 @@ struct SplitsSummaryView: View {
                             .padding(.vertical, 12)
                             .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -168,13 +166,5 @@ struct SplitsSummaryView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
         }
-    }
-
-    private func initials(_ name: String, fallback: Int) -> String {
-        let t = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.isEmpty { return String(fallback + 1) }
-        let parts = t.split(separator: " ")
-        if parts.count >= 2 { return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased() }
-        return String(t.prefix(1)).uppercased()
     }
 }

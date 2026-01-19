@@ -33,8 +33,8 @@ final class LLMClient {
     // Diagnostics / behavior toggles
     private let enableEmptyContentFallbackRetry = true
     private let jpegQuality: CGFloat = 0.6
-    private let maxTokensPrimary: Int = 8000
-    private let maxTokensFallback: Int = 16000
+    private let maxTokensPrimary: Int = 16000
+    private let maxTokensFallback: Int = 32000
 
     private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -130,7 +130,7 @@ final class LLMClient {
         Rules:
         - Include EVERY line item that has a price next to it.
         - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
-        - Money is integer cents, and each item's cents is final after quantity/discounts.
+        - Money is integer cents, and each item's cents is the final total after quantity.
         - Add "Unknown" if item name is unreadable but price is visible.
         """
 

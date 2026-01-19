@@ -9,9 +9,9 @@ struct ReceiptDisplay: Identifiable {
     struct Responsible: Hashable {
         let slotIndex: Int
         let displayName: String
+        
         var badgeText: String {
-            let t = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            return t.first.map { String($0).uppercased() } ?? String(slotIndex + 1)
+            BadgeColors.initials(from: displayName, fallback: slotIndex)
         }
     }
 
@@ -121,7 +121,7 @@ extension ParsedReceipt {
     /// MVP helper: create simple display items for preview UI (no assignments).
     func toDisplayItems() -> [ReceiptDisplay.Item] {
         items.map { it in
-            // If qty > 1 and the label doesn’t already include it, we annotate (keeps UI simple).
+            // If qty > 1 and the label doesn't already include it, we annotate (keeps UI simple).
             let cleanLabel = it.label.trimmingCharacters(in: .whitespacesAndNewlines)
             let labelWithQty: String = {
                 guard it.qty > 1 else { return cleanLabel }
