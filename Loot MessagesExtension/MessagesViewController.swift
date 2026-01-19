@@ -114,13 +114,23 @@ extension MessagesViewController {
     func renderCardImage(receiptName: String,
                          displayAmount: String,
                          payerUUID: String,
-                         participantCount: Int) -> UIImage {
+                         participantCount: Int,
+                         splitPayload: SplitPayload) -> UIImage {
+        
+        // Extract owed amounts for ring display (only included guests)
+        let activeGuests = splitPayload.g.indices.filter { splitPayload.g[$0].inc }
+        let owedAmounts: [Int] = activeGuests.map { idx in
+            splitPayload.o.indices.contains(idx) ? max(0, splitPayload.o[idx]) : 0
+        }
+        
         let card = BillCardView(
             receiptName: receiptName,
             displayAmount: displayAmount,
             displayName: myDisplayNameFromDefaults(),
             participantCount: participantCount,
-            splitLabel: "Split evenly"
+            splitLabel: splitLabelFromMode(splitPayload.m),
+            owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,  // Only pass if non-empty
+            totalCents: splitPayload.tot
         )
         .background(Color(.systemBackground))
         .padding(.top, -50)
@@ -137,6 +147,14 @@ extension MessagesViewController {
         return renderer.image { _ in
             hosting.view.drawHierarchy(in: CGRect(origin: .zero, size: size),
                                        afterScreenUpdates: true)
+        }
+    }
+    
+    private func splitLabelFromMode(_ mode: SplitPayload.Mode) -> String {
+        switch mode {
+        case .byItems: return "Split by items"
+        case .custom: return "Custom split"
+        case .equally: return "Split evenly"
         }
     }
 
@@ -188,7 +206,8 @@ extension MessagesViewController {
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
             payerUUID: payerUUID,
-            participantCount: participantCount
+            participantCount: participantCount,
+            splitPayload: splitPayload
         )
 
         let message = MSMessage(session: MSSession())

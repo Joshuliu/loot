@@ -460,7 +460,8 @@ struct SplitGuestDrawer: View {
                     // Only show toolbar when editing a non-Me guest
                     if let currentFocusedId = focusedGuestId,
                        let currentIndex = guests.firstIndex(where: { $0.id == currentFocusedId }),
-                       !guests[currentIndex].isMe {
+                       !guests[currentIndex].isMe,
+                       mode == .splitWith {
                         
                         // Previous button
                         Button {

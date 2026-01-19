@@ -91,7 +91,7 @@ struct SplitsSummaryView: View {
                                         .frame(width: size, height: size)
                                 }
                                 if count > 0, i > 0 {
-                                    let ang = -(.pi / 1.99) + (start * 2 * .pi)
+                                    let ang = -(.pi / 1.95) + (start * 2 * .pi)
                                     let hx = center.x + handleRadius * cos(ang)
                                     let hy = center.y + handleRadius * sin(ang)
                                     

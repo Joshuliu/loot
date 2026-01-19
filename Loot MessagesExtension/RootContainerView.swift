@@ -14,15 +14,15 @@ struct RootContainerView: View {
     @State private var screen: Screen = .tabview
     @State private var receiptName: String = ""
     @State private var splitDraft: SplitDraft? = nil
-    @State private var amountString: String = "0"  // Always represents SUBTOTAL
-    @State private var tipAmount: String = ""       // Tip amount
+    @State private var amountString: String = "0"
+    @State private var tipAmount: String = ""
     @State private var returnScreen: Screen = .tabview
     @Namespace private var titleNamespace
     
-    // Computed total: subtotal + tip
+    // Computed total: subtotal + tax + fees - discounts + tip
     private var totalAmount: String {
         guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
-            return amountString  // No tip, subtotal = total
+            return amountString
         }
         let subtotal = amountToCents(amountString)
         let tip = amountToCents(tipAmount)
@@ -336,6 +336,7 @@ struct RootContainerView: View {
                             amount: totalAmount,  // Use computed total for display
                             participantCount: participantCount,
                             splitMode: splitDraft?.mode,
+                            splitDraft: splitDraft,  // Pass the full draft for ring display
                             onBack: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .fill

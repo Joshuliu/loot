@@ -6,6 +6,7 @@ struct ConfirmationView: View {
     let amount: String
     let participantCount: Int
     let splitMode: SplitDraft.Mode?
+    let splitDraft: SplitDraft?  // Add the full draft
     
     let onBack: () -> Void
     let onSend: () -> Void
@@ -24,11 +25,68 @@ struct ConfirmationView: View {
     private var splitLabel: String {
         switch splitMode {
         case .byItems: return "Split by items"
-        case .custom: return "Split by amounts"
+        case .custom: return "Custom split"
         case .equally, .none: return "Split evenly"
         }
     }
     private var displayAmount: String { "$" + formatAmount(amount) }
+
+    // Extract owed amounts and total from split draft (or compute default equal split)
+    private var owedAmounts: [Int]? {
+        let total = amountToCents(amount)
+        
+        if let draft = splitDraft {
+            // Use existing split draft
+            let activeGuests = draft.guests.filter { $0.isIncluded }
+            guard !activeGuests.isEmpty else { return nil }
+            
+            // Map active guests to their owed amounts
+            return activeGuests.indices.compactMap { idx in
+                draft.perGuestCents.indices.contains(idx) ? draft.perGuestCents[idx] : nil
+            }
+        } else {
+            // No draft yet - compute default equal split
+            guard participantCount > 0 else { return nil }
+            return equalSplit(total: total, count: participantCount)
+        }
+    }
+    
+    private var totalCents: Int? {
+        if let draft = splitDraft {
+            return draft.totalCents
+        } else {
+            return amountToCents(amount)
+        }
+    }
+    
+    // Helper to compute equal split
+    private func equalSplit(total: Int, count: Int) -> [Int] {
+        guard total > 0, count > 0 else { return Array(repeating: 0, count: count) }
+        var out = Array(repeating: total / count, count: count)
+        let remainder = total - out.reduce(0, +)
+        if remainder > 0 {
+            for i in 0..<min(remainder, count) { out[i] += 1 }
+        }
+        return out
+    }
+    
+    private func amountToCents(_ str: String) -> Int {
+        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+        if trimmed.isEmpty { return 0 }
+
+        if trimmed.contains(".") {
+            let parts = trimmed.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+            let dollars = Int(parts.first ?? "0") ?? 0
+            let centsRaw = parts.count > 1 ? String(parts[1]) : ""
+            let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
+            let cents = Int(String(cents2.prefix(2))) ?? 0
+            return max(0, dollars * 100 + cents)
+        } else {
+            return max(0, (Int(trimmed) ?? 0) * 100)
+        }
+    }
 
     private func formatAmount(_ str: String) -> String {
         let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -149,13 +207,15 @@ struct ConfirmationView: View {
 
                 Color.clear.frame(height: 18)
 
-                // Card
+                // Card with split ring
                 BillCardView(
                     receiptName: receiptName,
                     displayAmount: displayAmount,
                     displayName: myDisplayNameFromDefaults(),
                     participantCount: participantCount,
-                    splitLabel: splitLabel
+                    splitLabel: splitLabel,
+                    owedAmounts: owedAmounts,
+                    totalCents: totalCents
                 )
                 .offset(cardOffset)
                 .rotationEffect(.degrees(cardRotation), anchor: .bottom)
@@ -198,4 +258,3 @@ struct ConfirmationView: View {
         }
     }
 }
-

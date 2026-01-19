@@ -365,7 +365,7 @@ struct SplitView: View {
                                     .frame(width: size, height: size)
                             }
                             if i > 0 {
-                                let ang = -(.pi / 1.99) + (startFrac * 2 * .pi)
+                                let ang = -(.pi / 1.95) + (startFrac * 2 * .pi)
                                 let hx = center.x + handleRadius * cos(ang)
                                 let hy = center.y + handleRadius * sin(ang)
 
