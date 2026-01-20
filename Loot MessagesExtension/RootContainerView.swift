@@ -12,6 +12,9 @@ struct RootContainerView: View {
     @ObservedObject var uiModel: LootUIModel
 
     @State private var screen: Screen = .tabview
+    @State private var showSplitViewSheet: Bool = false
+    @State private var confirmationCameFromManual: Bool = false
+    
     @State private var receiptName: String = ""
     @State private var splitDraft: SplitDraft? = nil
     @State private var amountString: String = "0"
@@ -21,6 +24,12 @@ struct RootContainerView: View {
     
     // Computed total: subtotal + tax + fees - discounts + tip
     private var totalAmount: String {
+        // If we have a receipt with breakdown, use its total (includes tax, fees, discounts, tip)
+        if let receipt = uiModel.currentReceipt {
+            return String(format: "%.2f", Double(receipt.totalCents) / 100.0)
+        }
+        
+        // Otherwise, calculate from manual entry (subtotal + tip only, no tax/fees/discounts in manual flow)
         guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
             return amountString
         }
@@ -175,6 +184,7 @@ struct RootContainerView: View {
                         items: parsed.toDisplayItems()
                     )
 
+                    confirmationCameFromManual = false
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         screen = .confirmation
                     }
@@ -290,6 +300,7 @@ struct RootContainerView: View {
                             onNext: {
                                 // Create receipt before transitioning
                                 uiModel.currentReceipt = makePreviewReceipt()
+                                confirmationCameFromManual = true
                                 
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .confirmation
@@ -336,7 +347,9 @@ struct RootContainerView: View {
                             amount: totalAmount,  // Use computed total for display
                             participantCount: participantCount,
                             splitMode: splitDraft?.mode,
-                            splitDraft: splitDraft,  // Pass the full draft for ring display
+                            splitDraft: splitDraft,
+                            tipAmount: tipAmount,
+                            cameFromManual: confirmationCameFromManual,
                             onBack: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     screen = .fill
@@ -363,8 +376,11 @@ struct RootContainerView: View {
                                 }
                             },
                             onGoToSplit: {
+                                showSplitViewSheet = true
+                            },
+                            onAddTip: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .splitview
+                                    screen = .tipview
                                 }
                             },
                             onRequestCollapse: onCollapse
@@ -381,25 +397,6 @@ struct RootContainerView: View {
                         } else {
                             ProgressView("Loading…")
                         }
-                        
-                    case .splitview:
-                        SplitView(
-                            uiModel: uiModel,
-                            amountString: totalAmount,  // Use total for split calculations
-                            participantCount: participantCount,
-                            initialDraft: splitDraft,
-                            onRequestExpand: onExpand,
-                            onBack: {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .confirmation
-                                }
-                            },
-                            onApply: { draft in
-                                splitDraft = draft
-                                uiModel.currentSplitDraft = draft
-                                applySplitDraftToCurrentReceipt(draft)
-                            }
-                        )
                     case .messageViewer:
                         if let payload = uiModel.openedMessagePayload {
                             MessageReceiptViewer(
@@ -439,6 +436,26 @@ struct RootContainerView: View {
                         }
                     }
                 ) { PhotoLibraryPicker(image: $photoLibraryImage).ignoresSafeArea() }
+                .sheet(isPresented: $showSplitViewSheet) {
+                    SplitView(
+                        uiModel: uiModel,
+                        amountString: totalAmount,
+                        participantCount: participantCount,
+                        initialDraft: splitDraft,
+                        onBack: {
+                            showSplitViewSheet = false
+                        },
+                        onApply: { draft in
+                            splitDraft = draft
+                            uiModel.currentSplitDraft = draft
+                            applySplitDraftToCurrentReceipt(draft)
+                            showSplitViewSheet = false
+                        }
+                    )
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationContentInteraction(.scrolls)
+                }
                 .overlay {
                     if isAnalyzing {
                         ZStack {
@@ -481,6 +498,5 @@ enum Screen {
     case tipview
     case confirmation
     case receipt
-    case splitview
     case messageViewer
 }

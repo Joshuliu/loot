@@ -15,6 +15,7 @@ struct ReceiptView: View {
 
     var showBackRow: Bool = true
     @State private var showCapture: Bool = false
+    @State private var showEditReceipt: Bool = false
 
     private var captureImage: UIImage? {
         uiModel.scanImageCropped ?? uiModel.scanImageOriginal
@@ -32,7 +33,15 @@ struct ReceiptView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(.leading, 12)
+                    
                     Spacer()
+                    
+                    Button(action: { showEditReceipt = true }) {
+                        Text("Edit")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 12)
                 }
                 .padding(.vertical, 10)
             }
@@ -110,10 +119,9 @@ struct ReceiptView: View {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(14)
                     .padding(.horizontal, 18)
-//                    .padding(.bottom, 12)
                 }
                 .buttonStyle(.plain)
-                .opacity(captureImage == nil ? 0 : 1) // hide if no image
+                .opacity(captureImage == nil ? 0 : 1)
                 .padding(.horizontal, 14)
                 .padding(.top, 40)
                 .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 0.95))
@@ -124,6 +132,18 @@ struct ReceiptView: View {
             CapturePreviewView(image: captureImage) {
                 showCapture = false
             }
+        }
+        .sheet(isPresented: $showEditReceipt) {
+            EditReceiptView(
+                uiModel: uiModel,
+                onSave: { updatedReceipt in
+                    uiModel.currentReceipt = updatedReceipt
+                    showEditReceipt = false
+                },
+                onCancel: {
+                    showEditReceipt = false
+                }
+            )
         }
     }
 }

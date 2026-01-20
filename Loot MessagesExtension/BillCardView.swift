@@ -11,7 +11,6 @@ struct BillCardView: View {
     let receiptName: String
     let displayAmount: String
     let displayName: String
-    let participantCount: Int
     let splitLabel: String
     
     let owedAmounts: [Int]?  // Owed amounts in cents for each person
@@ -57,7 +56,7 @@ struct BillCardView: View {
             // Right side - Ring
             if let owedAmounts = owedAmounts, let totalCents = totalCents, !owedAmounts.isEmpty {
                 SplitRingView(
-                    participantCount: participantCount,
+                    participantCount: owedAmounts.count,
                     owedAmounts: owedAmounts,
                     totalCents: totalCents,
                     displayAmount: displayAmount
@@ -71,7 +70,7 @@ struct BillCardView: View {
         .background(
             Color(.systemBackground).overlay(Color.white.opacity(0.08))
         )
-        .cornerRadius(12)
+        .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
 
     }

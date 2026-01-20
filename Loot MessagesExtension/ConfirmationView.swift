@@ -6,22 +6,60 @@ struct ConfirmationView: View {
     let amount: String
     let participantCount: Int
     let splitMode: SplitDraft.Mode?
-    let splitDraft: SplitDraft?  // Add the full draft
-    
+    let splitDraft: SplitDraft?
+
+    let tipAmount: String
+    let cameFromManual: Bool
+
     let onBack: () -> Void
     let onSend: () -> Void
-    
+
     let onPreviewReceipt: () -> Void
     let onDeleteToLanding: () -> Void
     let onGoToSplit: () -> Void
-    
+    let onAddTip: () -> Void
+
     let onRequestCollapse: () -> Void
 
     @State private var cardOffset: CGSize = .zero
     @State private var cardRotation: Double = 0
     @State private var hasSent: Bool = false
     @State private var showSuccess: Bool = false
-    
+    @State private var dragIntent: DragIntent = .none
+
+    private enum DragIntent { case none, up, left, right }
+
+    private func clamp01(_ x: CGFloat) -> CGFloat { min(max(x, 0), 1) }
+
+    private var upProgress: CGFloat {
+        dragIntent == .up ? clamp01((-cardOffset.height) / 180) : 0
+    }
+    private var leftProgress: CGFloat {
+        dragIntent == .left ? clamp01((-cardOffset.width) / 180) : 0
+    }
+    private var rightProgress: CGFloat {
+        dragIntent == .right ? clamp01((cardOffset.width) / 180) : 0
+    }
+
+    private var buttonBase: Color { Color(.secondarySystemBackground) }
+    private var gold: Color { Color(hex: "#DAA806") }
+
+    private var buttonsOpacity: Double {
+        if dragIntent == .up { return Double(1 - upProgress) }
+        // drag left: fade everything except trash button (if it is trash)
+        if dragIntent == .left { return Double(1 - leftProgress) }
+        // drag right: fade everything except modify (split) button
+        if dragIntent == .right { return Double(1 - rightProgress) }
+        return 1
+    }
+
+    private var leftButtonIsTrash: Bool { !cameFromManual }
+
+    // Left button “selected” styling when trash + dragging left
+    private var trashSelectProgress: CGFloat {
+        (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
+    }
+
     private var splitLabel: String {
         switch splitMode {
         case .byItems: return "Split by items"
@@ -30,6 +68,9 @@ struct ConfirmationView: View {
         }
     }
     private var displayAmount: String { "$" + formatAmount(amount) }
+    private var hasTip: Bool {
+        !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
+    }
 
     // Extract owed amounts and total from split draft (or compute default equal split)
     private var owedAmounts: [Int]? {
@@ -106,13 +147,25 @@ struct ConfirmationView: View {
     private var swipeCardGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
-                guard !hasSent else { return }
                 cardOffset = value.translation
-
-                let maxRotation: Double = 12
                 let normalized = Double(cardOffset.width / 200)
-                let clamped = min(max(normalized, -1), 1)
-                cardRotation = maxRotation * clamped
+                cardRotation = 12 * min(max(normalized, -1), 1)
+                
+                let dx = value.translation.width
+                let dy = value.translation.height
+
+                let isMostlyHorizontal = abs(dx) > abs(dy) * 1.2
+                let isMostlyVertical = abs(dy) > abs(dx) * 1.2
+
+                if isMostlyVertical, dy < 0 {
+                    dragIntent = .up
+                } else if isMostlyHorizontal, dx < 0 {
+                    dragIntent = .left
+                } else if isMostlyHorizontal, dx > 0 {
+                    dragIntent = .right
+                } else {
+                    dragIntent = .none
+                }
             }
             .onEnded { value in
                 guard !hasSent else { return }
@@ -140,6 +193,7 @@ struct ConfirmationView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         onDeleteToLanding()
                     }
+                    dragIntent = .none
                     return
                 }
 
@@ -154,9 +208,16 @@ struct ConfirmationView: View {
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         onGoToSplit()
+
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            cardOffset = .zero
+                            cardRotation = 0
+                        }
                     }
+                    dragIntent = .none
                     return
                 }
+
 
                 // ✅ Up swipe = send (your existing logic)
                 if isMostlyVertical, dy < -max(verticalTrigger, 50), abs(dx) < 160 {
@@ -174,6 +235,7 @@ struct ConfirmationView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
                         withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
                     }
+                    dragIntent = .none
                     return
                 }
 
@@ -181,26 +243,45 @@ struct ConfirmationView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     cardOffset = .zero
                     cardRotation = 0
+                    dragIntent = .none
                 }
             }
+    }
+    private func animateDeleteThenAct() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            cardOffset = CGSize(width: -500, height: 0)
+            cardRotation = -6
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            onDeleteToLanding()
+        }
+    }
+
+    private func animateSplitThenAct() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            cardOffset = CGSize(width: 500, height: 0)
+            cardRotation = 6
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            onGoToSplit()
+
+            // reset so it’s visible when sheet dismisses (same fix as before)
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                cardOffset = .zero
+                cardRotation = 0
+            }
+        }
     }
 
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                // Top bar
-                HStack {
-                    Button(action: onBack) {
-                        Image(systemName: "chevron.left")
-                        Text("Back")
-                    }
-                    .padding(.leading, 16)
 
-                    Spacer()
-                }
-                .padding(.top, 6)
-
-                Text("Swipe up to send")
+                Text(dragIntent == .left ? "Swipe left to delete" :
+                        dragIntent == .right ? "Swipe right for split options" :
+                        "Swipe up to send")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
                     .padding(.top, 10)
@@ -212,7 +293,6 @@ struct ConfirmationView: View {
                     receiptName: receiptName,
                     displayAmount: displayAmount,
                     displayName: myDisplayNameFromDefaults(),
-                    participantCount: participantCount,
                     splitLabel: splitLabel,
                     owedAmounts: owedAmounts,
                     totalCents: totalCents
@@ -228,8 +308,87 @@ struct ConfirmationView: View {
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
                     .padding(.top, 12)
+                    .opacity(buttonsOpacity)
 
-                Spacer()
+                HStack(spacing: 12) {
+                    // 1) Back or Delete
+                    let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
+
+                    Button(action: {
+                        if cameFromManual { onBack() } else { animateDeleteThenAct() }
+                    }) {
+                        Group {
+                            if cameFromManual {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "chevron.left")
+                                    Text("Back")
+                                }
+                            } else {
+                                Image(systemName: "trash")
+                            }
+                        }
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .foregroundStyle(
+                            cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
+                        )
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(buttonBase)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(Color.red)
+                                        .opacity(Double(trashProgress))
+                                )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
+
+                    // 2) Add Tip (same behavior/label as ManualInputView)
+                    Button(action: onAddTip) {
+                        Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
+                            .font(.system(size: 17, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(buttonBase)
+                            .cornerRadius(18)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(displayAmount == "$0" || amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || amount == "0")
+                    .opacity((displayAmount == "$0" || amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || amount == "0") ? 0.4 : 1.0)
+                    .opacity(buttonsOpacity)
+
+
+                    // 3) Split
+                    let splitProgress = (dragIntent == .right) ? rightProgress : 0
+
+                    Button(action: { animateSplitThenAct() }) {
+                        Text("Split")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 18)
+                                    .fill(buttonBase)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .fill(gold)
+                                            .opacity(Double(splitProgress))
+                                    )
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(dragIntent == .right ? 1 : buttonsOpacity)
+
+
+                }
+                .padding(.horizontal, 40)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+
             }
 
             if showSuccess {
@@ -246,6 +405,18 @@ struct ConfirmationView: View {
                 .transition(.opacity)
             }
         }
+        .background {
+            ZStack {
+                Color.black.opacity(0.10)
+
+                Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
+                Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
+                Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+            }
+            .ignoresSafeArea()
+        }
+        .animation(.easeInOut(duration: 0.12), value: dragIntent)
+        .animation(.easeInOut(duration: 0.12), value: cardOffset)
         .task {
             onRequestCollapse()
         }
@@ -256,5 +427,19 @@ struct ConfirmationView: View {
             hasSent = false
             showSuccess = false
         }
+    }
+}
+
+private extension Color {
+    init(hex: String) {
+        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if h.hasPrefix("#") { h.removeFirst() }
+        var v: UInt64 = 0
+        Scanner(string: h).scanHexInt64(&v)
+
+        let r = Double((v >> 16) & 0xFF) / 255.0
+        let g = Double((v >> 8) & 0xFF) / 255.0
+        let b = Double(v & 0xFF) / 255.0
+        self.init(red: r, green: g, blue: b)
     }
 }

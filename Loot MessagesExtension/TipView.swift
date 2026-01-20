@@ -109,7 +109,7 @@ struct TipView: View {
                         .frame(height: 60)
                         .padding(.horizontal, 24)
                         
-                        Text("Scroll to adjust tip")
+                        Text("Scroll to adjust • Tap a % to jump")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
                     }
@@ -158,6 +158,7 @@ struct PercentageSlider: View {
     private var stride: CGFloat { itemWidth + dotWidth }
 
     @State private var isReadyToTrackScroll = false
+    @State private var isProgrammaticScroll = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -177,12 +178,16 @@ struct PercentageSlider: View {
                                         .foregroundStyle(abs(Double(value) - percent) < 0.5 ? .blue : .secondary)
                                         .frame(width: itemWidth)
                                         .id(value)
+                                        .contentShape(Rectangle()) // makes full width tappable
+                                        .onTapGesture {
+                                            scrollTo(value, proxy: proxy)
+                                        }
 
                                     if value < Int(maxPercent) {
                                         Text("•")
                                             .font(.system(size: 12))
                                             .foregroundStyle(.blue)
-                                            .frame(width: dotWidth) // critical: makes stride deterministic
+                                            .frame(width: dotWidth)
                                     }
                                 }
                             }
@@ -195,6 +200,7 @@ struct PercentageSlider: View {
                             Color.clear
                                 .onChange(of: scrollGeo.frame(in: .named("scroll")).minX) { _, offset in
                                     guard isReadyToTrackScroll else { return }
+                                    guard !isProgrammaticScroll else { return }
 
                                     let index = (-offset) / stride
                                     let newPercent = minPercent + Double(index)
@@ -208,7 +214,7 @@ struct PercentageSlider: View {
                 .coordinateSpace(name: "scroll")
                 .overlay(centerLine(height: geometry.size.height, centerX: centerX))
                 .onAppear {
-                    // Preserve initial value (e.g. 15%) without layout overwriting it.
+                    // Start centered on initial percent
                     DispatchQueue.main.async {
                         proxy.scrollTo(Int(percent.rounded()), anchor: .center)
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
@@ -217,6 +223,22 @@ struct PercentageSlider: View {
                     }
                 }
             }
+        }
+    }
+
+    private func scrollTo(_ value: Int, proxy: ScrollViewProxy) {
+        let clamped = min(max(value, Int(minPercent)), Int(maxPercent))
+
+        isProgrammaticScroll = true
+        percent = Double(clamped) // snap value immediately
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
+            proxy.scrollTo(clamped, anchor: .center)
+        }
+
+        // Let the animation settle, then resume scroll tracking
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            isProgrammaticScroll = false
         }
     }
 

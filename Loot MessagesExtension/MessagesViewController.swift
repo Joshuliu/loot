@@ -127,7 +127,6 @@ extension MessagesViewController {
             receiptName: receiptName,
             displayAmount: displayAmount,
             displayName: myDisplayNameFromDefaults(),
-            participantCount: participantCount,
             splitLabel: splitLabelFromMode(splitPayload.m),
             owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,  // Only pass if non-empty
             totalCents: splitPayload.tot

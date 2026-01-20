@@ -44,7 +44,6 @@ struct SplitView: View {
     let amountString: String
     let participantCount: Int
     let initialDraft: SplitDraft?
-    let onRequestExpand: () -> Void
     let onBack: () -> Void
     let onApply: (SplitDraft) -> Void
 
@@ -53,7 +52,6 @@ struct SplitView: View {
         amountString: String,
         participantCount: Int,
         initialDraft: SplitDraft? = nil,
-        onRequestExpand: @escaping () -> Void,
         onBack: @escaping () -> Void,
         onApply: @escaping (SplitDraft) -> Void = { _ in }
     ) {
@@ -61,7 +59,6 @@ struct SplitView: View {
         self.amountString = amountString
         self.participantCount = participantCount
         self.initialDraft = initialDraft
-        self.onRequestExpand = onRequestExpand
         self.onBack = onBack
         self.onApply = onApply
     }
@@ -84,6 +81,9 @@ struct SplitView: View {
     @State private var guestEditorMode: GuestEditorMode? = nil
     @State private var draftGuests: [SplitGuest] = []
     @State private var draftPayerGuestId: UUID = UUID()
+    
+    // Edit receipt sheet
+    @State private var showEditReceipt: Bool = false
 
     private struct DonutDrag {
         var lastRawFrac: Double
@@ -240,7 +240,7 @@ struct SplitView: View {
         didInitByItem = true
 
         let receiptItems = uiModel.currentReceipt?.items ?? []
-        var seeded: [DraftReceiptItem] = receiptItems.map { it in
+        byItemItems = receiptItems.map { it in
             DraftReceiptItem(
                 id: UUID(),
                 label: it.label,
@@ -248,8 +248,6 @@ struct SplitView: View {
                 assignedGuestIds: []
             )
         }
-        seeded.append(DraftReceiptItem(id: UUID(), label: "", price: "", assignedGuestIds: []))
-        byItemItems = seeded
 
         let r = uiModel.currentReceipt
         feesString = (r?.feesCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.feesCents ?? 0)
@@ -304,7 +302,7 @@ struct SplitView: View {
             feesCents: moneyToCents(feesString),
             taxCents: moneyToCents(taxString),
             tipCents: moneyToCents(tipString),
-            discountCents: moneyToCents(discountString),
+            discountCents: moneyToCents(discountString)
         )
     }
 
@@ -365,7 +363,7 @@ struct SplitView: View {
                                     .frame(width: size, height: size)
                             }
                             if i > 0 {
-                                let ang = -(.pi / 1.95) + (startFrac * 2 * .pi)
+                                let ang = -(.pi / 1.975) + (startFrac * 2 * .pi)
                                 let hx = center.x + handleRadius * cos(ang)
                                 let hy = center.y + handleRadius * sin(ang)
 
@@ -536,73 +534,103 @@ struct SplitView: View {
 
     private func byItemPanel() -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Select a guest, then tap an item to assign/unassign them.")
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
+            HStack {
+                Text("Select a guest, then tap an item to assign/unassign them.")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Button(action: { showEditReceipt = true }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 13))
+                        Text("Edit")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.15))
+                    .foregroundStyle(Color.blue)
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Receipt items")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
 
-                VStack(spacing: 0) {
-                    ForEach(byItemItems.indices, id: \.self) { idx in
-                        let item = byItemItems[idx]
-                        let isLast = idx == byItemItems.count - 1
-
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                if item.isComplete {
-                                    Text(item.label)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .lineLimit(1)
-                                    Text(ReceiptDisplay.money(moneyToCents(item.price)))
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    TextField("New Item", text: $byItemItems[idx].label)
-                                        .font(.system(size: 16, weight: .semibold))
-                                    TextField("$", text: $byItemItems[idx].price)
-                                        .font(.system(size: 13))
-                                        .keyboardType(.numbersAndPunctuation)
-                                }
-                            }
-
-                            Spacer()
-
+                if byItemItems.filter({ $0.isComplete }).isEmpty {
+                    // No items - show message
+                    VStack(spacing: 12) {
+                        Text("No items yet")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                        
+                        Button(action: { showEditReceipt = true }) {
                             HStack(spacing: 6) {
-                                ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
-                                    let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
-                                    let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
-                                    ColoredCircleBadge(
-                                        text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                        color: colorForGuestId(gid)
-                                    )
-                                }
+                                Image(systemName: "plus.circle.fill")
+                                Text("Add items to receipt")
                             }
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.blue)
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
+                        .buttonStyle(.plain)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(16)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(byItemItems.indices, id: \.self) { idx in
+                            let item = byItemItems[idx]
+                            
+                            // Only show completed items
                             if item.isComplete {
-                                toggleAssignment(itemId: item.id)
-                            } else if isLast {
-                                // allow add row: if last placeholder becomes complete, append new placeholder
-                                if !byItemItems[idx].label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                                   !byItemItems[idx].price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    byItemItems.append(DraftReceiptItem(id: UUID(), label: "", price: "", assignedGuestIds: []))
+                                let isLast = idx == byItemItems.filter({ $0.isComplete }).count - 1
+
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.label)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .lineLimit(1)
+                                        Text(ReceiptDisplay.money(moneyToCents(item.price)))
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    HStack(spacing: 6) {
+                                        ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
+                                            let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
+                                            let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
+                                            ColoredCircleBadge(
+                                                text: BadgeColors.initials(from: name, fallback: fallbackIndex),
+                                                color: colorForGuestId(gid)
+                                            )
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    toggleAssignment(itemId: item.id)
+                                }
+
+                                if !isLast {
+                                    Divider().padding(.leading, 14)
                                 }
                             }
-                        }
-
-                        if idx != byItemItems.count - 1 {
-                            Divider().padding(.leading, 14)
                         }
                     }
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -708,7 +736,6 @@ struct SplitView: View {
                     
                     Button {
                         onApply(draft())
-                        onBack()
                     } label: {
                         Text("Next")
                             .font(.system(size: 15, weight: .semibold))
@@ -772,8 +799,19 @@ struct SplitView: View {
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .ignoresSafeArea(edges: .bottom)
         }
-        .task {
-            onRequestExpand()
+        .sheet(isPresented: $showEditReceipt) {
+            EditReceiptView(
+                uiModel: uiModel,
+                onSave: { updatedReceipt in
+                    uiModel.currentReceipt = updatedReceipt
+                    // Reseed by-items from updated receipt
+                    seedByItemsFromReceipt()
+                    showEditReceipt = false
+                },
+                onCancel: {
+                    showEditReceipt = false
+                }
+            )
         }
         .onAppear {
             // Seed guests once (or from existing draft)
