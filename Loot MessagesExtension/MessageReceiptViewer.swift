@@ -16,6 +16,10 @@ struct MessageReceiptViewer: View {
     enum Tab { case splits, receipt }
     @State private var tab: Tab = .splits
 
+    private var captureImage: UIImage? {
+        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Top bar
@@ -54,7 +58,7 @@ struct MessageReceiptViewer: View {
                 bottomTabButton("Receipt", system: "doc.text.fill", selected: tab == .receipt) { tab = .receipt }
             }
             .padding(.horizontal, 14)
-            .padding(.top, 40)
+            .padding(.top, captureImage != nil ? 40: 10)
             .padding(.bottom, 14)
             .background(Color(.systemBackground).opacity(0.95))
         }

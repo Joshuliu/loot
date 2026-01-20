@@ -45,39 +45,39 @@ struct ReceiptView: View {
                 }
                 .padding(.vertical, 10)
             }
-
+            
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-
+                    
                     // Header
                     VStack(alignment: .leading, spacing: 4) {
                         Text(receipt.title)
                             .font(.system(size: 28, weight: .bold))
-
+                        
                         Text(receipt.dateText)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
-
+                    
                     // Items box
                     VStack(spacing: 0) {
                         ForEach(receipt.items) { item in
                             HStack(alignment: .center, spacing: 12) {
-
+                                
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(item.label)
                                         .font(.system(size: 16, weight: .semibold))
                                         .lineLimit(1)
-
+                                    
                                     Text(ReceiptDisplay.money(item.priceCents))
                                         .font(.system(size: 13, weight: .regular))
                                         .foregroundStyle(.secondary)
                                 }
-
+                                
                                 Spacer(minLength: 8)
-
+                                
                                 HStack(spacing: 6) {
                                     ForEach(item.responsible, id: \.slotIndex) { who in
                                         ColoredCircleBadge(
@@ -89,7 +89,7 @@ struct ReceiptView: View {
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
-
+                            
                             if item.id != receipt.items.last?.id {
                                 Divider().padding(.leading, 14)
                             }
@@ -98,35 +98,37 @@ struct ReceiptView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 16)
-
+                    
                     // Totals box
                     TotalsBox(receipt: receipt)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 90)
                 }
             }
-            .overlay(alignment: .bottom) {
-                Button {
-                    showCapture = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.viewfinder")
-                        Text("View capture")
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(14)
-                    .padding(.horizontal, 18)
+        }
+        .overlay(alignment: .bottom) {
+            Button {
+                showCapture = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.viewfinder")
+                    Text("View capture")
                 }
-                .buttonStyle(.plain)
-                .opacity(captureImage == nil ? 0 : 1)
-                .padding(.horizontal, 14)
-                .padding(.top, 40)
-                .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 0.95))
-                .allowsHitTesting(captureImage != nil)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(14)
+                .padding(.horizontal, 18)
             }
+            .buttonStyle(.plain)
+            .opacity(1)
+//            .opacity(captureImage == nil ? 0 : 1)
+//            .padding(.horizontal, 14)
+            .padding(.top, 20)
+//            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
+            .background(Color(.systemBackground).opacity(1))
+            .allowsHitTesting(captureImage != nil)
         }
         .sheet(isPresented: $showCapture) {
             CapturePreviewView(image: captureImage) {
