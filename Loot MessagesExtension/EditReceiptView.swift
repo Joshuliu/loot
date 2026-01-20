@@ -128,13 +128,13 @@ struct EditReceiptView: View {
         // If there are no items but receipt has a subtotal, use it as override
         let hasItems = !receipt.items.isEmpty
         let hasBreakdown = receipt.tipCents > 0 || receipt.taxCents > 0 || receipt.feesCents > 0 || receipt.discountCents > 0
-
+        
         if !hasItems && receipt.subtotalCents > 0 {
             _subtotalOverride = State(initialValue: Self.formatCentsStatic(receipt.subtotalCents))
         } else {
             _subtotalOverride = State(initialValue: "")
         }
-
+        
         // Initialize total override
         // If there's a breakdown (tip/tax/fees/discount), let total auto-calculate
         // Otherwise use receipt's total as override
@@ -370,16 +370,16 @@ struct EditReceiptView: View {
                             Text("Items")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
-
+                            
                             Spacer()
-
+                            
                             if !completedItems.isEmpty {
                                 Text("Swipe to delete")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
                             }
                         }
-
+                        
                         // Completed items list
                         if !completedItems.isEmpty {
                             List {
@@ -394,7 +394,7 @@ struct EditReceiptView: View {
                                                 .onSubmit {
                                                     focusedField = .itemPrice(item.id)
                                                 }
-
+                                            
                                             TextField("Price", text: $items[idx].price)
                                                 .font(.system(size: 16))
                                                 .keyboardType(.decimalPad)
@@ -420,7 +420,7 @@ struct EditReceiptView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .scrollDisabled(true)
                         }
-
+                        
                         // Add new item row
                         if let emptyIndex = items.firstIndex(where: { !$0.isComplete }) {
                             let emptyItem = items[emptyIndex]
@@ -432,7 +432,7 @@ struct EditReceiptView: View {
                                     .onSubmit {
                                         focusedField = .itemPrice(emptyItem.id)
                                     }
-
+                                
                                 TextField("Price", text: $items[emptyIndex].price)
                                     .font(.system(size: 16))
                                     .keyboardType(.decimalPad)
@@ -474,7 +474,6 @@ struct EditReceiptView: View {
                         }
                         .background(Color(.secondarySystemBackground))
                         .cornerRadius(12)
-                        
                         if hasSubtotalWarning {
                             HStack(spacing: 6) {
                                 Image(systemName: "exclamationmark.triangle.fill")
@@ -493,16 +492,16 @@ struct EditReceiptView: View {
                             Text("Taxes & Fees")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
-
+                            
                             Spacer()
-
+                            
                             if !completedFees.isEmpty {
                                 Text("Swipe to delete")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
                             }
                         }
-
+                        
                         // Completed fees list
                         if !completedFees.isEmpty {
                             List {
@@ -517,7 +516,7 @@ struct EditReceiptView: View {
                                                 .onSubmit {
                                                     focusedField = .feeAmount(fee.id)
                                                 }
-
+                                            
                                             TextField("Amount", text: $taxesAndFees[idx].amount)
                                                 .font(.system(size: 16))
                                                 .keyboardType(.decimalPad)
@@ -545,7 +544,7 @@ struct EditReceiptView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .scrollDisabled(true)
                         }
-
+                        
                         // Add new fee row
                         if let emptyIndex = taxesAndFees.firstIndex(where: { !$0.isComplete }) {
                             let emptyFee = taxesAndFees[emptyIndex]
@@ -557,7 +556,7 @@ struct EditReceiptView: View {
                                     .onSubmit {
                                         focusedField = .feeAmount(emptyFee.id)
                                     }
-
+                                
                                 TextField("Amount", text: $taxesAndFees[emptyIndex].amount)
                                     .font(.system(size: 16))
                                     .keyboardType(.decimalPad)
@@ -569,7 +568,6 @@ struct EditReceiptView: View {
                             .background(Color(.secondarySystemBackground).opacity(0.6))
                             .cornerRadius(12)
                         }
-                        
                         HStack {
                             Text("Total taxes & fees")
                                 .font(.system(size: 15, weight: .medium))
@@ -587,16 +585,16 @@ struct EditReceiptView: View {
                             Text("Discounts")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
-
+                            
                             Spacer()
-
+                            
                             if !completedDiscounts.isEmpty {
                                 Text("Swipe to delete")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
                             }
                         }
-
+                        
                         // Completed discounts list
                         if !completedDiscounts.isEmpty {
                             List {
@@ -611,7 +609,7 @@ struct EditReceiptView: View {
                                                 .onSubmit {
                                                     focusedField = .discountAmount(discount.id)
                                                 }
-
+                                            
                                             TextField("Amount", text: $discounts[idx].amount)
                                                 .font(.system(size: 16))
                                                 .keyboardType(.decimalPad)
@@ -637,7 +635,7 @@ struct EditReceiptView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                             .scrollDisabled(true)
                         }
-
+                        
                         // Add new discount row
                         if let emptyIndex = discounts.firstIndex(where: { !$0.isComplete }) {
                             let emptyDiscount = discounts[emptyIndex]
@@ -649,7 +647,7 @@ struct EditReceiptView: View {
                                     .onSubmit {
                                         focusedField = .discountAmount(emptyDiscount.id)
                                     }
-
+                                
                                 TextField("Amount", text: $discounts[emptyIndex].amount)
                                     .font(.system(size: 16))
                                     .keyboardType(.decimalPad)
