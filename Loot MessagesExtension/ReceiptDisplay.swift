@@ -82,9 +82,21 @@ struct ReceiptDisplay: Identifiable {
 
 // MARK: - UI state (MVP: in-memory only)
 
+enum AppScreen {
+    case tabview
+    case fill
+    case tipview
+    case confirmation
+    case receipt
+    case messageViewer
+}
+
 @MainActor
 final class LootUIModel: ObservableObject {
     @Published var isExpanded: Bool = false
+
+    // Screen state - persists across view recreations
+    @Published var currentScreen: AppScreen = .tabview
 
     @Published var currentReceipt: ReceiptDisplay? = nil
     @Published var parsedReceipt: ParsedReceipt? = nil

@@ -13,6 +13,7 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     private let uiModel = LootUIModel()
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
+    private var hasSetupRootView = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -31,35 +32,8 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
-        applySelectedMessageIfAny(conversation: conversation)
-
-        // Minimal context for the UI
-        let payerUUID = conversation.localParticipantIdentifier.uuidString
-        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
-
-        // Only clear receipt state if no message is selected
-        if conversation.selectedMessage == nil {
-            uiModel.currentReceipt = nil
-        }
-
-        // Keep expansion state in sync (used by your ManualInputView numpad)
-        uiModel.isExpanded = (presentationStyle == .expanded)
-
-        hostingController.rootView = RootContainerView(
-            uiModel: uiModel,
-            participantCount: participantCount,
-            onScan:   { print("Scan tapped") },
-            onExpand: { [weak self] in self?.requestPresentationStyle(.expanded) },
-            onCollapse: { [weak self] in self?.requestPresentationStyle(.compact) },
-            onSendBill: { [weak self] receiptName, amount in
-                self?.sendBillMessage(
-                    receiptName: receiptName,
-                    amount: amount,
-                    payerUUID: payerUUID,
-                    participantCount: participantCount
-                )
-            }
-        )
+        applyMessage(conversation.selectedMessage, conversation: conversation)
+        setupRootView(conversation: conversation)
     }
 
     override func didTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
@@ -69,30 +43,37 @@ final class MessagesViewController: MSMessagesAppViewController {
     
     override func didSelect(_ message: MSMessage, conversation: MSConversation) {
         super.didSelect(message, conversation: conversation)
-        applySelectedMessageIfAny(conversation: conversation)
+        // Use the message parameter directly, not conversation.selectedMessage
+        applyMessage(message, conversation: conversation)
     }
 }
 
 // MARK: - Card render + sending (no backend, no storage)
 
 extension MessagesViewController {
-    private func applySelectedMessageIfAny(conversation: MSConversation) {
+
+    private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
         let payerUUID = conversation.localParticipantIdentifier.uuidString
         let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
         // expansion state
         uiModel.isExpanded = (presentationStyle == .expanded)
 
-        if let msg = conversation.selectedMessage,
+        if let msg = message,
            let url = msg.url,
            let payload = LootMessageCodec.payload(from: url) {
 
             uiModel.openedMessagePayload = payload
             uiModel.currentReceipt = payload.toReceiptDisplay()
-        } else {
-            uiModel.openedMessagePayload = nil
-            uiModel.currentReceipt = nil
+            uiModel.currentScreen = .messageViewer
         }
+        // Don't clear openedMessagePayload when message is deselected -
+        // the user is still viewing it. Only clear when they explicitly close.
+    }
+
+    private func setupRootView(conversation: MSConversation) {
+        let payerUUID = conversation.localParticipantIdentifier.uuidString
+        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
         hostingController.rootView = RootContainerView(
             uiModel: uiModel,

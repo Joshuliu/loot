@@ -24,7 +24,19 @@ struct ReceiptView: View {
     private var isLoadingItems: Bool {
         uiModel.itemsLoadingState.isLoading
     }
+    
+    struct TopRoundedRectangle: Shape {
+        var radius: CGFloat = 20
 
+        func path(in rect: CGRect) -> Path {
+            let path = UIBezierPath(
+                roundedRect: rect,
+                byRoundingCorners: [.topLeft, .topRight],
+                cornerRadii: CGSize(width: radius, height: radius)
+            )
+            return Path(path.cgPath)
+        }
+    }
     var body: some View {
         VStack(spacing: 0) {
             if showBackRow {
@@ -49,22 +61,22 @@ struct ReceiptView: View {
                 }
                 .padding(.vertical, 10)
             }
-
+            
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-
+                    
                     // Header
                     VStack(alignment: .leading, spacing: 4) {
                         Text(receipt.title)
                             .font(.system(size: 28, weight: .bold))
-
+                        
                         Text(receipt.dateText)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
-
+                    
                     // Items box
                     VStack(spacing: 0) {
                         if isLoadingItems {
@@ -128,35 +140,39 @@ struct ReceiptView: View {
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 16)
-
+                    
                     // Totals box
                     TotalsBox(receipt: receipt)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 90)
                 }
             }
-            .overlay(alignment: .bottom) {
-                Button {
-                    showCapture = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.viewfinder")
-                        Text("View capture")
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(14)
-                    .padding(.horizontal, 18)
+        }
+        .overlay(alignment: .bottom) {
+            Button {
+                showCapture = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.viewfinder")
+                    Text("View capture")
                 }
-                .buttonStyle(.plain)
-                .opacity(captureImage == nil ? 0 : 1)
-                .padding(.horizontal, 14)
-                .padding(.top, 40)
-                .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 0.95))
-                .allowsHitTesting(captureImage != nil)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(.secondarySystemBackground))
+                .cornerRadius(14)
+                .padding(.horizontal, 18)
             }
+            .buttonStyle(.plain)
+            .opacity(1)
+            .padding(.top, 25)
+            .background(Color(.systemBackground).opacity(0.95))
+            .clipShape(TopRoundedRectangle(radius: 20))
+//            .opacity(captureImage == nil ? 0 : 1)
+//            .padding(.horizontal, 14)
+//            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
+//            .background(Color(.systemBackground).opacity(1))
+            .allowsHitTesting(captureImage != nil)
         }
         .sheet(isPresented: $showCapture) {
             CapturePreviewView(image: captureImage) {

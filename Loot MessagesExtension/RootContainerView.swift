@@ -11,15 +11,14 @@ struct RootContainerView: View {
     @AppStorage(DefaultsKeys.myDisplayName) private var myName: String = ""
     @ObservedObject var uiModel: LootUIModel
 
-    @State private var screen: Screen = .tabview
     @State private var showSplitViewSheet: Bool = false
     @State private var confirmationCameFromManual: Bool = false
-    
+
     @State private var receiptName: String = ""
     @State private var splitDraft: SplitDraft? = nil
     @State private var amountString: String = "0"
     @State private var tipAmount: String = ""
-    @State private var returnScreen: Screen = .tabview
+    @State private var returnScreen: AppScreen = .tabview
     @Namespace private var titleNamespace
     
     // Computed total: subtotal + tax + fees - discounts + tip
@@ -194,7 +193,7 @@ struct RootContainerView: View {
                     // Navigate immediately after phase 1!
                     isAnalyzing = false
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        screen = .confirmation
+                        uiModel.currentScreen = .confirmation
                     }
                 }
 
@@ -333,8 +332,8 @@ struct RootContainerView: View {
                 )
             } else {
                 ZStack {
-                    switch screen {
-                        
+                    switch uiModel.currentScreen {
+
                     case .tabview:
                         TabView(
                             tabName: Binding(
@@ -349,7 +348,7 @@ struct RootContainerView: View {
                             },
                             onFill: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .fill
+                                    uiModel.currentScreen = .fill
                                 }
                             }
                         )
@@ -363,22 +362,22 @@ struct RootContainerView: View {
                             tipAmount: $tipAmount,
                             onBack: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .tabview
+                                    uiModel.currentScreen = .tabview
                                 }
                             },
                             onNext: {
                                 // Create receipt before transitioning
                                 uiModel.currentReceipt = makePreviewReceipt()
                                 confirmationCameFromManual = true
-                                
+
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .confirmation
+                                    uiModel.currentScreen = .confirmation
                                 }
                             },
                             onAddTip: {
                                 // Go to tip view (amountString is already the subtotal)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .tipview
+                                    uiModel.currentScreen = .tipview
                                 }
                             },
                             onRequestExpand: onExpand,
@@ -393,18 +392,18 @@ struct RootContainerView: View {
                             onBack: {
                                 // Return to fill without changes
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .fill
+                                    uiModel.currentScreen = .fill
                                 }
                             },
                             onNext: { tip, _ in
                                 // Only update the tip amount, subtotal stays in amountString
                                 tipAmount = tip
-                                
+
                                 // Create receipt with tip breakdown
                                 uiModel.currentReceipt = makePreviewReceipt()
-                                
+
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .confirmation
+                                    uiModel.currentScreen = .confirmation
                                 }
                             }
                         )
@@ -422,27 +421,27 @@ struct RootContainerView: View {
                             cameFromManual: confirmationCameFromManual,
                             onBack: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .fill
+                                    uiModel.currentScreen = .fill
                                 }
                             },
                             onSend: {
                                 onSendBill(receiptName, totalAmount)  // Send the total amount
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        screen = .tabview
+                                        uiModel.currentScreen = .tabview
                                     }
                                 }
                             },
                             onPreviewReceipt: {
                                 returnScreen = .confirmation
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .receipt
+                                    uiModel.currentScreen = .receipt
                                 }
                             },
                             onDeleteToLanding: {
                                 uiModel.resetForNewReceipt()
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .tabview
+                                    uiModel.currentScreen = .tabview
                                 }
                             },
                             onGoToSplit: {
@@ -450,7 +449,7 @@ struct RootContainerView: View {
                             },
                             onAddTip: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = .tipview
+                                    uiModel.currentScreen = .tipview
                                 }
                             },
                             onRequestCollapse: onCollapse
@@ -461,7 +460,7 @@ struct RootContainerView: View {
                         if let receipt = uiModel.currentReceipt {
                             ReceiptView(uiModel: uiModel, receipt: receipt) {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    screen = returnScreen
+                                    uiModel.currentScreen = returnScreen
                                 }
                             }
                         } else {
@@ -475,7 +474,7 @@ struct RootContainerView: View {
                                 onClose: {
                                     uiModel.openedMessagePayload = nil
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        screen = .tabview
+                                        uiModel.currentScreen = .tabview
                                     }
                                 }
                             )
@@ -547,26 +546,17 @@ struct RootContainerView: View {
                 }
                 .onAppear {
                     if uiModel.openedMessagePayload != nil {
-                        screen = .messageViewer
+                        uiModel.currentScreen = .messageViewer
                     }
                 }
                 .onChange(of: uiModel.openedMessagePayload) { _, newValue in
                     if newValue != nil {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            screen = .messageViewer
+                            uiModel.currentScreen = .messageViewer
                         }
                     }
                 }
             }
         }
     }
-}
-
-enum Screen {
-    case tabview
-    case fill
-    case tipview
-    case confirmation
-    case receipt
-    case messageViewer
 }
