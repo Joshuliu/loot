@@ -115,6 +115,11 @@ struct SplitView: View {
     private var activeGuests: [SplitGuest] { guests.filter { $0.isIncluded } }
     private var activeCount: Int { max(0, activeGuests.count) }
 
+    // Loading state for items (from phase 2)
+    private var isLoadingItems: Bool {
+        uiModel.itemsLoadingState.isLoading
+    }
+
     private func allIndex(for id: UUID) -> Int? {
         guests.firstIndex(where: { $0.id == id })
     }
@@ -538,9 +543,9 @@ struct SplitView: View {
                 Text("Select a guest, then tap an item to assign/unassign them.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
-                
+
                 Spacer()
-                
+
                 Button(action: { showEditReceipt = true }) {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.pencil")
@@ -555,6 +560,8 @@ struct SplitView: View {
                     .clipShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .disabled(isLoadingItems)
+                .opacity(isLoadingItems ? 0.5 : 1)
             }
 
             VStack(alignment: .leading, spacing: 10) {
@@ -562,13 +569,26 @@ struct SplitView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
 
-                if byItemItems.filter({ $0.isComplete }).isEmpty {
+                if isLoadingItems {
+                    // Loading state
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .scaleEffect(0.9)
+                        Text("Loading items...")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 40)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(16)
+                } else if byItemItems.filter({ $0.isComplete }).isEmpty {
                     // No items - show message
                     VStack(spacing: 12) {
                         Text("No items yet")
                             .font(.system(size: 15))
                             .foregroundColor(.secondary)
-                        
+
                         Button(action: { showEditReceipt = true }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "plus.circle.fill")
@@ -812,6 +832,12 @@ struct SplitView: View {
                     showEditReceipt = false
                 }
             )
+        }
+        .onChange(of: uiModel.currentReceipt?.items.count) { _, newCount in
+            // Re-seed when items load from phase 2 (and we're in byItems mode)
+            if mode == .byItems, let count = newCount, count > 0, byItemItems.isEmpty {
+                seedByItemsFromReceipt()
+            }
         }
         .onAppear {
             // Seed guests once (or from existing draft)

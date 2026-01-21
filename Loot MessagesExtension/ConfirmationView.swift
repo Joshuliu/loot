@@ -2,6 +2,8 @@ import SwiftUI
 import UIKit
 
 struct ConfirmationView: View {
+    @ObservedObject var uiModel: LootUIModel
+
     let receiptName: String
     let amount: String
     let participantCount: Int
@@ -20,6 +22,10 @@ struct ConfirmationView: View {
     let onAddTip: () -> Void
 
     let onRequestCollapse: () -> Void
+
+    private var isLoadingItems: Bool {
+        uiModel.itemsLoadingState.isLoading
+    }
 
     @State private var cardOffset: CGSize = .zero
     @State private var cardRotation: Double = 0
@@ -232,9 +238,9 @@ struct ConfirmationView: View {
                     withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
                     onSend()
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                        withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
-                    }
+//                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+//                        withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
+//                    }
                     dragIntent = .none
                     return
                 }
@@ -281,7 +287,7 @@ struct ConfirmationView: View {
 
                 Text(dragIntent == .left ? "Swipe left to delete" :
                         dragIntent == .right ? "Swipe right for split options" :
-                        "Swipe up to send")
+                        isLoadingItems ? "Swipe up to send (no receipt breakdown)" : "Swipe card up to send")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
                     .padding(.top, 10)
@@ -304,11 +310,23 @@ struct ConfirmationView: View {
                 .contentShape(Rectangle())
                 .padding(.horizontal, 24)
 
-                Text("Tap to preview receipt")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 12)
-                    .opacity(buttonsOpacity)
+                VStack(spacing: 6) {
+                    if isLoadingItems {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("Loading receipt items...")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Text("Tap to preview receipt")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.top, 12)
+                .opacity(buttonsOpacity)
 
                 HStack(spacing: 12) {
                     // 1) Back or Delete
@@ -402,6 +420,7 @@ struct ConfirmationView: View {
                         .shadow(radius: 6)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(hex: "#06A77D"))
                 .transition(.opacity)
             }
         }

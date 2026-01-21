@@ -21,6 +21,10 @@ struct ReceiptView: View {
         uiModel.scanImageCropped ?? uiModel.scanImageOriginal
     }
 
+    private var isLoadingItems: Bool {
+        uiModel.itemsLoadingState.isLoading
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if showBackRow {
@@ -63,35 +67,61 @@ struct ReceiptView: View {
 
                     // Items box
                     VStack(spacing: 0) {
-                        ForEach(receipt.items) { item in
-                            HStack(alignment: .center, spacing: 12) {
+                        if isLoadingItems {
+                            // Loading state
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                    .scaleEffect(0.9)
+                                Text("Loading items...")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else if receipt.items.isEmpty {
+                            // Empty state
+                            VStack(spacing: 8) {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.secondary)
+                                Text("No items")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            // Items list
+                            ForEach(receipt.items) { item in
+                                HStack(alignment: .center, spacing: 12) {
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(item.label)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.label)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .lineLimit(1)
 
-                                    Text(ReceiptDisplay.money(item.priceCents))
-                                        .font(.system(size: 13, weight: .regular))
-                                        .foregroundStyle(.secondary)
-                                }
+                                        Text(ReceiptDisplay.money(item.priceCents))
+                                            .font(.system(size: 13, weight: .regular))
+                                            .foregroundStyle(.secondary)
+                                    }
 
-                                Spacer(minLength: 8)
+                                    Spacer(minLength: 8)
 
-                                HStack(spacing: 6) {
-                                    ForEach(item.responsible, id: \.slotIndex) { who in
-                                        ColoredCircleBadge(
-                                            text: who.badgeText,
-                                            color: BadgeColors.color(for: who.slotIndex)
-                                        )
+                                    HStack(spacing: 6) {
+                                        ForEach(item.responsible, id: \.slotIndex) { who in
+                                            ColoredCircleBadge(
+                                                text: who.badgeText,
+                                                color: BadgeColors.color(for: who.slotIndex)
+                                            )
+                                        }
                                     }
                                 }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
 
-                            if item.id != receipt.items.last?.id {
-                                Divider().padding(.leading, 14)
+                                if item.id != receipt.items.last?.id {
+                                    Divider().padding(.leading, 14)
+                                }
                             }
                         }
                     }

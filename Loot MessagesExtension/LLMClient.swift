@@ -7,6 +7,41 @@ enum LLMError: Error {
     case badResponse(status: Int, body: String?)
     case emptyText
     case decodeFailed
+    case uploadFailed(String)
+}
+
+// MARK: - File Upload Response (Gemini File API)
+
+struct FileUploadResponse: Codable {
+    let file: FileInfo
+    struct FileInfo: Codable {
+        let name: String       // e.g., "files/abc123"
+        let uri: String        // Full URI for reference
+        let mimeType: String
+    }
+}
+
+// MARK: - Two-Phase Parsing Results
+
+struct Phase1Result: Codable {
+    let merchant: String?
+    let total_cents: Int?
+}
+
+struct Phase2Result: Codable, Equatable {
+    struct Item: Codable, Equatable {
+        let label: String
+        let qty: Int
+        let cents: Int?
+    }
+
+    let subtotal_cents: Int?
+    let tax_cents: Int?
+    let tip_cents: Int?
+    let fees_cents: Int?
+    let discount_cents: Int?
+    let items: [Item]
+    let issues: [String]
 }
 
 final class LLMClient {
@@ -84,10 +119,12 @@ final class LLMClient {
     struct Part: Codable {
         let text: String?
         let inlineData: InlineData?
+        let fileData: FileData?
 
         enum CodingKeys: String, CodingKey {
             case text
             case inlineData = "inline_data"
+            case fileData = "file_data"
         }
 
         struct InlineData: Codable {
@@ -97,6 +134,16 @@ final class LLMClient {
             enum CodingKeys: String, CodingKey {
                 case mimeType = "mime_type"
                 case data
+            }
+        }
+
+        struct FileData: Codable {
+            let mimeType: String
+            let fileUri: String
+
+            enum CodingKeys: String, CodingKey {
+                case mimeType = "mime_type"
+                case fileUri = "file_uri"
             }
         }
     }
@@ -145,16 +192,17 @@ final class LLMClient {
 
         let systemInstruction = Content(
             role: "system",
-            parts: [Part(text: developerMessage, inlineData: nil)]
+            parts: [Part(text: developerMessage, inlineData: nil, fileData: nil)]
         )
 
         let userContent = Content(
             role: "user",
             parts: [
-                Part(text: userMessage, inlineData: nil),
+                Part(text: userMessage, inlineData: nil, fileData: nil),
                 Part(
                     text: nil,
-                    inlineData: .init(mimeType: "image/jpeg", data: b64)
+                    inlineData: .init(mimeType: "image/jpeg", data: b64),
+                    fileData: nil
                 )
             ]
         )
@@ -167,7 +215,6 @@ final class LLMClient {
                 responseMimeType: "application/json",
                 temperature: 0.1,
                 thinkingConfig: .init(thinkingBudget: -1)
-                
             )
         )
 
@@ -175,7 +222,7 @@ final class LLMClient {
         print("[LLM] finish_reason(s): \(finishReasons.joined(separator: ", "))")
 
         // Gemini will usually put the JSON in candidates[0].content.parts[].text
-        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
             print("[LLM] Empty response text (status \(statusCode))")
             if !finishReasons.isEmpty {
                 print("[LLM] finish_reason(s): \(finishReasons.joined(separator: ", "))")
@@ -196,7 +243,7 @@ final class LLMClient {
                 )
 
                 let (fallbackText, fallbackRaw, fallbackStatus, fallbackReasons) = try await send(fallbackReq)
-                if fallbackText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if fallbackText.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty {
                     print("[LLM] Fallback also empty (status \(fallbackStatus))")
                     if !fallbackReasons.isEmpty {
                         print("[LLM] Fallback finish_reason(s): \(fallbackReasons.joined(separator: ", "))")
@@ -236,6 +283,288 @@ final class LLMClient {
         throw LLMError.decodeFailed
     }
 
+    // MARK: - File Upload (Gemini File API)
+
+    /// Upload image once, get file URI for reuse in multiple requests.
+    /// Uses resumable upload protocol per Gemini File API docs.
+    func uploadImage(_ image: UIImage) async throws -> String {
+        guard let jpegData = image.jpegData(compressionQuality: jpegQuality) else {
+            throw LLMError.uploadFailed("Could not encode image as JPEG")
+        }
+
+        // Step 1: Initialize resumable upload
+        let initURL = URL(string: "https://generativelanguage.googleapis.com/upload/v1beta/files?key=\(apiKey)")!
+
+        var initRequest = URLRequest(url: initURL)
+        initRequest.httpMethod = "POST"
+        initRequest.setValue("resumable", forHTTPHeaderField: "X-Goog-Upload-Protocol")
+        initRequest.setValue("start", forHTTPHeaderField: "X-Goog-Upload-Command")
+        initRequest.setValue("image/jpeg", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Type")
+        initRequest.setValue("\(jpegData.count)", forHTTPHeaderField: "X-Goog-Upload-Header-Content-Length")
+        initRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        // Metadata for the file
+        let metadata: [String: Any] = ["file": ["display_name": "receipt_\(Date().timeIntervalSince1970)"]]
+        initRequest.httpBody = try JSONSerialization.data(withJSONObject: metadata)
+
+        let (_, initResp) = try await session.data(for: initRequest)
+
+        guard let httpResp = initResp as? HTTPURLResponse,
+              let uploadURL = httpResp.value(forHTTPHeaderField: "X-Goog-Upload-URL") else {
+            throw LLMError.uploadFailed("Failed to get upload URL from response")
+        }
+
+        // Step 2: Upload the actual bytes
+        var uploadRequest = URLRequest(url: URL(string: uploadURL)!)
+        uploadRequest.httpMethod = "POST"
+        uploadRequest.setValue("upload, finalize", forHTTPHeaderField: "X-Goog-Upload-Command")
+        uploadRequest.setValue("0", forHTTPHeaderField: "X-Goog-Upload-Offset")
+        uploadRequest.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
+        uploadRequest.httpBody = jpegData
+
+        let (uploadData, uploadResp) = try await session.data(for: uploadRequest)
+
+        guard let uploadHttpResp = uploadResp as? HTTPURLResponse,
+              (200..<300).contains(uploadHttpResp.statusCode) else {
+            let body = String(data: uploadData, encoding: .utf8) ?? "<nil>"
+            throw LLMError.uploadFailed("Upload failed: \(body)")
+        }
+
+        // Parse response to get file URI
+        let decoded = try JSONDecoder().decode(FileUploadResponse.self, from: uploadData)
+        print("[LLM] File uploaded: \(decoded.file.uri)")
+        return decoded.file.uri
+    }
+
+    // MARK: - Phase 1: Quick merchant + total extraction
+
+    func analyzeReceiptPhase1(fileUri: String) async throws -> Phase1Result {
+        let developerMessage = """
+        Return ONLY minified JSON: {"merchant":string|null,"total_cents":int}
+        No extra keys. No markdown. No text.
+        """
+
+        let userMessage = "Extract merchant and total from this receipt."
+
+        let systemInstruction = Content(
+            role: "system",
+            parts: [Part(text: developerMessage, inlineData: nil, fileData: nil)]
+        )
+
+        let userContent = Content(
+            role: "user",
+            parts: [
+                Part(text: userMessage, inlineData: nil, fileData: nil),
+                Part(
+                    text: nil,
+                    inlineData: nil,
+                    fileData: .init(mimeType: "image/jpeg", fileUri: fileUri)
+                )
+            ]
+        )
+
+        let req = GenerateContentRequest(
+            contents: [userContent],
+            systemInstruction: systemInstruction,
+            generationConfig: .init(
+                maxOutputTokens: 128,
+                responseMimeType: "application/json",
+                temperature: 0.1,
+                thinkingConfig: .init(thinkingBudget: 0)
+            )
+        )
+
+        let (text, _, _, _) = try await send(req)
+
+        guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
+            throw LLMError.emptyText
+        }
+
+        let repaired = repairJSON(text)
+        do {
+            return try JSONDecoder().decode(Phase1Result.self, from: Data(repaired.utf8))
+        } catch {
+            print("[LLM] Phase1 decode error: \(error)")
+            print("[LLM] Text: \(repaired)")
+            throw LLMError.decodeFailed
+        }
+    }
+
+    // MARK: - Phase 2: Full items + breakdown extraction
+
+    func analyzeReceiptPhase2(fileUri: String, knownTotalCents: Int) async throws -> Phase2Result {
+        let developerMessage = """
+        You are parsing for a bill splitting app so users can easily split up receipts by items.
+        The total is \(knownTotalCents) cents, and sum of all item cents, taxes, fees, and discounts should sum up exactly to the total.
+
+        Output ONLY using this exact line-based format. No markdown, no code fences, no extra text.
+
+        BEGIN_RECEIPT_V2
+        SUBTOTAL_CENTS|<int or empty>
+        TAX_CENTS|<int or empty>
+        TIP_CENTS|<int or empty>
+        FEES_CENTS|<int or empty>
+        DISCOUNT_CENTS|<int or empty>
+
+        ITEM|<qty int>|<label string>|<cents int or empty>
+        (repeat ITEM lines as needed)
+
+        ISSUE|<string>
+        (repeat ISSUE lines as needed; if none, output zero ISSUE lines)
+
+        END_RECEIPT_V2
+
+        Rules:
+        - Include ONLY items that are actually charged.
+        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
+        - Calculate sub-items into the parent item's cents; do not include them as a separate item.
+        - Each item's cents should be final amount: qty * (price + subitem prices) - item discounts. Example: 2 $10 burgers with $0.50 for pickles would show 2100 cents.
+        - CHECK: The sum of all item cents + tax_cents + tip_cents + fees_cents - discount_cents MUST EQUAL \(knownTotalCents).
+        - Your response is correct if and only if sum of these charges are strictly equal to \(knownTotalCents) is crucial.
+        """
+
+        let userMessage = "Extract all items and breakdown from this receipt that add up to \(knownTotalCents) cents."
+
+        let systemInstruction = Content(
+            role: "system",
+            parts: [Part(text: developerMessage, inlineData: nil, fileData: nil)]
+        )
+
+        let userContent = Content(
+            role: "user",
+            parts: [
+                Part(text: userMessage, inlineData: nil, fileData: nil),
+                Part(
+                    text: nil,
+                    inlineData: nil,
+                    fileData: .init(mimeType: "image/jpeg", fileUri: fileUri)
+                )
+            ]
+        )
+
+        let req = GenerateContentRequest(
+            contents: [userContent],
+            systemInstruction: systemInstruction,
+            generationConfig: .init(
+                maxOutputTokens: maxTokensPrimary,
+                responseMimeType: nil, // <- Phase 2 now uses a strict line protocol
+                temperature: 0.15,
+                thinkingConfig: .init(thinkingBudget: -1)
+            )
+        )
+
+        let (text, _, _, _) = try await send(req)
+
+        guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
+            throw LLMError.emptyText
+        }
+
+        if let parsed = tryDecodePhase2(from: text) {
+            return parsed
+        }
+
+        print("[LLM] Phase2 decode failed. Raw text:\n\(text)")
+        throw LLMError.decodeFailed
+    }
+
+    private func tryDecodePhase2(from text: String) -> Phase2Result? {
+        // 1) Try to parse the strict line protocol (BEGIN_RECEIPT_V2 ... END_RECEIPT_V2)
+        // 2) If it doesn't look like protocol output, fall back to JSON decode (for backwards compatibility)
+
+        let cleaned = text
+            .replacingOccurrences(of: "```", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if cleaned.contains("BEGIN_RECEIPT_V2") {
+            let lines = cleaned
+                .components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+
+            var inBlock = false
+            var subtotal: Int? = nil
+            var tax: Int? = nil
+            var tip: Int? = nil
+            var fees: Int? = nil
+            var discount: Int? = nil
+            var items: [Phase2Result.Item] = []
+            var issues: [String] = []
+
+            func parseOptionalInt(_ s: String) -> Int? {
+                let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.isEmpty { return nil }
+                return Int(t)
+            }
+
+            for line in lines {
+                if line == "BEGIN_RECEIPT_V2" {
+                    inBlock = true
+                    continue
+                }
+                if line == "END_RECEIPT_V2" {
+                    inBlock = false
+                    break
+                }
+                guard inBlock else { continue }
+
+                // Split by | preserving empty fields
+                let parts = line.split(separator: "|", omittingEmptySubsequences: false).map { String($0) }
+                guard let tag = parts.first else { continue }
+
+                switch tag {
+                case "SUBTOTAL_CENTS":
+                    if parts.count >= 2 { subtotal = parseOptionalInt(parts[1]) }
+                case "TAX_CENTS":
+                    if parts.count >= 2 { tax = parseOptionalInt(parts[1]) }
+                case "TIP_CENTS":
+                    if parts.count >= 2 { tip = parseOptionalInt(parts[1]) }
+                case "FEES_CENTS":
+                    if parts.count >= 2 { fees = parseOptionalInt(parts[1]) }
+                case "DISCOUNT_CENTS":
+                    if parts.count >= 2 { discount = parseOptionalInt(parts[1]) }
+                case "ISSUE":
+                    if parts.count >= 2 {
+                        let msg = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !msg.isEmpty { issues.append(msg) }
+                    }
+                case "ITEM":
+                    // ITEM|<qty int>|<label string>|<cents int or empty>
+                    guard parts.count >= 4 else { continue }
+                    let qty = Int(parts[1].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+                    let label = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cents = parseOptionalInt(parts[3])
+
+                    if !label.isEmpty {
+                        items.append(.init(label: label, qty: qty, cents: cents))
+                    }
+                default:
+                    continue
+                }
+            }
+
+            // Basic sanity: we need at least items (can be empty but shouldn't usually be)
+            // Still return even if empty so caller can surface issues.
+            return Phase2Result(
+                subtotal_cents: subtotal,
+                tax_cents: tax,
+                tip_cents: tip,
+                fees_cents: fees,
+                discount_cents: discount,
+                items: items,
+                issues: issues
+            )
+        }
+
+        // Fallback: JSON decode (older behavior)
+        let repaired = repairJSON(text)
+        do {
+            return try JSONDecoder().decode(Phase2Result.self, from: Data(repaired.utf8))
+        } catch {
+            print("[LLM] Phase2 decode error: \(error)")
+            return nil
+        }
+    }
+
     // MARK: - JSON helpers
 
     private func tryDecodeParsedReceipt(from text: String) -> ParsedReceipt? {
@@ -250,19 +579,19 @@ final class LLMClient {
     }
     
     private func repairJSON(_ text: String) -> String {
-        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        
+        var cleaned = text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
         // Remove common trailing quote issues
         if cleaned.hasSuffix("\"}") {
             cleaned = String(cleaned.dropLast(2)) + "}"
         }
-        
+
         // Remove markdown code fences
         cleaned = cleaned
             .replacingOccurrences(of: "```json", with: "")
             .replacingOccurrences(of: "```", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+
         return cleaned
     }
 
@@ -270,7 +599,7 @@ final class LLMClient {
         let cleaned = text
             .replacingOccurrences(of: "```json", with: "")
             .replacingOccurrences(of: "```", with: "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
 
         guard let start = cleaned.firstIndex(of: "{") else { return nil }
         

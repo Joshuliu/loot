@@ -143,55 +143,124 @@ struct RootContainerView: View {
     }
 
     private func analyzeCaptured(image: UIImage) {
+        analyzeCapturedTwoPhase(image: image)
+    }
+
+    /// Two-phase receipt analysis:
+    /// Phase 1: Quick merchant + total extraction → Navigate immediately
+    /// Phase 2: Full items + breakdown (runs in background)
+    private func analyzeCapturedTwoPhase(image: UIImage) {
         isAnalyzing = true
         analyzeError = nil
-        
+
         Task {
-            defer { isAnalyzing = false }
             do {
-                let parsed = try await LLMClient.shared.analyzeReceipt(image: image)
+                // UPLOAD: Upload image once, get file URI for reuse
+                print("[Scan] Uploading image...")
+                let fileUri = try await LLMClient.shared.uploadImage(image)
+
+                // PHASE 1: Quick merchant + total extraction
+                print("[Scan] Phase 1: Extracting merchant and total...")
+                let phase1 = try await LLMClient.shared.analyzeReceiptPhase1(fileUri: fileUri)
+                print("[Scan] Phase 1 complete: merchant=\(phase1.merchant ?? "nil"), total=\(phase1.total_cents ?? 0)")
+
+                let total = max(0, phase1.total_cents ?? 0)
+
                 await MainActor.run {
-                    uiModel.parsedReceipt = parsed
+                    // Update form fields with phase 1 data
+                    amountString = String(format: "%.2f", Double(total) / 100.0)
 
-                    // Prefill form fields with SUBTOTAL (not total)
-                    let breakdown = parsed.breakdownDefaults()
-                    let total = parsed.bestTotalCents()
-                    let subtotal = max(0, parsed.subtotal_cents ?? (total - breakdown.tax - breakdown.fees - breakdown.tip + breakdown.discount))
-                    
-                    amountString = String(format: "%.2f", Double(subtotal) / 100.0)
-                    
-                    // Prefill tip if present
-                    if breakdown.tip > 0 {
-                        tipAmount = String(format: "%.2f", Double(breakdown.tip) / 100.0)
-                    }
-
-                    if let merchant = parsed.merchant, !merchant.isEmpty {
+                    if let merchant = phase1.merchant, !merchant.isEmpty {
                         receiptName = merchant
                     }
 
+                    // Create partial receipt (empty items - will be populated by phase 2)
                     uiModel.currentReceipt = ReceiptDisplay(
                         id: UUID().uuidString,
-                        title: parsed.displayTitle(fallback: receiptName.isEmpty ? "New Receipt" : receiptName),
+                        title: phase1.merchant ?? (receiptName.isEmpty ? "New Receipt" : receiptName),
                         createdAt: Date(),
-
-                        subtotalCents: subtotal,
-                        feesCents: breakdown.fees,
-                        taxCents: breakdown.tax,
-                        tipCents: breakdown.tip,
-                        discountCents: breakdown.discount,
+                        subtotalCents: total,  // Use total as subtotal initially
+                        feesCents: 0,
+                        taxCents: 0,
+                        tipCents: 0,
+                        discountCents: 0,
                         totalCents: total,
-
-                        items: parsed.toDisplayItems()
+                        items: []  // Empty - loading
                     )
 
+                    uiModel.itemsLoadingState = .loading
                     confirmationCameFromManual = false
+
+                    // Navigate immediately after phase 1!
+                    isAnalyzing = false
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         screen = .confirmation
                     }
                 }
+
+                // PHASE 2: Background item extraction (reuses same file URI)
+                let knownTotal = total
+                uiModel.phase2Task = Task { @MainActor in
+                    do {
+                        print("[Scan] Phase 2: Extracting items and breakdown...")
+                        let phase2 = try await LLMClient.shared.analyzeReceiptPhase2(
+                            fileUri: fileUri,
+                            knownTotalCents: knownTotal
+                        )
+                        print("[Scan] Phase 2 complete: \(phase2.items.count) items")
+
+                        // Build full ParsedReceipt for compatibility
+                        let fullParsed = ParsedReceipt(
+                            merchant: phase1.merchant,
+                            total_cents: knownTotal,
+                            subtotal_cents: phase2.subtotal_cents,
+                            tax_cents: phase2.tax_cents,
+                            tip_cents: phase2.tip_cents,
+                            fees_cents: phase2.fees_cents,
+                            discount_cents: phase2.discount_cents,
+                            items: phase2.items.map { ParsedReceipt.Item(label: $0.label, qty: $0.qty, cents: $0.cents) },
+                            issues: phase2.issues
+                        )
+                        uiModel.parsedReceipt = fullParsed
+
+                        // Extract breakdown
+                        let breakdown = fullParsed.breakdownDefaults()
+                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees - breakdown.tip + breakdown.discount))
+
+                        // Prefill tip if present
+                        if breakdown.tip > 0 {
+                            tipAmount = String(format: "%.2f", Double(breakdown.tip) / 100.0)
+                        }
+
+                        // Update subtotal field
+                        amountString = String(format: "%.2f", Double(subtotal) / 100.0)
+
+                        // Rebuild currentReceipt with items + breakdown
+                        uiModel.currentReceipt = ReceiptDisplay(
+                            id: uiModel.currentReceipt?.id ?? UUID().uuidString,
+                            title: phase1.merchant ?? (receiptName.isEmpty ? "New Receipt" : receiptName),
+                            createdAt: Date(),
+                            subtotalCents: subtotal,
+                            feesCents: breakdown.fees,
+                            taxCents: breakdown.tax,
+                            tipCents: breakdown.tip,
+                            discountCents: breakdown.discount,
+                            totalCents: knownTotal,
+                            items: fullParsed.toDisplayItems()
+                        )
+
+                        uiModel.itemsLoadingState = .loaded(phase2)
+                    } catch {
+                        print("[Scan] Phase 2 failed: \(error)")
+                        uiModel.itemsLoadingState = .failed(error)
+                        // Receipt is still usable with merchant/total from phase 1
+                    }
+                }
+
             } catch {
                 print("[Scan] analyzeReceipt failed: \(error)")
                 await MainActor.run {
+                    isAnalyzing = false
                     analyzeError = "Scan failed: \(error.localizedDescription)"
                 }
             }
@@ -343,6 +412,7 @@ struct RootContainerView: View {
                         
                     case .confirmation:
                         ConfirmationView(
+                            uiModel: uiModel,
                             receiptName: receiptName,
                             amount: totalAmount,  // Use computed total for display
                             participantCount: participantCount,
@@ -357,7 +427,7 @@ struct RootContainerView: View {
                             },
                             onSend: {
                                 onSendBill(receiptName, totalAmount)  // Send the total amount
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                         screen = .tabview
                                     }

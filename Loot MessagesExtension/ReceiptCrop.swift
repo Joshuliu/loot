@@ -148,6 +148,45 @@ private func enhance(ciImage: CIImage, contrast: Float, sharpen: Float) -> CIIma
     return sharp.outputImage ?? contrasted
 }
 
+// NEW: Aggressive OCR-optimized enhancement for receipt parsing
+private func enhanceForOCR(ciImage: CIImage) -> CIImage {
+    var current = ciImage
+
+    // 1) Convert to grayscale first
+    let grayscale = CIFilter.colorControls()
+    grayscale.inputImage = current
+    grayscale.saturation = 0
+    current = grayscale.outputImage ?? current
+
+    // 2) Auto-adjust exposure (normalize brightness)
+    let exposure = CIFilter.exposureAdjust()
+    exposure.inputImage = current
+    exposure.ev = 0.3  // Slight brightening helps faded receipts
+    current = exposure.outputImage ?? current
+
+    // 3) Aggressive contrast stretch
+    let contrast = CIFilter.colorControls()
+    contrast.inputImage = current
+    contrast.contrast = 1.8  // Much stronger than default 1.05
+    contrast.brightness = 0.05  // Slight brightness boost
+    current = contrast.outputImage ?? current
+
+    // 4) Unsharp mask for edge enhancement (better than simple sharpen)
+    let unsharp = CIFilter.unsharpMask()
+    unsharp.inputImage = current
+    unsharp.radius = 2.5
+    unsharp.intensity = 0.8
+    current = unsharp.outputImage ?? current
+
+    // 5) Gamma correction to push midtones toward white (makes text pop)
+    let gamma = CIFilter.gammaAdjust()
+    gamma.inputImage = current
+    gamma.power = 0.8  // < 1 brightens midtones
+    current = gamma.outputImage ?? current
+
+    return current
+}
+
 // NEW: Detect if image needs enhancement
 private func imageNeedsEnhancement(_ ci: CIImage) -> Bool {
     // Sample center region brightness
