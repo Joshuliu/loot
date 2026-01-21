@@ -20,7 +20,18 @@ struct ReceiptView: View {
     private var captureImage: UIImage? {
         uiModel.scanImageCropped ?? uiModel.scanImageOriginal
     }
+    struct TopRoundedRectangle: Shape {
+        var radius: CGFloat = 20
 
+        func path(in rect: CGRect) -> Path {
+            let path = UIBezierPath(
+                roundedRect: rect,
+                byRoundingCorners: [.topLeft, .topRight],
+                cornerRadii: CGSize(width: radius, height: radius)
+            )
+            return Path(path.cgPath)
+        }
+    }
     var body: some View {
         VStack(spacing: 0) {
             if showBackRow {
@@ -123,11 +134,13 @@ struct ReceiptView: View {
             }
             .buttonStyle(.plain)
             .opacity(1)
+            .padding(.top, 25)
+            .background(Color(.systemBackground).opacity(0.95))
+            .clipShape(TopRoundedRectangle(radius: 20))
 //            .opacity(captureImage == nil ? 0 : 1)
 //            .padding(.horizontal, 14)
-            .padding(.top, 20)
 //            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
-            .background(Color(.systemBackground).opacity(1))
+//            .background(Color(.systemBackground).opacity(1))
             .allowsHitTesting(captureImage != nil)
         }
         .sheet(isPresented: $showCapture) {
