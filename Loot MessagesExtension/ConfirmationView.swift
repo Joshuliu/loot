@@ -374,8 +374,8 @@ struct ConfirmationView: View {
                             .cornerRadius(18)
                     }
                     .buttonStyle(.plain)
-                    .disabled(displayAmount == "$0" || amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || amount == "0")
-                    .opacity((displayAmount == "$0" || amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || amount == "0") ? 0.4 : 1.0)
+                    .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
+                    .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
                     .opacity(buttonsOpacity)
 
 
