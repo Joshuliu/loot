@@ -541,7 +541,7 @@ struct SplitGuestDrawer: View {
 }
 // MARK: - Rounded corner helper
 
-private struct RoundedCorner: Shape {
+struct RoundedCorner: Shape {
     var radius: CGFloat = 0
     var corners: UIRectCorner = .allCorners
 

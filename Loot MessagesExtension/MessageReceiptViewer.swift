@@ -60,7 +60,8 @@ struct MessageReceiptViewer: View {
             .padding(.horizontal, 14)
             .padding(.top, captureImage != nil ? 40: 10)
             .padding(.bottom, 14)
-            .background(Color(.systemBackground).opacity(0.95))
+            .background(Color(.secondarySystemBackground))
+            .shadow(color: Color.black.opacity(captureImage == nil ? 1 : 0), radius: 18, x: 0, y: -2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -74,7 +75,7 @@ struct MessageReceiptViewer: View {
             .foregroundStyle(selected ? .white : .primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(selected ? Color.blue : Color(.secondarySystemBackground))
+            .background(selected ? Color.blue : Color(.tertiarySystemFill))
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)

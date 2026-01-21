@@ -25,18 +25,6 @@ struct ReceiptView: View {
         uiModel.itemsLoadingState.isLoading
     }
     
-    struct TopRoundedRectangle: Shape {
-        var radius: CGFloat = 20
-
-        func path(in rect: CGRect) -> Path {
-            let path = UIBezierPath(
-                roundedRect: rect,
-                byRoundingCorners: [.topLeft, .topRight],
-                cornerRadii: CGSize(width: radius, height: radius)
-            )
-            return Path(path.cgPath)
-        }
-    }
     var body: some View {
         VStack(spacing: 0) {
             if showBackRow {
@@ -159,15 +147,16 @@ struct ReceiptView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color(.secondarySystemBackground))
+                .background(Color(.tertiarySystemFill))
                 .cornerRadius(14)
                 .padding(.horizontal, 18)
             }
             .buttonStyle(.plain)
             .opacity(1)
             .padding(.top, 25)
-            .background(Color(.systemBackground).opacity(0.95))
-            .clipShape(TopRoundedRectangle(radius: 20))
+            .background(Color(.secondarySystemBackground).opacity(1))
+            .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
+            .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
 //            .opacity(captureImage == nil ? 0 : 1)
 //            .padding(.horizontal, 14)
 //            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
