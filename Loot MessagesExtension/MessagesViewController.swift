@@ -53,9 +53,6 @@ final class MessagesViewController: MSMessagesAppViewController {
 extension MessagesViewController {
 
     private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
-        let payerUUID = conversation.localParticipantIdentifier.uuidString
-        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
-
         // expansion state
         uiModel.isExpanded = (presentationStyle == .expanded)
 
@@ -112,20 +109,19 @@ extension MessagesViewController {
             owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,  // Only pass if non-empty
             totalCents: splitPayload.tot
         )
-        .background(Color(.systemBackground))
-        .padding(.top, -50)
 
         let hosting = UIHostingController(rootView: card)
         hosting.view.backgroundColor = .clear
+        hosting.safeAreaRegions = []  // Remove safe area insets that cause offset
 
         let size = CGSize(width: 250, height: 150)
-        hosting.view.bounds = CGRect(origin: .zero, size: size)
+        hosting.view.frame = CGRect(origin: .zero, size: size)
         hosting.view.setNeedsLayout()
         hosting.view.layoutIfNeeded()
 
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { _ in
-            hosting.view.drawHierarchy(in: CGRect(origin: .zero, size: size),
+            hosting.view.drawHierarchy(in: hosting.view.bounds,
                                        afterScreenUpdates: true)
         }
     }
