@@ -812,12 +812,16 @@ struct SplitView: View {
                 isExpanded: $showGuestEditor,
                 mode: $guestEditorMode,
                 guests: $draftGuests,
-                payerGuestId: $draftPayerGuestId,
-                canSave: (draftGuests != guests) || (draftPayerGuestId != payerGuestId),
-                onSave: { applyGuestEdits() }
+                payerGuestId: $draftPayerGuestId
             )
             .ignoresSafeArea(.keyboard, edges: .bottom)
             .ignoresSafeArea(edges: .bottom)
+        }
+        .onChange(of: draftGuests) { _, _ in
+            applyGuestEdits()
+        }
+        .onChange(of: draftPayerGuestId) { _, _ in
+            applyGuestEdits()
         }
         .sheet(isPresented: $showEditReceipt) {
             EditReceiptView(

@@ -28,13 +28,9 @@ struct SplitGuestDrawer: View {
     @Binding var isExpanded: Bool
     @Binding var mode: GuestEditorMode?
 
-    // Working draft bindings
+    // Working draft bindings (changes auto-save via bindings)
     @Binding var guests: [SplitGuest]
     @Binding var payerGuestId: UUID
-
-    // Save logic
-    let canSave: Bool
-    let onSave: () -> Void
 
     private let collapsedHeight: CGFloat = 132
     
@@ -56,9 +52,9 @@ struct SplitGuestDrawer: View {
     private func sheetHeight(maxH: CGFloat) -> CGFloat {
         let rowH: CGFloat = 58
         let addRowH: CGFloat = (mode == .some(.splitWith)) ? 48 : 8
-        let saveH: CGFloat = 75
-        let estimated = collapsedHeight + addRowH + (rowH * CGFloat(guests.count)) + saveH
-        
+        let bottomPadding: CGFloat = 40
+        let estimated = collapsedHeight + addRowH + (rowH * CGFloat(guests.count)) + bottomPadding
+
         // Don't reduce height for keyboard - we'll offset instead
         return min(maxH, estimated)
     }
@@ -450,7 +446,6 @@ struct SplitGuestDrawer: View {
                                 guests[index].isIncluded = true
                             }
                             payerGuestId = guest.id
-                            pendingPayerGuestId = nil
                         }
                     }
                 }
@@ -510,32 +505,9 @@ struct SplitGuestDrawer: View {
                     .overlay(Capsule().stroke(Color.blue.opacity(0.25), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 8)
+                .padding(.top, 16)
+                .padding(.bottom, 32)
             }
-
-            Button {
-                // Check pending payer before saving
-                checkPendingPayerChange()
-                
-                onSave()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                    isExpanded = false
-                    focusedGuestId = nil  // Dismiss keyboard
-                }
-            } label: {
-                Text("Save")
-                    .font(.system(size: 17, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(canSave ? Color.blue : Color(.systemGray4))
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                    .padding(.horizontal, 18)
-                    .padding(.top, 12)
-                    .padding(.bottom, 20)
-            }
-            .buttonStyle(.plain)
-            .disabled(!canSave)
         }
     }
 }

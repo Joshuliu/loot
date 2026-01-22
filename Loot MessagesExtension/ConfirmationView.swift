@@ -287,7 +287,7 @@ struct ConfirmationView: View {
 
                 Text(dragIntent == .left ? "Swipe left to delete" :
                         dragIntent == .right ? "Swipe right for split options" :
-                        isLoadingItems ? "Swipe up to send (no receipt breakdown)" : "Swipe card up to send")
+                        isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
                     .padding(.top, 10)
