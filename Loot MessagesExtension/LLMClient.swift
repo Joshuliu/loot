@@ -417,7 +417,9 @@ final class LLMClient {
         Rules:
         - Include ONLY items that are actually charged.
         - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
-        - Calculate sub-items into the parent item's cents; do not include them as a separate item.
+        - Calculate sub-items into the parent item's cents ONLY IF the parent price doesn't include it already.
+        - Use context clues (e.g. indentations, "F") to determine if sub-items have been priced in to parent price.
+        - Do not include sub-items as a separate item.
         - Each item's cents should be final amount: qty * (price + subitem prices) - item discounts. Example: 2 $10 burgers with $0.50 for pickles would show 2100 cents.
         - CHECK: The sum of all item cents + tax_cents + tip_cents + fees_cents - discount_cents MUST EQUAL \(knownTotalCents).
         - Your response is correct if and only if sum of these charges are strictly equal to \(knownTotalCents) is crucial.

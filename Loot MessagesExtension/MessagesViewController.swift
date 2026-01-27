@@ -69,7 +69,6 @@ extension MessagesViewController {
     }
 
     private func setupRootView(conversation: MSConversation) {
-        let payerUUID = conversation.localParticipantIdentifier.uuidString
         let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
         hostingController.rootView = RootContainerView(
@@ -82,7 +81,6 @@ extension MessagesViewController {
                 self?.sendBillMessage(
                     receiptName: receiptName,
                     amount: amount,
-                    payerUUID: payerUUID,
                     participantCount: participantCount
                 )
             }
@@ -91,7 +89,6 @@ extension MessagesViewController {
     
     func renderCardImage(receiptName: String,
                          displayAmount: String,
-                         payerUUID: String,
                          participantCount: Int,
                          splitPayload: SplitPayload) -> UIImage {
         
@@ -136,7 +133,6 @@ extension MessagesViewController {
 
     func sendBillMessage(receiptName: String,
                          amount: String,
-                         payerUUID: String,
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
 
@@ -181,7 +177,6 @@ extension MessagesViewController {
         layout.image = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
-            payerUUID: payerUUID,
             participantCount: participantCount,
             splitPayload: splitPayload
         )
@@ -271,7 +266,7 @@ private extension LootMessagePayload {
     }
 }
 
-// MARK: - Build SplitPayload / ReceiptPayload from your in-app models (✅ OPTIMIZED)
+// MARK: - Build SplitPayload / ReceiptPayload
 
 private extension SplitPayload {
     static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
@@ -339,7 +334,7 @@ private extension SplitPayload {
             g: guests,
             pi: payerIndex,
             o: owed,
-            f: fees == 0 ? nil : fees,          // ✅ Only include if non-zero
+            f: fees == 0 ? nil : fees,
             tx: tax == 0 ? nil : tax,
             tip: tip == 0 ? nil : tip,
             d: discount == 0 ? nil : discount,

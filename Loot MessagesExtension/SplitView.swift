@@ -240,6 +240,50 @@ struct SplitView: View {
         return colorForSlot(idx)
     }
 
+    // MARK: - Guest navigation (for toolbar)
+    private var currentGuestIndex: Int {
+        if mode == .byItems {
+            return activeGuests.firstIndex(where: { $0.id == byItemSelectedGuestId }) ?? 0
+        } else {
+            return guestSelectedIndex
+        }
+    }
+
+    private var currentGuestName: String {
+        guard activeCount > 0 else { return "No guests" }
+        let idx = currentGuestIndex
+        guard activeGuests.indices.contains(idx) else { return "Guest" }
+        return displayName(for: activeGuests[idx], fallbackIndexInAllGuests: allIndex(for: activeGuests[idx].id))
+    }
+
+    private var canGoPrevGuest: Bool {
+        currentGuestIndex > 0
+    }
+
+    private var canGoNextGuest: Bool {
+        currentGuestIndex < activeCount - 1
+    }
+
+    private func selectPreviousGuest() {
+        guard canGoPrevGuest else { return }
+        let newIndex = currentGuestIndex - 1
+        if mode == .byItems {
+            byItemSelectedGuestId = activeGuests[newIndex].id
+        } else {
+            guestSelectedIndex = newIndex
+        }
+    }
+
+    private func selectNextGuest() {
+        guard canGoNextGuest else { return }
+        let newIndex = currentGuestIndex + 1
+        if mode == .byItems {
+            byItemSelectedGuestId = activeGuests[newIndex].id
+        } else {
+            guestSelectedIndex = newIndex
+        }
+    }
+
     // MARK: - Seed By-Items from receipt used by ReceiptView
     private func seedByItemsFromReceipt() {
         didInitByItem = true
@@ -367,7 +411,8 @@ struct SplitView: View {
                                     .rotationEffect(.degrees(-90))
                                     .frame(width: size, height: size)
                             }
-                            if i > 0 {
+                            // Show divider circle only if previous guest has amount > $0
+                            if i > 0, guestAmountsCents[i - 1] > 0 {
                                 let ang = -(.pi / 1.975) + (startFrac * 2 * .pi)
                                 let hx = center.x + handleRadius * cos(ang)
                                 let hy = center.y + handleRadius * sin(ang)
@@ -694,6 +739,56 @@ struct SplitView: View {
             }
         }
     }
+    // MARK: - Guest navigation toolbar
+    private func guestNavigationToolbar() -> some View {
+        HStack(spacing: 0) {
+            // Previous button
+            Button(action: selectPreviousGuest) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(canGoPrevGuest ? Color.primary : Color.secondary.opacity(0.4))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoPrevGuest)
+
+            Spacer()
+
+            // Guest name with badge
+            HStack(spacing: 8) {
+                ColoredCircleBadge(
+                    text: BadgeColors.initials(from: currentGuestName, fallback: currentGuestIndex),
+                    color: colorForSlot(currentGuestIndex)
+                )
+                Text(currentGuestName)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Next button
+            Button(action: selectNextGuest) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(canGoNextGuest ? Color.primary : Color.secondary.opacity(0.4))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canGoNextGuest)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
+        )
+        .padding(.horizontal, 16)
+    }
+
     private func openGuestEditor(_ mode: GuestEditorMode) {
       draftGuests = guests
       draftPayerGuestId = payerGuestId
@@ -808,6 +903,14 @@ struct SplitView: View {
             }
         }
         .overlay(alignment: .bottom) {
+            // Guest navigation toolbar (behind drawer, with padding to sit above it)
+            if activeCount > 1 {
+                guestNavigationToolbar()
+                    .padding(.bottom, 120)  // Account for collapsed drawer height
+            }
+        }
+        .overlay(alignment: .bottom) {
+            // Guest drawer (in front, covers toolbar when expanded)
             SplitGuestDrawer(
                 isExpanded: $showGuestEditor,
                 mode: $guestEditorMode,

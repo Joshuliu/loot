@@ -237,10 +237,6 @@ struct ConfirmationView: View {
 
                     withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
                     onSend()
-
-//                    DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-//                        withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
-//                    }
                     dragIntent = .none
                     return
                 }
