@@ -137,31 +137,33 @@ struct ReceiptView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            Button {
-                showCapture = true
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "doc.viewfinder")
-                    Text("View capture")
+            if uiModel.isExpanded == true {
+                Button {
+                    showCapture = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.viewfinder")
+                        Text("View capture")
+                    }
+                    .font(.system(size: 16, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color(.tertiarySystemFill))
+                    .cornerRadius(14)
+                    .padding(.horizontal, 18)
                 }
-                .font(.system(size: 16, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color(.tertiarySystemFill))
-                .cornerRadius(14)
-                .padding(.horizontal, 18)
+                .buttonStyle(.plain)
+                .opacity(1)
+                .padding(.top, 25)
+                .background(Color(.secondarySystemBackground).opacity(1))
+                .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
+                .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
+                //            .opacity(captureImage == nil ? 0 : 1)
+                //            .padding(.horizontal, 14)
+                //            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
+                //            .background(Color(.systemBackground).opacity(1))
+                .allowsHitTesting(captureImage != nil)
             }
-            .buttonStyle(.plain)
-            .opacity(1)
-            .padding(.top, 25)
-            .background(Color(.secondarySystemBackground).opacity(1))
-            .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-            .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
-//            .opacity(captureImage == nil ? 0 : 1)
-//            .padding(.horizontal, 14)
-//            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
-//            .background(Color(.systemBackground).opacity(1))
-            .allowsHitTesting(captureImage != nil)
         }
         .sheet(isPresented: $showCapture) {
             CapturePreviewView(image: captureImage) {

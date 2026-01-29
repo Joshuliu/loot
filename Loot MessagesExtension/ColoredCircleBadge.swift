@@ -27,16 +27,16 @@ struct ColoredCircleBadge: View {
 
 /// Shared color palette for consistent slot/guest colors across the app
 enum BadgeColors {
-    // Explicit RGB colors to avoid liquid glass transparency effects
+    // Use explicit RGB colors to ensure full opacity
     static let palette: [Color] = [
-        Color(red: 0.0, green: 0.48, blue: 1.0),      // blue
-        Color(red: 0.2, green: 0.78, blue: 0.35),     // green
-        Color(red: 1.0, green: 0.58, blue: 0.0),      // orange
-        Color(red: 1.0, green: 0.18, blue: 0.33),     // pink
-        Color(red: 0.69, green: 0.32, blue: 0.87),    // purple
-        Color(red: 0.19, green: 0.69, blue: 0.78),    // teal
-        Color(red: 0.35, green: 0.34, blue: 0.84),    // indigo
-        Color(red: 0.0, green: 0.78, blue: 0.75)      // mint
+        Color(red: 0.0, green: 0.478, blue: 1.0),     // blue
+        Color(red: 0.204, green: 0.780, blue: 0.349), // green
+        Color(red: 1.0, green: 0.584, blue: 0.0),     // orange
+        Color(red: 1.0, green: 0.176, blue: 0.333),   // pink
+        Color(red: 0.686, green: 0.322, blue: 0.871), // purple
+        Color(red: 0.188, green: 0.690, blue: 0.780), // teal
+        Color(red: 0.345, green: 0.337, blue: 0.839), // indigo
+        Color(red: 0.388, green: 0.902, blue: 0.886)  // mint
     ]
 
     static func color(for slotIndex: Int) -> Color {

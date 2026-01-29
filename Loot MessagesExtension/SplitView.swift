@@ -40,13 +40,13 @@ struct SplitDraft: Equatable {
 struct SplitView: View {
     @ObservedObject var uiModel: LootUIModel
     @State private var haptic = UIImpactFeedbackGenerator(style: .light)
-        @State private var lastHapticCents: Int = 0
+    @State private var lastHapticCents: Int = 0
     let amountString: String
     let participantCount: Int
     let initialDraft: SplitDraft?
     let onBack: () -> Void
     let onApply: (SplitDraft) -> Void
-
+    
     init(
         uiModel: LootUIModel,
         amountString: String,
@@ -62,20 +62,20 @@ struct SplitView: View {
         self.onBack = onBack
         self.onApply = onApply
     }
-
+    
     // MARK: - Mode state
     @State private var mode: SplitDraft.Mode = .equally
     @State private var lastMode: SplitDraft.Mode = .equally
-
+    
     // MARK: - Guests (editable)
     @State private var guests: [SplitGuest] = []
     @State private var payerGuestId: UUID = UUID()
-
+    
     // Split panels use *included* guests only
     @State private var guestSelectedIndex: Int = 0
     @State private var guestAmountsCents: [Int] = []
     @State private var donutDrag: DonutDrag? = nil
-
+    
     // Bottom guest editor UI
     @State private var showGuestEditor: Bool = false
     @State private var guestEditorMode: GuestEditorMode? = nil
@@ -84,7 +84,7 @@ struct SplitView: View {
     
     // Edit receipt sheet
     @State private var showEditReceipt: Bool = false
-
+    
     private struct DonutDrag {
         var lastRawFrac: Double
         var endFracUnwrapped: Double
@@ -345,13 +345,14 @@ struct SplitView: View {
         var label: String
         var price: String
         var assignedGuestIds: Set<UUID>
-
+        
         var isComplete: Bool {
             !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
-
+    
+    
     @State private var byItemItems: [DraftReceiptItem] = []
     @State private var byItemSelectedGuestId: UUID = UUID()
     @State private var feesString: String = ""
@@ -359,20 +360,20 @@ struct SplitView: View {
     @State private var tipString: String = ""
     @State private var discountString: String = ""
     @State private var didInitByItem: Bool = false
-
+    
     // MARK: - Derived guest views
     private var activeGuests: [SplitGuest] { guests.filter { $0.isIncluded } }
     private var activeCount: Int { max(0, activeGuests.count) }
-
+    
     // Loading state for items (from phase 2)
     private var isLoadingItems: Bool {
         uiModel.itemsLoadingState.isLoading
     }
-
+    
     private func allIndex(for id: UUID) -> Int? {
         guests.firstIndex(where: { $0.id == id })
     }
-
+    
     private func displayName(for guest: SplitGuest, fallbackIndexInAllGuests: Int? = nil) -> String {
         let t = guest.trimmedName
         if !t.isEmpty { return t }
@@ -385,25 +386,25 @@ struct SplitView: View {
         }
         return "Guest"
     }
-
+    
     private func payerDisplayName() -> String {
         if let idx = guests.firstIndex(where: { $0.id == payerGuestId }) {
             return displayName(for: guests[idx], fallbackIndexInAllGuests: idx)
         }
         return displayName(for: guests.first(where: { $0.isMe }) ?? SplitGuest(name: "Me", isIncluded: true, isMe: true))
     }
-
+    
     // MARK: - Money helpers
     private func cleanMoney(_ raw: String) -> String {
         raw.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
     }
-
+    
     private func moneyToCents(_ raw: String) -> Int {
         let s = cleanMoney(raw)
         guard !s.isEmpty else { return 0 }
-
+        
         if s.contains(".") {
             let parts = s.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
             let dollars = Int(parts.first ?? "0") ?? 0
@@ -414,9 +415,9 @@ struct SplitView: View {
         }
         return max(0, (Int(s) ?? 0) * 100)
     }
-
+    
     private var totalCents: Int { moneyToCents(amountString) }
-
+    
     // MARK: - Equal split generator (exact cents)
     private func equalSplitCents(total: Int, count: Int) -> [Int] {
         guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
@@ -429,7 +430,7 @@ struct SplitView: View {
         }
         return out
     }
-
+    
     private func ensureGuestArrays() {
         let cnt = activeCount
         if guestAmountsCents.count != cnt {
@@ -444,17 +445,17 @@ struct SplitView: View {
             guestSelectedIndex = 0
         }
     }
-
+    
     private func sumBefore(_ idx: Int) -> Int {
         guard idx > 0, guestAmountsCents.count == activeCount else { return 0 }
         return guestAmountsCents.prefix(idx).reduce(0, +)
     }
-
+    
     private func sumThrough(_ idx: Int) -> Int {
         guard guestAmountsCents.count == activeCount else { return 0 }
         return guestAmountsCents.prefix(idx + 1).reduce(0, +)
     }
-
+    
     private func remainingExcluding(_ idx: Int) -> Int {
         // Don't call ensureGuestArrays() here - it modifies state during view update
         guard !guestAmountsCents.isEmpty, guestAmountsCents.count == activeCount else { return totalCents }
@@ -462,13 +463,13 @@ struct SplitView: View {
         let current = guestAmountsCents.indices.contains(idx) ? guestAmountsCents[idx] : 0
         return max(0, totalCents - (totalAssigned - current))
     }
-
+    
     private func percentText(_ cents: Int) -> String {
         guard totalCents > 0 else { return "0%" }
         let p = (Double(cents) / Double(totalCents)) * 100
         return String(format: "%.0f%%", p)
     }
-
+    
     private func moneyParts(_ cents: Int) -> (String, String) {
         let absCents = abs(cents)
         let d = absCents / 100
@@ -476,12 +477,12 @@ struct SplitView: View {
         let sign = cents < 0 ? "-" : ""
         return ("\(sign)$\(d).", String(format: "%02d", c))
     }
-
+    
     // MARK: - Use shared BadgeColors
     private func colorForSlot(_ i: Int) -> Color {
         BadgeColors.color(for: i)
     }
-
+    
     private func colorForGuestId(_ id: UUID) -> Color {
         guard let idx = activeGuests.firstIndex(where: { $0.id == id }) else {
             return BadgeColors.palette[0]
@@ -536,7 +537,7 @@ struct SplitView: View {
     // MARK: - Seed By-Items from receipt used by ReceiptView
     private func seedByItemsFromReceipt() {
         didInitByItem = true
-
+        
         let receiptItems = uiModel.currentReceipt?.items ?? []
         byItemItems = receiptItems.map { it in
             DraftReceiptItem(
@@ -546,24 +547,24 @@ struct SplitView: View {
                 assignedGuestIds: []
             )
         }
-
+        
         let r = uiModel.currentReceipt
         feesString = (r?.feesCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.feesCents ?? 0)
         taxString = (r?.taxCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.taxCents ?? 0)
         tipString = (r?.tipCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.tipCents ?? 0)
         discountString = (r?.discountCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.discountCents ?? 0)
     }
-
+    
     // MARK: - Mode switching logic
     private func selectMode(_ newMode: SplitDraft.Mode) {
         lastMode = mode
         mode = newMode
-
+        
         if newMode == .equally {
             ensureGuestArrays()
             guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
         }
-
+        
         if newMode == .custom {
             ensureGuestArrays()
             if lastMode == .equally {
@@ -571,12 +572,12 @@ struct SplitView: View {
                 guestSelectedIndex = 0
             }
         }
-
+        
         if newMode == .byItems {
             if !didInitByItem { seedByItemsFromReceipt() }
         }
     }
-
+    
     // MARK: - Build result
     private func draft() -> SplitDraft {
         let items: [SplitDraft.Item] = byItemItems
@@ -589,7 +590,7 @@ struct SplitView: View {
                     assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
                 )
             }
-
+        
         return SplitDraft(
             guests: guests,
             payerGuestId: payerGuestId,
@@ -603,7 +604,7 @@ struct SplitView: View {
             discountCents: moneyToCents(discountString)
         )
     }
-
+    
     // MARK: - UI: menu bar
     private func modeButton(_ m: SplitDraft.Mode) -> some View {
         let selected = (m == mode)
@@ -620,28 +621,28 @@ struct SplitView: View {
         }
         .buttonStyle(.plain)
     }
-
+    
     // MARK: - Guest donut view (used for equally + custom)
     private func byGuestPanel(interactive: Bool, subtitle: String) -> some View {
         let selectedCents = guestAmountsCents.indices.contains(guestSelectedIndex)
-            ? guestAmountsCents[guestSelectedIndex]
-            : 0
-
+        ? guestAmountsCents[guestSelectedIndex]
+        : 0
+        
         let parts = moneyParts(selectedCents)
         let remaining = max(0, totalCents - guestAmountsCents.reduce(0, +))
-
+        
         return VStack(alignment: .leading, spacing: 18) {
             Text(subtitle)
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
-
+            
             GeometryReader { geo in
                 let size = min(geo.size.width, 210)
                 let lineW: CGFloat = 30
                 let radius = size / 2 - lineW / 2
                 let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
                 let handleRadius = radius + lineW / 2
-
+                
                 ZStack {
                     Circle()
                         .stroke(Color(.secondarySystemBackground),
@@ -682,26 +683,26 @@ struct SplitView: View {
                                 Circle()
                                     .fill(colorForSlot(i - 1))
                                     .overlay(
-                                            Circle().stroke(colorForSlot(i - 1), lineWidth: 0.05)
-                                        )
+                                        Circle().stroke(colorForSlot(i - 1), lineWidth: 0.05)
+                                    )
                                     .frame(width: 30, height: 30)
                                     .position(x: hx, y: hy)
                             }
                         }
                     }
-
+                    
                     if totalCents > 0,
                        guestAmountsCents.count == activeCount,
                        activeCount > 0 {
-
+                        
                         let startFrac = Double(sumBefore(guestSelectedIndex)) / Double(totalCents)
                         let endFrac = Double(sumThrough(guestSelectedIndex)) / Double(totalCents)
                         let handleFrac = max(startFrac, endFrac)
                         let ang = (handleFrac * 2 * .pi) - (.pi / 2)
-
+                        
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
-
+                        
                         Circle()
                             .fill(colorForSlot(guestSelectedIndex))
                             .frame(width: 32, height: 32)
@@ -713,35 +714,35 @@ struct SplitView: View {
                                     .onChanged { value in
                                         guard interactive else { return }
                                         guard totalCents > 0 else { return }
-
+                                        
                                         let p = value.location
                                         let dx = p.x - center.x
                                         let dy = p.y - center.y
-
+                                        
                                         var a = atan2(dy, dx) + (.pi / 2)
                                         if a < 0 { a += 2 * .pi }
                                         let rawFrac = a / (2 * .pi)
-
+                                        
                                         let startFrac = Double(sumBefore(guestSelectedIndex)) / Double(totalCents)
                                         let maxAlloc = remainingExcluding(guestSelectedIndex)
                                         let maxEnd = startFrac + Double(maxAlloc) / Double(totalCents)
-
+                                        
                                         if donutDrag == nil {
                                             let curEnd = Double(sumThrough(guestSelectedIndex)) / Double(totalCents)
                                             donutDrag = DonutDrag(lastRawFrac: rawFrac, endFracUnwrapped: curEnd)
                                             haptic.prepare()
                                         }
-
+                                        
                                         var d = donutDrag!
                                         var delta = rawFrac - d.lastRawFrac
                                         if delta > 0.5 { delta -= 1 }
                                         if delta < -0.5 { delta += 1 }
                                         d.lastRawFrac = rawFrac
                                         d.endFracUnwrapped += delta
-
+                                        
                                         let endClamped = min(max(d.endFracUnwrapped, startFrac), maxEnd)
                                         donutDrag = d
-
+                                        
                                         var newCents = Int(round((endClamped - startFrac) * Double(totalCents)))
                                         newCents = min(max(newCents, 0), maxAlloc)
                                         // ✅ Add haptic feedback on significant changes
@@ -749,7 +750,7 @@ struct SplitView: View {
                                         
                                         // Tap occurs 100 times in the donut
                                         if centsDiff >= totalCents/100 {
-                                            haptic.impactOccurred(intensity: 10.0)
+                                            haptic.impactOccurred(intensity: 7.0)
                                             lastHapticCents = newCents
                                             haptic.prepare()
                                         }
@@ -768,7 +769,7 @@ struct SplitView: View {
                             .animation(nil, value: handleFrac)
                             .opacity(mode == .equally ? 0 : 1)
                     }
-
+                    
                     VStack(spacing: 4) {
                         let g = activeGuests.indices.contains(guestSelectedIndex) ? activeGuests[guestSelectedIndex] : nil
                         let nm = g.map { displayName(for: $0, fallbackIndexInAllGuests: allIndex(for: $0.id)) } ?? "Guest"
@@ -840,7 +841,7 @@ struct SplitView: View {
                                 text: BadgeColors.initials(from: displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)), fallback: i),
                                 color: colorForSlot(i)
                             )
-
+                            
                             Text(displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)))
                                 .font(.system(size: 15, weight: i == guestSelectedIndex ? .semibold : .regular))
                         }
@@ -887,31 +888,31 @@ struct SplitView: View {
             }
         }
     }
-
+    
     // MARK: - By items panel (seeded)
     private func toggleAssignment(itemId: UUID) {
         guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
         guard byItemItems[idx].isComplete else { return }
-
+        
         let guestId = byItemSelectedGuestId
         guard activeGuests.contains(where: { $0.id == guestId }) else { return }
-
+        
         if byItemItems[idx].assignedGuestIds.contains(guestId) {
             byItemItems[idx].assignedGuestIds.remove(guestId)
         } else {
             byItemItems[idx].assignedGuestIds.insert(guestId)
         }
     }
-
+    
     private func byItemPanel() -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("Select a guest, then tap an item to assign/unassign them.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
-
+                
                 Spacer()
-
+                
                 Button(action: { showEditReceipt = true }) {
                     HStack(spacing: 4) {
                         Image(systemName: "square.and.pencil")
@@ -929,12 +930,12 @@ struct SplitView: View {
                 .disabled(isLoadingItems)
                 .opacity(isLoadingItems ? 0.5 : 1)
             }
-
+            
             VStack(alignment: .leading, spacing: 10) {
                 Text("Receipt items")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
-
+                
                 if isLoadingItems {
                     // Loading state
                     VStack(spacing: 12) {
@@ -954,7 +955,7 @@ struct SplitView: View {
                         Text("No items yet")
                             .font(.system(size: 15))
                             .foregroundColor(.secondary)
-
+                        
                         Button(action: { showEditReceipt = true }) {
                             HStack(spacing: 6) {
                                 Image(systemName: "plus.circle.fill")
@@ -977,7 +978,7 @@ struct SplitView: View {
                             // Only show completed items
                             if item.isComplete {
                                 let isLast = idx == byItemItems.filter({ $0.isComplete }).count - 1
-
+                                
                                 HStack {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(item.label)
@@ -987,9 +988,9 @@ struct SplitView: View {
                                             .font(.system(size: 13))
                                             .foregroundStyle(.secondary)
                                     }
-
+                                    
                                     Spacer()
-
+                                    
                                     HStack(spacing: 6) {
                                         ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
                                             let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
@@ -1007,7 +1008,7 @@ struct SplitView: View {
                                 .onTapGesture {
                                     toggleAssignment(itemId: item.id)
                                 }
-
+                                
                                 if !isLast {
                                     Divider().padding(.leading, 14)
                                 }
@@ -1018,12 +1019,12 @@ struct SplitView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
             }
-
+            
             VStack(alignment: .leading, spacing: 10) {
                 Text("Guests")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
-
+                
                 VStack(spacing: 0) {
                     ForEach(0..<activeCount, id: \.self) { slotIndex in
                         let gid = activeGuests[slotIndex].id
@@ -1049,7 +1050,7 @@ struct SplitView: View {
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-
+                        
                         if slotIndex != activeCount - 1 {
                             Divider().padding(.leading, 14)
                         }
@@ -1111,28 +1112,28 @@ struct SplitView: View {
     }
 
     private func openGuestEditor(_ mode: GuestEditorMode) {
-      draftGuests = guests
-      draftPayerGuestId = payerGuestId
-      withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-        guestEditorMode = mode
-        showGuestEditor = true
-      }
+        draftGuests = guests
+        draftPayerGuestId = payerGuestId
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+            guestEditorMode = mode
+            showGuestEditor = true
+        }
     }
-
+    
     private func applyGuestEdits() {
         // Snapshot old amounts by active guest id so custom can keep values.
         let oldActiveIds = activeGuests.map { $0.id }
         let oldAmounts: [UUID: Int] = Dictionary(uniqueKeysWithValues: zip(oldActiveIds, guestAmountsCents))
-
+        
         let newGuests = draftGuests
         let newActive = newGuests.filter { $0.isIncluded }
-
+        
         guests = newGuests
         payerGuestId = draftPayerGuestId
-
+        
         // Keep "selected" pointer sane
         if guestSelectedIndex >= newActive.count { guestSelectedIndex = max(0, newActive.count - 1) }
-
+        
         // Update per-guest amounts
         switch mode {
         case .equally:
@@ -1143,7 +1144,7 @@ struct SplitView: View {
             // not displayed, but keep arrays sized correctly
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
         }
-
+        
         // Ensure by-items selections/assignments stay valid
         if let first = newActive.first {
             if !newActive.contains(where: { $0.id == byItemSelectedGuestId }) {
@@ -1157,7 +1158,7 @@ struct SplitView: View {
             return copy
         }
     }
-
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
@@ -1349,19 +1350,19 @@ struct SplitView: View {
                     payerGuestId = seeded.first?.id ?? UUID()
                 }
             }
-
+            
             if activeCount > 0 {
                 if byItemSelectedGuestId == UUID() {
                     byItemSelectedGuestId = activeGuests.first?.id ?? payerGuestId
                 }
             }
-
+            
             ensureGuestArrays()
-
+            
             if let initialDraft {
                 mode = initialDraft.mode
                 lastMode = initialDraft.mode
-
+                
                 switch initialDraft.mode {
                 case .equally:
                     if initialDraft.perGuestCents.count == activeCount {
@@ -1369,14 +1370,14 @@ struct SplitView: View {
                     } else {
                         guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
                     }
-
+                    
                 case .custom:
                     if initialDraft.perGuestCents.count == activeCount {
                         guestAmountsCents = initialDraft.perGuestCents
                     } else {
                         guestAmountsCents = Array(repeating: 0, count: activeCount)
                     }
-
+                    
                 case .byItems:
                     if !initialDraft.items.isEmpty {
                         didInitByItem = true

@@ -152,6 +152,7 @@ struct SplitsSummaryView: View {
                         .buttonStyle(.plain)
                     }
                 }
+                .padding(.top, 15)
 
                 // Tiny "by items" hint (optional but useful)
                 if split.m == .byItems {

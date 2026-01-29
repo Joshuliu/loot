@@ -66,9 +66,9 @@ struct BillCardView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .frame(width: 255, height: 155, alignment: .center)
+        .frame(width: 260, height: 160, alignment: .center)
         .background(
-            Color(.systemBackground).overlay(Color.white.opacity(0.08))
+            Color(.systemBackground).overlay(Color.white.opacity(0.018))
         )
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
@@ -111,12 +111,12 @@ private struct SplitRingView: View {
                     .stroke(Color(.secondarySystemBackground),
                             style: .init(lineWidth: lineW, lineCap: .round))
                     .frame(width: size, height: size)
-                
+
                 // Colored segments
                 ForEach(0..<owedAmounts.count, id: \.self) { i in
                     let start = Double(sumBefore(i)) / Double(safeTotal)
                     let end = Double(sumThrough(i)) / Double(safeTotal)
-                    
+
                     if end > start {
                         Circle()
                             .trim(from: start, to: end)
@@ -126,13 +126,13 @@ private struct SplitRingView: View {
                             .rotationEffect(.degrees(-90))
                             .frame(width: size, height: size)
                     }
-                    
+
                     // Segment dividers (small circles)
                     if i > 0 {
                         let ang = -(.pi / 1.99) + (start * 2 * .pi)
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
-                        
+
                         Circle()
                             .fill(BadgeColors.color(for: i - 1))
                             .overlay(
@@ -142,7 +142,7 @@ private struct SplitRingView: View {
                             .position(x: hx, y: hy)
                     }
                 }
-                
+
                 // Center text - Total amount
                 VStack(spacing: 2) {
                     Text(displayAmount)
@@ -150,7 +150,7 @@ private struct SplitRingView: View {
                         .foregroundColor(.primary)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
-                    
+
                         Text("Split \(participantCount) \(participantCount == 1 ? "way" : "ways")")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(.secondary)

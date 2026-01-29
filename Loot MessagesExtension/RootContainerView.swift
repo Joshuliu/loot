@@ -332,6 +332,8 @@ struct RootContainerView: View {
                 )
             } else {
                 ZStack {
+                    Color(.systemBackground)
+                        .ignoresSafeArea()
                     switch uiModel.currentScreen {
 
                     case .tabview:

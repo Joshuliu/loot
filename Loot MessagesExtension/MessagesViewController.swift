@@ -17,9 +17,12 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
+        view.isOpaque = true
+        view.backgroundColor = .systemBackground
         addChild(hostingController)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.isOpaque = true
+        hostingController.view.backgroundColor = .systemBackground
         view.addSubview(hostingController.view)
         NSLayoutConstraint.activate([
             hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
