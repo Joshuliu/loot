@@ -156,10 +156,10 @@ struct ReceiptView: View {
                 .buttonStyle(.plain)
                 .opacity(1)
                 .padding(.top, 30)
-                .padding(.bottom, 60)
+                .padding(.bottom, 50)
                 .background(Color(.secondarySystemBackground).opacity(1))
                 .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-                .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
+                .shadow(color: Color.black.opacity(0.15), radius: 18, x: 0, y: -2)
                 .allowsHitTesting(captureImage != nil)
             }
         }
