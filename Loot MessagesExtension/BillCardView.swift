@@ -66,7 +66,7 @@ struct BillCardView: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 12)
-        .frame(width: 250, height: 150, alignment: .center)
+        .frame(width: 255, height: 155, alignment: .center)
         .background(
             Color(.systemBackground).overlay(Color.white.opacity(0.08))
         )
