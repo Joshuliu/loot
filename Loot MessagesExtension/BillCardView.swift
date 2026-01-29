@@ -122,6 +122,7 @@ private struct SplitRingView: View {
                             .trim(from: start, to: end)
                             .stroke(BadgeColors.color(for: i),
                                     style: .init(lineWidth: lineW, lineCap: .round))
+                            .opacity(1)
                             .rotationEffect(.degrees(-90))
                             .frame(width: size, height: size)
                     }

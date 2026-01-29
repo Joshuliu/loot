@@ -377,7 +377,7 @@ private extension ReceiptPayload {
 
 // MARK: - Math (equal/custom/by-items) with stable cents (✅ UPDATED signature)
 
-private enum SplitMath {
+enum SplitMath {
     static func computeOwedCents(
         mode: SplitPayload.Mode,
         guests: [SplitPayload.Guest],

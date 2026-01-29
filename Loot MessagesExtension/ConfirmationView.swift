@@ -81,16 +81,48 @@ struct ConfirmationView: View {
     // Extract owed amounts and total from split draft (or compute default equal split)
     private var owedAmounts: [Int]? {
         let total = amountToCents(amount)
-        
+
         if let draft = splitDraft {
-            // Use existing split draft
             let activeGuests = draft.guests.filter { $0.isIncluded }
             guard !activeGuests.isEmpty else { return nil }
-            
-            // Map active guests to their owed amounts
-            return activeGuests.indices.compactMap { idx in
-                draft.perGuestCents.indices.contains(idx) ? draft.perGuestCents[idx] : nil
+
+            // Convert to SplitPayload types and use shared SplitMath
+            let mode: SplitPayload.Mode = {
+                switch draft.mode {
+                case .equally: return .equally
+                case .custom: return .custom
+                case .byItems: return .byItems
+                }
+            }()
+
+            let guests: [SplitPayload.Guest] = draft.guests.map {
+                SplitPayload.Guest(n: $0.name, inc: $0.isIncluded, me: $0.isMe)
             }
+
+            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerGuestId }) ?? 0
+
+            let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
+                let slots = item.assignedGuestIds.compactMap { gid in
+                    draft.guests.firstIndex(where: { $0.id == gid })
+                }
+                return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
+            }
+
+            let allOwed = SplitMath.computeOwedCents(
+                mode: mode,
+                guests: guests,
+                payerIndex: payerIndex,
+                totalCents: draft.totalCents,
+                perGuestActive: draft.perGuestCents,
+                items: items,
+                feesCents: draft.feesCents,
+                taxCents: draft.taxCents,
+                tipCents: draft.tipCents,
+                discountCents: draft.discountCents
+            )
+
+            // Return only active guests' amounts
+            return draft.guests.indices.filter { draft.guests[$0].isIncluded }.map { allOwed[$0] }
         } else {
             // No draft yet - compute default equal split
             guard participantCount > 0 else { return nil }

@@ -657,9 +657,22 @@ struct SplitView: View {
                                     .trim(from: startFrac, to: endFrac)
                                     .stroke(colorForSlot(i),
                                             style: .init(lineWidth: lineW, lineCap: .round))
+                                    .opacity(1)
                                     .rotationEffect(.degrees(-90))
                                     .frame(width: size, height: size)
-                            }
+                                    .overlay(
+                                        Circle()
+                                            .trim(from: startFrac, to: endFrac)
+                                            .stroke(Color.black.opacity(0.001),
+                                                    style: .init(lineWidth: lineW * 4,
+                                                                 lineCap: .round))
+                                            .rotationEffect(.degrees(-90))
+                                        )
+                                    .onTapGesture {
+                                        guard interactive else { return }
+                                        guestSelectedIndex = i
+                                    }
+                                     }
                             // Show divider circle only if previous guest has amount > $0
                             if i > 0, guestAmountsCents[i - 1] > 0 {
                                 let ang = -(.pi / 1.975) + (startFrac * 2 * .pi)
