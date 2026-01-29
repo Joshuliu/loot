@@ -90,6 +90,255 @@ struct SplitView: View {
         var endFracUnwrapped: Double
     }
 
+    // Fine tuner sync state
+    @State private var fineTunerScrollTarget: Int? = nil  // Set when drag ends to trigger scroll
+
+    // Amount editor state (numpad input)
+    @State private var isEditingAmount: Bool = false
+    @State private var editingGuestIndex: Int? = nil
+    @State private var amountInputText: String = ""
+    @FocusState private var isAmountFieldFocused: Bool
+
+    private func startEditingAmount(for guestIndex: Int) {
+        guard mode == .custom else { return }
+        // Select this guest first
+        guestSelectedIndex = guestIndex
+        editingGuestIndex = guestIndex
+        let currentCents = guestAmountsCents.indices.contains(guestIndex) ? guestAmountsCents[guestIndex] : 0
+        // Format as simple number for easy editing (e.g., "12.50" for 1250 cents, "0" for 0)
+        if currentCents == 0 {
+            amountInputText = ""
+        } else {
+            let dollars = currentCents / 100
+            let cents = currentCents % 100
+            amountInputText = cents == 0 ? "\(dollars)" : String(format: "%d.%02d", dollars, cents)
+        }
+        isEditingAmount = true
+        isAmountFieldFocused = true
+    }
+
+    private func cancelAmountEdit() {
+        isEditingAmount = false
+        editingGuestIndex = nil
+        amountInputText = ""
+        isAmountFieldFocused = false
+    }
+
+    private func updateAmountLive(_ input: String) {
+        guard let guestIndex = editingGuestIndex else { return }
+
+        // Parse the input text to cents
+        let cleaned = input
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: ",", with: "")
+
+        guard !cleaned.isEmpty else {
+            guestAmountsCents[guestIndex] = 0
+            return
+        }
+
+        let newCents: Int
+        if cleaned.contains(".") {
+            let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+            let dollars = Int(parts.first ?? "0") ?? 0
+            let centsRaw = parts.count > 1 ? String(parts[1]) : ""
+            let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
+            let cents = Int(String(cents2.prefix(2))) ?? 0
+            newCents = dollars * 100 + cents
+        } else {
+            newCents = (Int(cleaned) ?? 0) * 100
+        }
+
+        // Clamp to valid range (0 to max remaining)
+        let maxAllowed = remainingExcluding(guestIndex)
+        let clampedCents = min(max(newCents, 0), maxAllowed)
+        guestAmountsCents[guestIndex] = clampedCents
+    }
+
+    // MARK: - Cent Slider (Fine Tuner)
+    // Uses DragGesture instead of ScrollView for reliable touch handling
+    private struct CentSlider: View {
+        @Binding var cents: Int
+        let maxCents: Int
+        let color: Color
+        let isDraggingDonut: Bool
+        @Binding var scrollTarget: Int?
+
+        @State private var dragStartCents: Int? = nil
+        @State private var viewWidth: CGFloat = 300
+        @State private var haptic = UIImpactFeedbackGenerator(style: .light)
+        @State private var lastHapticCents: Int = 0
+
+        // Pixels per cent - determines drag sensitivity
+        private let pxPerCent: CGFloat = 3.0
+
+        // Snap points for tap-to-jump (must match drawTicks)
+        private let majorTickSpacing = 25   // $0.25
+        private let labelSpacing = 50       // $0.50
+
+        private var displayOffset: CGFloat {
+            -CGFloat(cents) * pxPerCent
+        }
+
+        var body: some View {
+            GeometryReader { geo in
+                let width = geo.size.width
+
+                ZStack {
+                    // Tick marks canvas
+                    Canvas { context, size in
+                        drawTicks(context: context, size: size, offset: displayOffset)
+                    }
+
+                    // Center indicator
+                    Capsule()
+                        .fill(color)
+                        .frame(width: 3, height: 36)
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { value in
+                            guard !isDraggingDonut else { return }
+
+                            // Capture starting cents on first drag event
+                            if dragStartCents == nil {
+                                dragStartCents = cents
+                                haptic.prepare()
+                            }
+
+                            // Calculate new cents from start + translation
+                            let startCents = dragStartCents ?? cents
+                            let deltaCents = Int(round(-value.translation.width / pxPerCent))
+                            let newCents = min(max(startCents + deltaCents, 0), maxCents)
+
+                            // Update live
+                            if newCents != cents {
+                                cents = newCents
+
+                                // Haptic feedback every 25 cents
+                                if abs(newCents - lastHapticCents) >= 25 {
+                                    haptic.impactOccurred(intensity: 0.4)
+                                    lastHapticCents = newCents
+                                }
+                            }
+                        }
+                        .onEnded { _ in
+                            dragStartCents = nil
+                            lastHapticCents = cents
+                        }
+                )
+                .simultaneousGesture(
+                    SpatialTapGesture()
+                        .onEnded { value in
+                            guard !isDraggingDonut else { return }
+
+                            // Calculate cents from tap location
+                            let tapX = value.location.x
+                            let centerX = width / 2
+                            let offsetFromCenter = tapX - centerX
+                            let tappedCents = cents + Int(round(offsetFromCenter / pxPerCent))
+
+                            // Snap to nearest major tick (25 cents)
+                            let snappedCents = Int(round(Double(tappedCents) / Double(majorTickSpacing))) * majorTickSpacing
+                            let clampedCents = min(max(snappedCents, 0), maxCents)
+
+                            // Animate to the snapped value
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                cents = clampedCents
+                            }
+                            haptic.impactOccurred(intensity: 0.5)
+                            lastHapticCents = clampedCents
+                        }
+                )
+                .onAppear {
+                    viewWidth = width
+                    lastHapticCents = cents
+                }
+                .onChange(of: scrollTarget) { _, newTarget in
+                    guard let target = newTarget else { return }
+                    withAnimation(.easeOut(duration: 0.25)) {
+                        cents = min(max(target, 0), maxCents)
+                    }
+                    lastHapticCents = cents
+                    scrollTarget = nil
+                }
+                .onChange(of: geo.size.width) { _, newWidth in
+                    viewWidth = newWidth
+                }
+            }
+            .frame(height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+
+        private func drawTicks(context: GraphicsContext, size: CGSize, offset: CGFloat) {
+            let trackY = size.height / 2
+            let effectiveMax = max(100, maxCents)
+
+            // Visible range
+            let visibleStartCents = Int(max(0, (-offset - size.width) / pxPerCent))
+            let visibleEndCents = Int(min(Double(effectiveMax), (-offset + size.width) / pxPerCent))
+
+            // CONSTANT tick spacing - always the same visual density
+            // Note: tickSpacing must divide evenly into majorTickSpacing
+            let tickSpacing = 5         // Minor tick every $0.05
+            // majorTickSpacing and labelSpacing are instance properties
+
+            // Draw ticks (skip positions where labels will be)
+            let startTick = max(0, (visibleStartCents / tickSpacing) * tickSpacing)
+            for c in stride(from: startTick, through: min(visibleEndCents, effectiveMax), by: tickSpacing) {
+                // Skip tick positions where labels will appear
+                if c % labelSpacing == 0 { continue }
+
+                let x = CGFloat(c) * pxPerCent + offset + size.width / 2
+                guard x > -10 && x < size.width + 10 else { continue }
+
+                let isMajor = c % majorTickSpacing == 0
+                let tickHeight: CGFloat = isMajor ? 18 : 8
+                let tickWidth: CGFloat = isMajor ? 2 : 1
+                let opacity: Double = isMajor ? 0.5 : 0.25
+
+                context.fill(
+                    Path(roundedRect: CGRect(x: x - tickWidth/2, y: trackY - tickHeight/2, width: tickWidth, height: tickHeight), cornerRadius: tickWidth/2),
+                    with: .color(.primary.opacity(opacity))
+                )
+            }
+
+            // Draw labels (replacing ticks at label positions)
+            let startLabel = max(0, (visibleStartCents / labelSpacing) * labelSpacing)
+            for c in stride(from: startLabel, through: min(visibleEndCents, effectiveMax), by: labelSpacing) {
+                let x = CGFloat(c) * pxPerCent + offset + size.width / 2
+                guard x > -20 && x < size.width + 20 else { continue }
+
+                // Format as dollars with cents (e.g., "$0.50", "$1.00")
+                let dollars = c / 100
+                let cents = c % 100
+                let isWholeDollar = cents == 0
+                let labelText = isWholeDollar ? "$\(dollars)" : String(format: "$%d.%02d", dollars, cents)
+
+                // Whole dollars get larger, bolder font
+                let fontSize: CGFloat = isWholeDollar ? 13 : 10
+                let fontWeight: Font.Weight = isWholeDollar ? .semibold : .medium
+
+                let resolved = context.resolve(Text(labelText).font(.system(size: fontSize, weight: fontWeight)).foregroundColor(.secondary))
+                let textSize = resolved.measure(in: size)
+
+                // Draw background to cover any nearby ticks
+                let bgRect = CGRect(
+                    x: x - textSize.width / 2 - 2,
+                    y: trackY - textSize.height / 2 - 1,
+                    width: textSize.width + 4,
+                    height: textSize.height + 2
+                )
+                context.fill(Path(roundedRect: bgRect, cornerRadius: 2), with: .color(Color(.systemBackground)))
+
+                // Draw label centered at tick position
+                context.draw(resolved, at: CGPoint(x: x, y: trackY))
+            }
+        }
+    }
+
     // MARK: - By items state
     private struct DraftReceiptItem: Identifiable, Equatable {
         let id: UUID
@@ -207,8 +456,8 @@ struct SplitView: View {
     }
 
     private func remainingExcluding(_ idx: Int) -> Int {
-        ensureGuestArrays()
-        guard !guestAmountsCents.isEmpty else { return totalCents }
+        // Don't call ensureGuestArrays() here - it modifies state during view update
+        guard !guestAmountsCents.isEmpty, guestAmountsCents.count == activeCount else { return totalCents }
         let totalAssigned = guestAmountsCents.reduce(0, +)
         let current = guestAmountsCents.indices.contains(idx) ? guestAmountsCents[idx] : 0
         return max(0, totalCents - (totalAssigned - current))
@@ -494,7 +743,14 @@ struct SplitView: View {
                                         
                                         guestAmountsCents[guestSelectedIndex] = newCents
                                     }
-                                    .onEnded { _ in donutDrag = nil }
+                                    .onEnded { _ in
+                                        // Set scroll target before clearing drag state
+                                        let finalCents = guestAmountsCents.indices.contains(guestSelectedIndex)
+                                            ? guestAmountsCents[guestSelectedIndex]
+                                            : 0
+                                        fineTunerScrollTarget = finalCents
+                                        donutDrag = nil
+                                    }
                             )
                             .animation(nil, value: handleFrac)
                             .opacity(mode == .equally ? 0 : 1)
@@ -508,11 +764,19 @@ struct SplitView: View {
                             .foregroundColor(.secondary)
                             .lineLimit(1)
 
+                        // Amount display (tap to edit in custom mode)
                         HStack(alignment: .firstTextBaseline, spacing: 0) {
                             Text(parts.0)
                                 .font(.system(size: 30, weight: .bold))
                             Text(parts.1)
                                 .font(.system(size: 30, weight: .bold))
+                        }
+                        .opacity(isEditingAmount && editingGuestIndex == guestSelectedIndex ? 0 : 1)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if interactive {
+                                startEditingAmount(for: guestSelectedIndex)
+                            }
                         }
 
                         Text(percentText(selectedCents))
@@ -524,12 +788,40 @@ struct SplitView: View {
             }
             .frame(height: 220)
 
+            // Fine tuner slider (custom mode only)
+            if interactive {
+                VStack(spacing: 4) {
+                    CentSlider(
+                        cents: Binding(
+                            get: {
+                                guestAmountsCents.indices.contains(guestSelectedIndex)
+                                    ? guestAmountsCents[guestSelectedIndex]
+                                    : 0
+                            },
+                            set: { newValue in
+                                if guestAmountsCents.indices.contains(guestSelectedIndex) {
+                                    guestAmountsCents[guestSelectedIndex] = newValue
+                                }
+                            }
+                        ),
+                        maxCents: remainingExcluding(guestSelectedIndex),
+                        color: colorForSlot(guestSelectedIndex),
+                        isDraggingDonut: donutDrag != nil,
+                        scrollTarget: $fineTunerScrollTarget
+                    )
+                    .padding(.horizontal, 8)
+
+                    Text("Slide to fine-tune amount")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.top, 4)
+            }
+
             VStack(spacing: 10) {
                 ForEach(0..<activeCount, id: \.self) { i in
-                    Button {
-                        guard interactive else { return }
-                        guestSelectedIndex = i
-                    } label: {
+                    HStack {
+                        // Tappable area for selecting guest
                         HStack {
                             ColoredCircleBadge(
                                 text: BadgeColors.initials(from: displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)), fallback: i),
@@ -538,17 +830,33 @@ struct SplitView: View {
 
                             Text(displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)))
                                 .font(.system(size: 15, weight: i == guestSelectedIndex ? .semibold : .regular))
-                            Spacer()
-                            Text(ReceiptDisplay.money(guestAmountsCents.indices.contains(i) ? guestAmountsCents[i] : 0))
-                                .font(.system(size: 15, weight: .semibold))
                         }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(i == guestSelectedIndex && mode == .custom ? Color(.secondarySystemBackground) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
                         .contentShape(Rectangle())
+                        .onTapGesture {
+                            guard interactive else { return }
+                            guestSelectedIndex = i
+                        }
+
+                        Spacer()
+
+                        // Tappable amount - opens inline numpad at donut center
+                        Text(ReceiptDisplay.money(guestAmountsCents.indices.contains(i) ? guestAmountsCents[i] : 0))
+                            .font(.system(size: 15, weight: .semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(interactive ? Color(.tertiarySystemFill) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if interactive {
+                                    startEditingAmount(for: i)
+                                }
+                            }
                     }
-                    .buttonStyle(.plain)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(i == guestSelectedIndex && mode == .custom ? Color(.secondarySystemBackground) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
             }
             
@@ -904,7 +1212,8 @@ struct SplitView: View {
         }
         .overlay(alignment: .bottom) {
             // Guest navigation toolbar (behind drawer, with padding to sit above it)
-            if activeCount > 1 {
+            // Hide when editing amount to avoid it floating above the input card
+            if activeCount > 1 && !isEditingAmount {
                 guestNavigationToolbar()
                     .padding(.bottom, 120)  // Account for collapsed drawer height
             }
@@ -917,14 +1226,77 @@ struct SplitView: View {
                 guests: $draftGuests,
                 payerGuestId: $draftPayerGuestId
             )
-            .ignoresSafeArea(.keyboard, edges: .bottom)
             .ignoresSafeArea(edges: .bottom)
+        }
+        .safeAreaInset(edge: .bottom) {
+            // Floating amount input (appears above keyboard)
+            if isEditingAmount, let guestIndex = editingGuestIndex {
+                VStack(spacing: 12) {
+                    if activeGuests.indices.contains(guestIndex) {
+                        Text(displayName(for: activeGuests[guestIndex], fallbackIndexInAllGuests: allIndex(for: activeGuests[guestIndex].id)))
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+
+                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                        Text("$")
+                            .font(.system(size: 32, weight: .bold))
+                        TextField("0", text: $amountInputText)
+                            .font(.system(size: 32, weight: .bold))
+                            .keyboardType(.decimalPad)
+                            .focused($isAmountFieldFocused)
+                            .multilineTextAlignment(.leading)
+                            .frame(width: 120)
+                            .onChange(of: amountInputText) { _, newValue in
+                                updateAmountLive(newValue)
+                            }
+                    }
+
+                    let maxAmount = remainingExcluding(guestIndex)
+                    Text("Max: \(ReceiptDisplay.money(maxAmount))")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+
+                    Button {
+                        isAmountFieldFocused = false
+                    } label: {
+                        Text("Done")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .padding(.top, 4)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 22))
+            }
+        }
+        .onChange(of: isAmountFieldFocused) { _, focused in
+            // When keyboard is dismissed, finish editing
+            if !focused && isEditingAmount {
+                // Update fine tuner to match final value
+                if let guestIndex = editingGuestIndex, guestIndex == guestSelectedIndex {
+                    fineTunerScrollTarget = guestAmountsCents[guestIndex]
+                }
+                cancelAmountEdit()
+            }
         }
         .onChange(of: draftGuests) { _, _ in
             applyGuestEdits()
         }
         .onChange(of: draftPayerGuestId) { _, _ in
             applyGuestEdits()
+        }
+        .onChange(of: guestSelectedIndex) { _, newIndex in
+            // Scroll fine tuner when guest changes
+            if mode == .custom, guestAmountsCents.indices.contains(newIndex) {
+                fineTunerScrollTarget = guestAmountsCents[newIndex]
+            }
         }
         .sheet(isPresented: $showEditReceipt) {
             EditReceiptView(
