@@ -14,6 +14,7 @@ struct ReceiptView: View {
     let onBack: () -> Void
 
     var showBackRow: Bool = true
+    var showCaptureButton: Bool = true
     @State private var showCapture: Bool = false
     @State private var showEditReceipt: Bool = false
 
@@ -137,7 +138,7 @@ struct ReceiptView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if uiModel.isExpanded == true {
+            if showCaptureButton && uiModel.isExpanded == true {
                 Button {
                     showCapture = true
                 } label: {
@@ -154,14 +155,11 @@ struct ReceiptView: View {
                 }
                 .buttonStyle(.plain)
                 .opacity(1)
-                .padding(.top, 25)
+                .padding(.top, 30)
+                .padding(.bottom, 60)
                 .background(Color(.secondarySystemBackground).opacity(1))
                 .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
                 .shadow(color: Color.black.opacity(0.12), radius: 18, x: 0, y: -2)
-                //            .opacity(captureImage == nil ? 0 : 1)
-                //            .padding(.horizontal, 14)
-                //            .background(Color(.systemBackground).opacity(captureImage == nil ? 0: 1))
-                //            .background(Color(.systemBackground).opacity(1))
                 .allowsHitTesting(captureImage != nil)
             }
         }

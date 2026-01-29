@@ -465,6 +465,7 @@ struct RootContainerView: View {
                                     uiModel.currentScreen = returnScreen
                                 }
                             }
+                            .ignoresSafeArea(edges: .bottom)
                         } else {
                             ProgressView("Loading…")
                         }
@@ -480,6 +481,7 @@ struct RootContainerView: View {
                                     }
                                 }
                             )
+                            .ignoresSafeArea(edges: .bottom)
                         } else {
                             ProgressView("Loading…")
                         }

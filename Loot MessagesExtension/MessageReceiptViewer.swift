@@ -30,7 +30,7 @@ struct MessageReceiptViewer: View {
                 Text(tab == .splits ? "Splits" : "Receipt")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.secondary)
-                
+
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -43,7 +43,7 @@ struct MessageReceiptViewer: View {
                         .transition(.opacity)
                 } else {
                     if let receipt = uiModel.currentReceipt {
-                        ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false)
+                        ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false, showCaptureButton: false)
                             .transition(.opacity)
                     } else {
                         ProgressView("Loading…")
@@ -58,12 +58,12 @@ struct MessageReceiptViewer: View {
                 bottomTabButton("Receipt", system: "doc.text.fill", selected: tab == .receipt) { tab = .receipt }
             }
             .padding(.horizontal, 14)
-            .padding(.top, captureImage != nil ? 40: 10)
-            .padding(.bottom, 14)
+            .padding(.top, 34)
+            .padding(.bottom, 60)
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-//            .clipShape(RoundedCorner(radius: (captureImage != nil ? 0: 22), corners: [.topLeft, .topRight]))
-            .shadow(color: Color.black.opacity(0), radius: 18, x: 0, y: -2)
+            //            .clipShape(RoundedCorner(radius: (captureImage != nil ? 0: 22), corners: [.topLeft, .topRight]))
+            .shadow(color: Color.black.opacity(0.10), radius: 18, x: 0, y: -2)
 //            .shadow(color: Color.black.opacity(captureImage == nil ? 1 : 0), radius: 18, x: 0, y: -2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
