@@ -8,6 +8,10 @@ import SwiftUI
 import UIKit
 
 struct BillCardView: View {
+    @Environment(\.colorScheme) var colorScheme
+    var isDarkMode: Bool {
+        colorScheme == .dark
+    }
     let receiptName: String
     let displayAmount: String
     let displayName: String
@@ -68,8 +72,12 @@ struct BillCardView: View {
         .padding(.horizontal, 12)
         .frame(width: 260, height: 160, alignment: .center)
         .background(
-            Color(.systemBackground).overlay(Color.white.opacity(0.018))
-        )
+//            Color(.secondarySystemBackground)
+            Color(isDarkMode ? .systemBackground : .secondarySystemBackground)
+                    .overlay(
+                        Color.white.opacity(isDarkMode ? 0.018 : 0)
+                        )
+            )
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
 

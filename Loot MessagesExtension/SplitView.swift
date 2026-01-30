@@ -665,9 +665,10 @@ struct SplitView: View {
                                         Circle()
                                             .trim(from: startFrac, to: endFrac)
                                             .stroke(Color.black.opacity(0.001),
-                                                    style: .init(lineWidth: lineW * 4,
+                                                    style: .init(lineWidth: lineW * 4.5,
                                                                  lineCap: .round))
                                             .rotationEffect(.degrees(-90))
+                                            .frame(width: (size - 20), height: (size - 20))
                                         )
                                     .onTapGesture {
                                         guard interactive else { return }
@@ -1106,7 +1107,7 @@ struct SplitView: View {
         .background(
             RoundedRectangle(cornerRadius: 16)
                 .fill(.ultraThinMaterial)
-                .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 2)
+                .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 2)
         )
         .padding(.horizontal, 16)
     }
