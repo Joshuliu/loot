@@ -9,6 +9,9 @@ build/
 *.dSYM.zip
 *.xcarchive
 
+# Xcode schemes (shared)
+*.xcodeproj/xcshareddata/xcschemes/
+
 # Xcode user-specific files (never commit)
 **/xcuserdata/
 *.xcuserstate
@@ -19,7 +22,6 @@ build/
 .build/
 Packages/
 Package.resolved
-
 
 # Secrets
 Secrets.xcconfig

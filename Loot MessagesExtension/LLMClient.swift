@@ -396,6 +396,11 @@ final class LLMClient {
         let developerMessage = """
         You are parsing for a bill splitting app so users can easily split up receipts by items.
         The total is \(knownTotalCents) cents, and sum of all item cents, taxes, fees, and discounts should sum up exactly to the total.
+        
+        To match items to amounts, follow these three steps:
+        1. Remove extra subitems, ensuring the # of items on left match # of amounts on right.
+        2. Match item names to amounts using logic. EXAMPLE: Sodas shouldn't cost $10. It could be a subitem.
+        3. Verify the sum of item amounts add up to the subtotal. Remove extraneous subitems as needed.
 
         Output ONLY using this exact line-based format. No markdown, no code fences, no extra text.
 
@@ -409,20 +414,13 @@ final class LLMClient {
         ITEM|<qty int>|<label string>|<cents int or empty>
         (repeat ITEM lines as needed)
 
-        ISSUE|<string>
-        (repeat ISSUE lines as needed; if none, output zero ISSUE lines)
-
         END_RECEIPT_V2
 
         Rules:
         - Include ONLY items that are actually charged.
         - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
-        - Calculate sub-items into the parent item's cents ONLY IF the parent price doesn't include it already.
-        - Use context clues (e.g. indentations, "F") to determine if sub-items have been priced in to parent price.
         - Do not include sub-items as a separate item.
-        - Each item's cents should be final amount: qty * (price + subitem prices) - item discounts. Example: 2 $10 burgers with $0.50 for pickles would show 2100 cents.
-        - CHECK: The sum of all item cents + tax_cents + tip_cents + fees_cents - discount_cents MUST EQUAL \(knownTotalCents).
-        - Your response is correct if and only if sum of these charges are strictly equal to \(knownTotalCents) is crucial.
+        - CHECK: SUBTOTAL_CENTS + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
         """
 
         let userMessage = "Extract all items and breakdown from this receipt that add up to \(knownTotalCents) cents."
