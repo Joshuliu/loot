@@ -60,7 +60,7 @@ struct BillCardView: View {
             // Right side - Ring
             if let owedAmounts = owedAmounts, let totalCents = totalCents, !owedAmounts.isEmpty {
                 SplitRingView(
-                    participantCount: owedAmounts.count,
+                    participantCount: owedAmounts.filter { $0 != 0}.count,
                     owedAmounts: owedAmounts,
                     totalCents: totalCents,
                     displayAmount: displayAmount
@@ -104,6 +104,15 @@ private struct SplitRingView: View {
     private func sumThrough(_ idx: Int) -> Int {
         return owedAmounts.prefix(idx + 1).reduce(0, +)
     }
+
+    private func lastActiveIndex(before idx: Int) -> Int {
+        for j in stride(from: idx - 1, through: 0, by: -1) {
+            if owedAmounts[j] > 0 {
+                return j
+            }
+        }
+        return 0
+    }
     
     var body: some View {
         GeometryReader { geo in
@@ -140,16 +149,17 @@ private struct SplitRingView: View {
                         let ang = -(.pi / 1.99) + (start * 2 * .pi)
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
-                        if sumBefore(i) != sumThrough(i) && sumBefore(i-1) != sumThrough(i-1) {
+                        let colorIdx = lastActiveIndex(before: i)
+                        if sumBefore(i) != sumThrough(i) && owedAmounts[colorIdx] > 0 {
                             Circle()
-                                .fill(BadgeColors.color(for: i - 1))
+                                .fill(BadgeColors.color(for: colorIdx))
                                 .overlay(
-                                    Circle().stroke(BadgeColors.color(for: i - 1), lineWidth: 0.05)
+                                    Circle().stroke(BadgeColors.color(for: colorIdx), lineWidth: 0.05)
                                 )
                                 .frame(width: 16, height: 16)
                                 .position(x: hx, y: hy)
-                                            }
                         }
+                    }
                 }
 
                 // Center text - Total amount

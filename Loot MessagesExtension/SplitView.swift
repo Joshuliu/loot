@@ -846,11 +846,6 @@ struct SplitView: View {
                             Text(displayName(for: activeGuests[i], fallbackIndexInAllGuests: allIndex(for: activeGuests[i].id)))
                                 .font(.system(size: 15, weight: i == guestSelectedIndex ? .semibold : .regular))
                         }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            guard interactive else { return }
-                            guestSelectedIndex = i
-                        }
 
                         Spacer()
 
@@ -867,6 +862,11 @@ struct SplitView: View {
                                     startEditingAmount(for: i)
                                 }
                             }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard interactive else { return }
+                        guestSelectedIndex = i
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
