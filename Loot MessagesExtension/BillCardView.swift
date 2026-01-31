@@ -150,7 +150,7 @@ private struct SplitRingView: View {
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
                         let colorIdx = lastActiveIndex(idx: i)
-                        if sumBefore(i) != sumThrough(i) && owedAmounts[colorIdx] > 0 {
+                        if sumBefore(i) < sumThrough(i) && owedAmounts[colorIdx] > 0 {
                             Circle()
                                 .fill(BadgeColors.color(for: colorIdx))
                                 .overlay(

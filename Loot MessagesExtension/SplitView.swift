@@ -533,6 +533,15 @@ struct SplitView: View {
             guestSelectedIndex = newIndex
         }
     }
+    
+    private func lastActiveIndex(idx: Int) -> Int {
+        for j in stride(from: idx - 1, through: 0, by: -1) {
+            if sumBefore(j) < sumThrough(j) {
+                return j
+            }
+        }
+        return 0
+    }
 
     // MARK: - Seed By-Items from receipt used by ReceiptView
     private func seedByItemsFromReceipt() {
@@ -676,15 +685,16 @@ struct SplitView: View {
                                     }
                                      }
                             // Show divider circle only if previous guest has amount > $0
-                            if i > 0, guestAmountsCents[i - 1] > 0 {
+                            let colorIdx = lastActiveIndex(idx: i)
+                            if i > 0  {
                                 let ang = -(.pi / 1.975) + (startFrac * 2 * .pi)
                                 let hx = center.x + handleRadius * cos(ang)
                                 let hy = center.y + handleRadius * sin(ang)
 
                                 Circle()
-                                    .fill(colorForSlot(i - 1))
+                                    .fill(colorForSlot(colorIdx))
                                     .overlay(
-                                        Circle().stroke(colorForSlot(i - 1), lineWidth: 0.05)
+                                        Circle().stroke(colorForSlot(colorIdx), lineWidth: 0.05)
                                     )
                                     .frame(width: 30, height: 30)
                                     .position(x: hx, y: hy)
