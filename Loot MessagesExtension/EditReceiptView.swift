@@ -17,21 +17,35 @@ struct EditReceiptView: View {
     @State private var items: [EditableItem]
     @State private var taxesAndFees: [EditableFee]
     @State private var discounts: [EditableDiscount]
-    @State private var subtotalOverride: String
-    @State private var totalString: String
-    
+    @State private var tipString: String  // Separate tip field (below discounts)
+    @State private var preTipTotalOverride: String  // Single override for pre-tip total
+
+    // Editor state for inline add/edit
+    @State private var editorMode: EditorMode = .none
+    @State private var editorLabel: String = ""
+    @State private var editorAmount: String = ""
+    @FocusState private var editorFocusedField: EditorFocusField?
+
     @FocusState private var focusedField: FocusableField?
-    
+
+    enum EditorMode: Equatable {
+        case none
+        case item(UUID?)      // nil = adding new, UUID = editing existing
+        case fee(UUID?)
+        case discount(UUID?)
+
+        var isActive: Bool { self != .none }
+    }
+
+    enum EditorFocusField: Hashable {
+        case label
+        case amount
+    }
+
     enum FocusableField: Hashable {
         case receiptName
-        case item(UUID)
-        case itemPrice(UUID)
-        case subtotalOverride
-        case fee(UUID)
-        case feeAmount(UUID)
-        case discount(UUID)
-        case discountAmount(UUID)
-        case total
+        case preTipTotal
+        case tip
     }
     
     // Editable models
@@ -88,19 +102,17 @@ struct EditReceiptView: View {
         
         _receiptName = State(initialValue: receipt.title)
         
-        // Convert items
-        var editableItems = receipt.items.map { item in
+        // Convert items (no empty row - use Add button instead)
+        let editableItems = receipt.items.map { item in
             EditableItem(
                 id: UUID(uuidString: item.id) ?? UUID(),
                 label: item.label,
                 price: Self.formatCentsStatic(item.priceCents)
             )
         }
-        // Add empty item for new entry
-        editableItems.append(EditableItem(id: UUID(), label: "", price: ""))
         _items = State(initialValue: editableItems)
-        
-        // Convert taxes & fees
+
+        // Convert taxes & fees (no empty row - use Add button instead)
         var fees: [EditableFee] = []
         if receipt.taxCents > 0 {
             fees.append(EditableFee(id: UUID(), label: "Tax", amount: Self.formatCentsStatic(receipt.taxCents)))
@@ -108,40 +120,31 @@ struct EditReceiptView: View {
         if receipt.feesCents > 0 {
             fees.append(EditableFee(id: UUID(), label: "Fees", amount: Self.formatCentsStatic(receipt.feesCents)))
         }
-        if receipt.tipCents > 0 {
-            fees.append(EditableFee(id: UUID(), label: "Tip", amount: Self.formatCentsStatic(receipt.tipCents)))
-        }
-        // Add empty fee for new entry
-        fees.append(EditableFee(id: UUID(), label: "", amount: ""))
         _taxesAndFees = State(initialValue: fees)
-        
-        // Convert discounts
+
+        // Initialize tip separately
+        if receipt.tipCents > 0 {
+            _tipString = State(initialValue: Self.formatCentsStatic(receipt.tipCents))
+        } else {
+            _tipString = State(initialValue: "")
+        }
+
+        // Convert discounts (no empty row - use Add button instead)
         var discountsList: [EditableDiscount] = []
         if receipt.discountCents > 0 {
             discountsList.append(EditableDiscount(id: UUID(), label: "Discount", amount: Self.formatCentsStatic(receipt.discountCents)))
         }
-        // Add empty discount for new entry
-        discountsList.append(EditableDiscount(id: UUID(), label: "", amount: ""))
         _discounts = State(initialValue: discountsList)
-        
-        // Initialize subtotal override
-        // If there are no items but receipt has a subtotal, use it as override
+
+        // Initialize pre-tip total override
+        // If there are no items, use the pre-tip total (total - tip) as override
         let hasItems = !receipt.items.isEmpty
-        let hasBreakdown = receipt.tipCents > 0 || receipt.taxCents > 0 || receipt.feesCents > 0 || receipt.discountCents > 0
-        
-        if !hasItems && receipt.subtotalCents > 0 {
-            _subtotalOverride = State(initialValue: Self.formatCentsStatic(receipt.subtotalCents))
+        let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents
+
+        if !hasItems && calculatedPreTip > 0 {
+            _preTipTotalOverride = State(initialValue: Self.formatCentsStatic(calculatedPreTip))
         } else {
-            _subtotalOverride = State(initialValue: "")
-        }
-        
-        // Initialize total override
-        // If there's a breakdown (tip/tax/fees/discount), let total auto-calculate
-        // Otherwise use receipt's total as override
-        if hasBreakdown {
-            _totalString = State(initialValue: "")
-        } else {
-            _totalString = State(initialValue: Self.formatCentsStatic(receipt.totalCents))
+            _preTipTotalOverride = State(initialValue: "")
         }
     }
     
@@ -181,129 +184,209 @@ struct EditReceiptView: View {
     }
     
     // MARK: - Computed values
-    
+
     private var completedItems: [EditableItem] {
         items.filter { $0.isComplete }
     }
-    
+
     private var calculatedSubtotalCents: Int {
         completedItems.reduce(0) { $0 + moneyToCents($1.price) }
     }
-    
-    private var subtotalCents: Int {
-        // Use override if set, otherwise use calculated
-        if !subtotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return moneyToCents(subtotalOverride)
-        }
-        return calculatedSubtotalCents
-    }
-    
-    private var hasSubtotalWarning: Bool {
-        !subtotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        moneyToCents(subtotalOverride) != calculatedSubtotalCents
-    }
-    
+
     private var completedFees: [EditableFee] {
         taxesAndFees.filter { $0.isComplete }
     }
-    
+
     private var taxesAndFeesCents: Int {
         completedFees.reduce(0) { $0 + moneyToCents($1.amount) }
     }
-    
+
     private var completedDiscounts: [EditableDiscount] {
         discounts.filter { $0.isComplete }
     }
-    
+
     private var discountsCents: Int {
         completedDiscounts.reduce(0) { $0 + moneyToCents($1.amount) }
     }
-    
+
+    // Calculated pre-tip total from items + taxes + fees - discounts
+    private var calculatedPreTipTotalCents: Int {
+        calculatedSubtotalCents + taxesAndFeesCents - discountsCents
+    }
+
+    // Pre-tip total: use override if set, otherwise use calculated
+    private var preTipTotalCents: Int {
+        if !preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return moneyToCents(preTipTotalOverride)
+        }
+        return calculatedPreTipTotalCents
+    }
+
+    private var hasPreTipWarning: Bool {
+        !preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        moneyToCents(preTipTotalOverride) != calculatedPreTipTotalCents &&
+        calculatedPreTipTotalCents > 0  // Only warn if there's something to compare against
+    }
+
+    // Tip is separate from taxes & fees (applied after pre-tip total)
+    private var tipCents: Int {
+        moneyToCents(tipString)
+    }
+
+    // Final total: pre-tip total + tip (always calculated, no override)
     private var calculatedTotalCents: Int {
-        subtotalCents + taxesAndFeesCents - discountsCents
-    }
-    
-    private var enteredTotalCents: Int {
-        moneyToCents(totalString)
-    }
-    
-    private var hasWarning: Bool {
-        !totalString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        enteredTotalCents != calculatedTotalCents
+        preTipTotalCents + tipCents
     }
     
     // MARK: - Actions
-    
-    private func ensureEmptyRows() {
-        // Ensure there's always an empty item row
-        if !items.contains(where: { !$0.isComplete }) {
-            items.append(EditableItem(id: UUID(), label: "", price: ""))
-        }
-        
-        // Ensure there's always an empty fee row
-        if !taxesAndFees.contains(where: { !$0.isComplete }) {
-            taxesAndFees.append(EditableFee(id: UUID(), label: "", amount: ""))
-        }
-        
-        // Ensure there's always an empty discount row
-        if !discounts.contains(where: { !$0.isComplete }) {
-            discounts.append(EditableDiscount(id: UUID(), label: "", amount: ""))
-        }
-    }
-    
+
     private func deleteItem(_ item: EditableItem) {
         items.removeAll { $0.id == item.id }
-        ensureEmptyRows()
     }
-    
+
     private func deleteFee(_ fee: EditableFee) {
         taxesAndFees.removeAll { $0.id == fee.id }
-        ensureEmptyRows()
     }
-    
+
     private func deleteDiscount(_ discount: EditableDiscount) {
         discounts.removeAll { $0.id == discount.id }
-        ensureEmptyRows()
+    }
+
+    // MARK: - Editor Actions
+
+    private func openEditor(mode: EditorMode, focusField: EditorFocusField = .label) {
+        switch mode {
+        case .none:
+            return
+        case .item(let id):
+            if let id = id, let item = items.first(where: { $0.id == id }) {
+                editorLabel = item.label
+                editorAmount = item.price
+            } else {
+                editorLabel = ""
+                editorAmount = ""
+            }
+        case .fee(let id):
+            if let id = id, let fee = taxesAndFees.first(where: { $0.id == id }) {
+                editorLabel = fee.label
+                editorAmount = fee.amount
+            } else {
+                editorLabel = ""
+                editorAmount = ""
+            }
+        case .discount(let id):
+            if let id = id, let discount = discounts.first(where: { $0.id == id }) {
+                editorLabel = discount.label
+                editorAmount = discount.amount
+            } else {
+                editorLabel = ""
+                editorAmount = ""
+            }
+        }
+        editorMode = mode
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            editorFocusedField = focusField
+        }
+    }
+
+    private func saveEditor() {
+        let label = editorLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+        let amount = editorAmount.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Don't save if both are empty
+        guard !label.isEmpty || !amount.isEmpty else {
+            closeEditor()
+            return
+        }
+
+        switch editorMode {
+        case .none:
+            break
+        case .item(let id):
+            if let id = id, let idx = items.firstIndex(where: { $0.id == id }) {
+                items[idx].label = label
+                items[idx].price = amount
+            } else {
+                items.append(EditableItem(id: UUID(), label: label, price: amount))
+            }
+        case .fee(let id):
+            if let id = id, let idx = taxesAndFees.firstIndex(where: { $0.id == id }) {
+                taxesAndFees[idx].label = label
+                taxesAndFees[idx].amount = amount
+            } else {
+                taxesAndFees.append(EditableFee(id: UUID(), label: label, amount: amount))
+            }
+        case .discount(let id):
+            if let id = id, let idx = discounts.firstIndex(where: { $0.id == id }) {
+                discounts[idx].label = label
+                discounts[idx].amount = amount
+            } else {
+                discounts.append(EditableDiscount(id: UUID(), label: label, amount: amount))
+            }
+        }
+        closeEditor()
+    }
+
+    private func closeEditor() {
+        editorFocusedField = nil
+        editorMode = .none
+        editorLabel = ""
+        editorAmount = ""
+    }
+
+    private var editorTitle: String {
+        switch editorMode {
+        case .none: return ""
+        case .item(let id): return id == nil ? "Add Item" : "Edit Item"
+        case .fee(let id): return id == nil ? "Add Tax/Fee" : "Edit Tax/Fee"
+        case .discount(let id): return id == nil ? "Add Discount" : "Edit Discount"
+        }
+    }
+
+    private var editorLabelPlaceholder: String {
+        switch editorMode {
+        case .none: return ""
+        case .item: return "Item name"
+        case .fee: return "e.g. Tax, Service fee"
+        case .discount: return "e.g. Coupon, Promo"
+        }
     }
     
     private func saveReceipt() {
-        // Auto-calculate total if empty or if it doesn't match
-        let finalTotalCents: Int
-        if totalString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            finalTotalCents = calculatedTotalCents
-        } else {
-            finalTotalCents = enteredTotalCents
-        }
-        
-        // Aggregate fees by type (tax, tip, fees)
+        // Aggregate fees by type (tax and fees only - tip is separate)
         var taxTotal = 0
-        var tipTotal = 0
         var feesTotal = 0
-        
+
         for fee in completedFees {
             let label = fee.label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             let amount = moneyToCents(fee.amount)
-            
+
             if label.contains("tax") {
                 taxTotal += amount
-            } else if label.contains("tip") || label.contains("gratuity") {
-                tipTotal += amount
             } else {
+                // Everything else in taxes & fees section is a fee (service fee, delivery, etc.)
                 feesTotal += amount
             }
         }
-        
+
         // Aggregate discounts
         let totalDiscounts = discountsCents
-        
+
+        // Calculate subtotal: pre-tip total - taxes - fees + discounts
+        // (working backwards since user sets the pre-tip total)
+        let subtotal = preTipTotalCents - taxTotal - feesTotal + totalDiscounts
+
+        // Final total is always pre-tip + tip
+        let finalTotalCents = calculatedTotalCents
+
         let updatedReceipt = ReceiptDisplay(
             id: uiModel.currentReceipt?.id ?? UUID().uuidString,
             title: receiptName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "New Receipt" : receiptName,
             createdAt: uiModel.currentReceipt?.createdAt ?? Date(),
-            subtotalCents: subtotalCents,
+            subtotalCents: subtotal,
             feesCents: feesTotal,
             taxCents: taxTotal,
-            tipCents: tipTotal,
+            tipCents: tipCents,
             discountCents: totalDiscounts,
             totalCents: finalTotalCents,
             items: completedItems.map { item in
@@ -315,418 +398,439 @@ struct EditReceiptView: View {
                 )
             }
         )
-        
+
         onSave(updatedReceipt)
     }
     
     // MARK: - Body
-    
+
     var body: some View {
-        VStack(spacing: 0) {
-            // Top bar
-            HStack {
-                Button("Cancel", action: onCancel)
-                    .buttonStyle(.plain)
-                
-                Spacer()
-                
-                Text("Edit Receipt")
-                    .font(.system(size: 16, weight: .semibold))
-                
-                Spacer()
-                
-                Button("Save") {
-                    saveReceipt()
-                }
-                .buttonStyle(.plain)
-                .fontWeight(.semibold)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            
-            Divider()
-            
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    
-                    // MARK: - Description Section
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Description")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Loot Description", text: $receiptName)
-                            .font(.system(size: 16))
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color(.secondarySystemBackground))
-                            .cornerRadius(12)
-                            .focused($focusedField, equals: .receiptName)
+        ZStack {
+            VStack(spacing: 0) {
+                // Top bar
+                HStack {
+                    Button("Cancel", action: onCancel)
+                        .buttonStyle(.plain)
+
+                    Spacer()
+
+                    Text("Edit Receipt")
+                        .font(.system(size: 16, weight: .semibold))
+
+                    Spacer()
+
+                    Button("Save") {
+                        saveReceipt()
                     }
-                    
-                    // MARK: - Items Section
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
+                    .buttonStyle(.plain)
+                    .fontWeight(.semibold)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                Divider()
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+
+                        // MARK: - Description Section
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Description")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.secondary)
+
+                            TextField("Loot Description", text: $receiptName)
+                                .font(.system(size: 16))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(12)
+                                .focused($focusedField, equals: .receiptName)
+                        }
+
+                        // MARK: - Items Section
+                        VStack(alignment: .leading, spacing: 10) {
                             Text("Items")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            if !completedItems.isEmpty {
-                                Text("Swipe to delete")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        // Completed items list
-                        if !completedItems.isEmpty {
-                            List {
-                                ForEach(items.indices, id: \.self) { idx in
-                                    let item = items[idx]
-                                    if item.isComplete {
-                                        HStack(spacing: 12) {
-                                            TextField("Item", text: $items[idx].label)
-                                                .font(.system(size: 16))
-                                                .focused($focusedField, equals: .item(item.id))
-                                                .submitLabel(.next)
-                                                .onSubmit {
-                                                    focusedField = .itemPrice(item.id)
+
+                            // Items list (tap to edit, swipe to delete)
+                            if !items.isEmpty {
+                                VStack(spacing: 0) {
+                                    ForEach(items) { item in
+                                        VStack(spacing: 0) {
+                                            HStack {
+                                                Text(item.label)
+                                                    .font(.system(size: 16))
+                                                    .foregroundColor(.primary)
+                                                    .onTapGesture {
+                                                        openEditor(mode: .item(item.id), focusField: .label)
+                                                    }
+                                                Spacer()
+                                                Text(formatMoney(moneyToCents(item.price)))
+                                                    .font(.system(size: 16, weight: .medium))
+                                                    .onTapGesture {
+                                                        openEditor(mode: .item(item.id), focusField: .amount)
+                                                    }
+                                                Button {
+                                                    deleteItem(item)
+                                                } label: {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .foregroundColor(.secondary)
+                                                        .font(.system(size: 18))
                                                 }
-                                            
-                                            TextField("Price", text: $items[idx].price)
-                                                .font(.system(size: 16))
-                                                .keyboardType(.decimalPad)
-                                                .focused($focusedField, equals: .itemPrice(item.id))
-                                                .frame(width: 80)
-                                        }
-                                        .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
-                                        .listRowBackground(Color.clear)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            Button(role: .destructive) {
-                                                deleteItem(item)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
+                                                .buttonStyle(.plain)
+                                            }
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 12)
+
+                                            if item.id != items.last?.id {
+                                                Divider().padding(.leading, 14)
                                             }
                                         }
                                     }
                                 }
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(12)
                             }
-                            .listStyle(.plain)
-                            .scrollContentBackground(.hidden)
-                            .background(Color(.secondarySystemBackground))
-                            .frame(height: max(44, CGFloat(completedItems.count * 44)))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .scrollDisabled(true)
-                        }
-                        
-                        // Add new item row
-                        if let emptyIndex = items.firstIndex(where: { !$0.isComplete }) {
-                            let emptyItem = items[emptyIndex]
-                            HStack(spacing: 12) {
-                                TextField("Add item", text: $items[emptyIndex].label)
-                                    .font(.system(size: 16))
-                                    .focused($focusedField, equals: .item(emptyItem.id))
-                                    .submitLabel(.next)
-                                    .onSubmit {
-                                        focusedField = .itemPrice(emptyItem.id)
-                                    }
-                                
-                                TextField("Price", text: $items[emptyIndex].price)
-                                    .font(.system(size: 16))
-                                    .keyboardType(.decimalPad)
-                                    .focused($focusedField, equals: .itemPrice(emptyItem.id))
-                                    .frame(width: 80)
+
+                            // Add item button
+                            Button {
+                                openEditor(mode: .item(nil), focusField: .label)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(.blue)
+                                    Text("Add Item")
+                                        .foregroundColor(.blue)
+                                    Spacer()
+                                }
+                                .font(.system(size: 16, weight: .medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground).opacity(0.6))
+                                .cornerRadius(12)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color(.secondarySystemBackground).opacity(0.6))
-                            .cornerRadius(12)
-                        }
-                        
-                        HStack {
-                            Text("Calculated subtotal")
-                                .font(.system(size: 15, weight: .medium))
-                            Spacer()
-                            Text(formatMoney(calculatedSubtotalCents))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 4)
-                        
-                        VStack(spacing: 0) {
+                            .buttonStyle(.plain)
+
                             HStack {
-                                Text("Override subtotal")
-                                    .font(.system(size: 15))
-                                
+                                Text("Items subtotal")
+                                    .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                
-                                TextField("Auto", text: $subtotalOverride)
+                                Text(formatMoney(calculatedSubtotalCents))
                                     .font(.system(size: 15, weight: .semibold))
-                                    .keyboardType(.decimalPad)
-                                    .multilineTextAlignment(.trailing)
-                                    .focused($focusedField, equals: .subtotalOverride)
-                                    .frame(width: 100)
+                                    .foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                        }
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(12)
-                        if hasSubtotalWarning {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 13))
-                                Text("Subtotal doesn't match items")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .foregroundColor(.orange)
                             .padding(.top, 4)
                         }
-                    }
-                    
-                    // MARK: - Taxes & Fees Section
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
+
+                        // MARK: - Taxes & Fees Section
+                        VStack(alignment: .leading, spacing: 10) {
                             Text("Taxes & Fees")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            if !completedFees.isEmpty {
-                                Text("Swipe to delete")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        // Completed fees list
-                        if !completedFees.isEmpty {
-                            List {
-                                ForEach(taxesAndFees.indices, id: \.self) { idx in
-                                    let fee = taxesAndFees[idx]
-                                    if fee.isComplete {
-                                        HStack(spacing: 12) {
-                                            TextField("Name (e.g. Tax, Tip)", text: $taxesAndFees[idx].label)
-                                                .font(.system(size: 16))
-                                                .focused($focusedField, equals: .fee(fee.id))
-                                                .submitLabel(.next)
-                                                .onSubmit {
-                                                    focusedField = .feeAmount(fee.id)
+
+                            // Fees list
+                            if !taxesAndFees.isEmpty {
+                                VStack(spacing: 0) {
+                                    ForEach(taxesAndFees) { fee in
+                                        VStack(spacing: 0) {
+                                            HStack {
+                                                Text(fee.label)
+                                                    .font(.system(size: 16))
+                                                    .foregroundColor(.primary)
+                                                    .onTapGesture {
+                                                        openEditor(mode: .fee(fee.id), focusField: .label)
+                                                    }
+                                                Spacer()
+                                                Text(formatMoney(moneyToCents(fee.amount)))
+                                                    .font(.system(size: 16, weight: .medium))
+                                                    .onTapGesture {
+                                                        openEditor(mode: .fee(fee.id), focusField: .amount)
+                                                    }
+                                                Button {
+                                                    deleteFee(fee)
+                                                } label: {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .foregroundColor(.secondary)
+                                                        .font(.system(size: 18))
                                                 }
-                                            
-                                            TextField("Amount", text: $taxesAndFees[idx].amount)
-                                                .font(.system(size: 16))
-                                                .keyboardType(.decimalPad)
-                                                .focused($focusedField, equals: .feeAmount(fee.id))
-                                                .frame(width: 80)
-                                        }
-                                        .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
-                                        .listRowBackground(Color.clear)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            Button(role: .destructive) {
-                                                deleteFee(fee)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
+                                                .buttonStyle(.plain)
+                                            }
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 12)
+
+                                            if fee.id != taxesAndFees.last?.id {
+                                                Divider().padding(.leading, 14)
                                             }
                                         }
                                     }
                                 }
-                                .listRowInsets(EdgeInsets())
-                                .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(12)
                             }
-                            .listStyle(.plain)
-                            .scrollContentBackground(.hidden)
-                            .background(Color(.secondarySystemBackground))
-                            .frame(height: max(44, CGFloat(completedFees.count * 44)))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .scrollDisabled(true)
-                        }
-                        
-                        // Add new fee row
-                        if let emptyIndex = taxesAndFees.firstIndex(where: { !$0.isComplete }) {
-                            let emptyFee = taxesAndFees[emptyIndex]
-                            HStack(spacing: 12) {
-                                TextField("Add tax/fee (e.g. Tax, Tip)", text: $taxesAndFees[emptyIndex].label)
-                                    .font(.system(size: 16))
-                                    .focused($focusedField, equals: .fee(emptyFee.id))
-                                    .submitLabel(.next)
-                                    .onSubmit {
-                                        focusedField = .feeAmount(emptyFee.id)
-                                    }
-                                
-                                TextField("Amount", text: $taxesAndFees[emptyIndex].amount)
-                                    .font(.system(size: 16))
-                                    .keyboardType(.decimalPad)
-                                    .focused($focusedField, equals: .feeAmount(emptyFee.id))
-                                    .frame(width: 80)
+
+                            // Add fee button
+                            Button {
+                                openEditor(mode: .fee(nil), focusField: .label)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(.blue)
+                                    Text("Add Tax/Fee")
+                                        .foregroundColor(.blue)
+                                    Spacer()
+                                }
+                                .font(.system(size: 16, weight: .medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground).opacity(0.6))
+                                .cornerRadius(12)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color(.secondarySystemBackground).opacity(0.6))
-                            .cornerRadius(12)
+                            .buttonStyle(.plain)
+
+                            HStack {
+                                Text("Total taxes & fees")
+                                    .font(.system(size: 15, weight: .medium))
+                                Spacer()
+                                Text(formatMoney(taxesAndFeesCents))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.top, 4)
                         }
-                        HStack {
-                            Text("Total taxes & fees")
-                                .font(.system(size: 15, weight: .medium))
-                            Spacer()
-                            Text(formatMoney(taxesAndFeesCents))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 4)
-                    }
-                    
-                    // MARK: - Discounts Section
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
+
+                        // MARK: - Discounts Section
+                        VStack(alignment: .leading, spacing: 10) {
                             Text("Discounts")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
-                            
-                            Spacer()
-                            
-                            if !completedDiscounts.isEmpty {
-                                Text("Swipe to delete")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        // Completed discounts list
-                        if !completedDiscounts.isEmpty {
-                            List {
-                                ForEach(discounts.indices, id: \.self) { idx in
-                                    let discount = discounts[idx]
-                                    if discount.isComplete {
-                                        HStack(spacing: 12) {
-                                            TextField("Name", text: $discounts[idx].label)
-                                                .font(.system(size: 16))
-                                                .focused($focusedField, equals: .discount(discount.id))
-                                                .submitLabel(.next)
-                                                .onSubmit {
-                                                    focusedField = .discountAmount(discount.id)
+
+                            // Discounts list
+                            if !discounts.isEmpty {
+                                VStack(spacing: 0) {
+                                    ForEach(discounts) { discount in
+                                        VStack(spacing: 0) {
+                                            HStack {
+                                                Text(discount.label)
+                                                    .font(.system(size: 16))
+                                                    .foregroundColor(.primary)
+                                                    .onTapGesture {
+                                                        openEditor(mode: .discount(discount.id), focusField: .label)
+                                                    }
+                                                Spacer()
+                                                Text(formatMoney(moneyToCents(discount.amount)))
+                                                    .font(.system(size: 16, weight: .medium))
+                                                    .onTapGesture {
+                                                        openEditor(mode: .discount(discount.id), focusField: .amount)
+                                                    }
+                                                Button {
+                                                    deleteDiscount(discount)
+                                                } label: {
+                                                    Image(systemName: "xmark.circle.fill")
+                                                        .foregroundColor(.secondary)
+                                                        .font(.system(size: 18))
                                                 }
-                                            
-                                            TextField("Amount", text: $discounts[idx].amount)
-                                                .font(.system(size: 16))
-                                                .keyboardType(.decimalPad)
-                                                .focused($focusedField, equals: .discountAmount(discount.id))
-                                                .frame(width: 80)
-                                        }
-                                        .listRowInsets(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 14))
-                                        .listRowBackground(Color.clear)
-                                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                            Button(role: .destructive) {
-                                                deleteDiscount(discount)
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
+                                                .buttonStyle(.plain)
+                                            }
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 12)
+
+                                            if discount.id != discounts.last?.id {
+                                                Divider().padding(.leading, 14)
                                             }
                                         }
                                     }
                                 }
+                                .background(Color(.secondarySystemBackground))
+                                .cornerRadius(12)
                             }
-                            .listStyle(.plain)
-                            .scrollContentBackground(.hidden)
-                            .background(Color(.secondarySystemBackground))
-                            .frame(height: max(44, CGFloat(completedDiscounts.count * 44)))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .scrollDisabled(true)
-                        }
-                        
-                        // Add new discount row
-                        if let emptyIndex = discounts.firstIndex(where: { !$0.isComplete }) {
-                            let emptyDiscount = discounts[emptyIndex]
-                            HStack(spacing: 12) {
-                                TextField("Add discount", text: $discounts[emptyIndex].label)
-                                    .font(.system(size: 16))
-                                    .focused($focusedField, equals: .discount(emptyDiscount.id))
-                                    .submitLabel(.next)
-                                    .onSubmit {
-                                        focusedField = .discountAmount(emptyDiscount.id)
-                                    }
-                                
-                                TextField("Amount", text: $discounts[emptyIndex].amount)
-                                    .font(.system(size: 16))
-                                    .keyboardType(.decimalPad)
-                                    .focused($focusedField, equals: .discountAmount(emptyDiscount.id))
-                                    .frame(width: 80)
+
+                            // Add discount button
+                            Button {
+                                openEditor(mode: .discount(nil), focusField: .label)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundColor(.blue)
+                                    Text("Add Discount")
+                                        .foregroundColor(.blue)
+                                    Spacer()
+                                }
+                                .font(.system(size: 16, weight: .medium))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+                                .background(Color(.secondarySystemBackground).opacity(0.6))
+                                .cornerRadius(12)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(Color(.secondarySystemBackground).opacity(0.6))
-                            .cornerRadius(12)
-                        }
-                        
-                        HStack {
-                            Text("Total discounts")
-                                .font(.system(size: 15, weight: .medium))
-                            Spacer()
-                            Text(formatMoney(discountsCents))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 4)
-                    }
-                    
-                    // MARK: - Total Section
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Total")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.secondary)
-                        
-                        HStack {
-                            Text("Calculated total")
-                                .font(.system(size: 15, weight: .medium))
-                            Spacer()
-                            Text(formatMoney(calculatedTotalCents))
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 4)
-                        
-                        VStack(spacing: 0) {
+                            .buttonStyle(.plain)
+
                             HStack {
-                                Text("Override total")
-                                    .font(.system(size: 15))
-                                
+                                Text("Total discounts")
+                                    .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                
-                                TextField("Auto", text: $totalString)
+                                Text(formatMoney(discountsCents))
                                     .font(.system(size: 15, weight: .semibold))
-                                    .keyboardType(.decimalPad)
-                                    .multilineTextAlignment(.trailing)
-                                    .focused($focusedField, equals: .total)
-                                    .frame(width: 100)
+                                    .foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                        }
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(12)
-                        
-                        if hasWarning {
-                            HStack(spacing: 6) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 13))
-                                Text("Total doesn't match calculated value")
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                            .foregroundColor(.orange)
                             .padding(.top, 4)
                         }
+
+                        // MARK: - Pre-tip Total & Tip Section
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Total")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.secondary)
+
+                            HStack {
+                                Text("Calculated pre-tip")
+                                    .font(.system(size: 15, weight: .medium))
+                                Spacer()
+                                Text(formatMoney(calculatedPreTipTotalCents))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Text("Override pre-tip total")
+                                        .font(.system(size: 15))
+
+                                    Spacer()
+
+                                    TextField("Auto", text: $preTipTotalOverride)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .keyboardType(.decimalPad)
+                                        .multilineTextAlignment(.trailing)
+                                        .focused($focusedField, equals: .preTipTotal)
+                                        .frame(width: 100)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                            }
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+
+                            if hasPreTipWarning {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 13))
+                                    Text("Pre-tip total doesn't match calculated")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                .foregroundColor(.orange)
+                                .padding(.top, 4)
+                            }
+
+                            VStack(spacing: 0) {
+                                HStack {
+                                    Text("Tip amount")
+                                        .font(.system(size: 15))
+
+                                    Spacer()
+
+                                    TextField("0.00", text: $tipString)
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .keyboardType(.decimalPad)
+                                        .multilineTextAlignment(.trailing)
+                                        .focused($focusedField, equals: .tip)
+                                        .frame(width: 100)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 10)
+                            }
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(12)
+
+                            HStack {
+                                Text("Final total")
+                                    .font(.system(size: 15, weight: .medium))
+                                Spacer()
+                                Text(formatMoney(calculatedTotalCents))
+                                    .font(.system(size: 17, weight: .bold))
+                            }
+                            .padding(.top, 4)
+                        }
+
+                        Spacer().frame(height: 40)
                     }
-                    
-                    Spacer().frame(height: 40)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+            }
+
+            // Editor overlay
+            if editorMode.isActive {
+                VStack {
+                    Spacer()
+                    VStack(spacing: 0) {
+                        // Header
+                        HStack {
+                            Button("Cancel") {
+                                closeEditor()
+                            }
+                            .foregroundColor(.blue)
+
+                            Spacer()
+
+                            Text(editorTitle)
+                                .font(.system(size: 16, weight: .semibold))
+
+                            Spacer()
+
+                            Button("Save") {
+                                saveEditor()
+                            }
+                            .foregroundColor(.blue)
+                            .fontWeight(.semibold)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+
+                        Divider()
+
+                        // Input fields
+                        HStack(spacing: 12) {
+                            TextField(editorLabelPlaceholder, text: $editorLabel)
+                                .font(.system(size: 16))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color(.tertiarySystemBackground))
+                                .cornerRadius(8)
+                                .focused($editorFocusedField, equals: .label)
+                                .submitLabel(.next)
+                                .onSubmit {
+                                    editorFocusedField = .amount
+                                }
+
+                            TextField("0.00", text: $editorAmount)
+                                .font(.system(size: 16))
+                                .keyboardType(.decimalPad)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 10)
+                                .background(Color(.tertiarySystemBackground))
+                                .cornerRadius(8)
+                                .frame(width: 100)
+                                .focused($editorFocusedField, equals: .amount)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 16)
+                    }
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(16, corners: [.topLeft, .topRight])
+                    .shadow(color: .black.opacity(0.15), radius: 10, y: -5)
+                }
+                .transition(.move(edge: .bottom))
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editorMode.isActive)
             }
         }
-        .onChange(of: items) { _, _ in ensureEmptyRows() }
-        .onChange(of: taxesAndFees) { _, _ in ensureEmptyRows() }
-        .onChange(of: discounts) { _, _ in ensureEmptyRows() }
+    }
+}
+
+// Helper for rounded corners on specific sides
+// RoundedCorner struct is defined in SplitGuestEditor.swift
+extension View {
+    func cornerRadius(_ radius: CGFloat, corners: UIRectCorner) -> some View {
+        clipShape(RoundedCorner(radius: radius, corners: corners))
     }
 }

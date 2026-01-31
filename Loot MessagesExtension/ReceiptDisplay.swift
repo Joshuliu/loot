@@ -2,6 +2,30 @@ import Foundation
 import Combine
 import UIKit
 
+// MARK: - Loading State for async operations
+
+enum LoadingState<T> {
+    case idle
+    case loading
+    case loaded(T)
+    case failed(Error)
+
+    var isLoading: Bool {
+        if case .loading = self { return true }
+        return false
+    }
+
+    var value: T? {
+        if case .loaded(let v) = self { return v }
+        return nil
+    }
+
+    var error: Error? {
+        if case .failed(let e) = self { return e }
+        return nil
+    }
+}
+
 // MARK: - Receipt display model (for ReceiptView preview)
 
 struct ReceiptDisplay: Identifiable {
@@ -58,9 +82,21 @@ struct ReceiptDisplay: Identifiable {
 
 // MARK: - UI state (MVP: in-memory only)
 
+enum AppScreen {
+    case tabview
+    case fill
+    case tipview
+    case confirmation
+    case receipt
+    case messageViewer
+}
+
 @MainActor
 final class LootUIModel: ObservableObject {
     @Published var isExpanded: Bool = false
+
+    // Screen state - persists across view recreations
+    @Published var currentScreen: AppScreen = .tabview
 
     @Published var currentReceipt: ReceiptDisplay? = nil
     @Published var parsedReceipt: ParsedReceipt? = nil
@@ -74,13 +110,22 @@ final class LootUIModel: ObservableObject {
     // NEW: decoded message payload when user taps a Loot message
     @Published var openedMessagePayload: LootMessagePayload? = nil
 
+    // Two-phase parsing: items loading state (phase 2 runs in background)
+    @Published var itemsLoadingState: LoadingState<Phase2Result> = .idle
+    var phase2Task: Task<Void, Never>? = nil
+
     func resetForNewReceipt() {
+        // Cancel any running phase 2 task
+        phase2Task?.cancel()
+        phase2Task = nil
+
         parsedReceipt = nil
         currentReceipt = nil
         scanImageOriginal = nil
         scanImageCropped = nil
         currentSplitDraft = nil
         openedMessagePayload = nil
+        itemsLoadingState = .idle
     }
 }
 

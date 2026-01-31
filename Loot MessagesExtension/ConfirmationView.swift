@@ -2,6 +2,8 @@ import SwiftUI
 import UIKit
 
 struct ConfirmationView: View {
+    @ObservedObject var uiModel: LootUIModel
+
     let receiptName: String
     let amount: String
     let participantCount: Int
@@ -20,6 +22,10 @@ struct ConfirmationView: View {
     let onAddTip: () -> Void
 
     let onRequestCollapse: () -> Void
+
+    private var isLoadingItems: Bool {
+        uiModel.itemsLoadingState.isLoading
+    }
 
     @State private var cardOffset: CGSize = .zero
     @State private var cardRotation: Double = 0
@@ -75,16 +81,48 @@ struct ConfirmationView: View {
     // Extract owed amounts and total from split draft (or compute default equal split)
     private var owedAmounts: [Int]? {
         let total = amountToCents(amount)
-        
+
         if let draft = splitDraft {
-            // Use existing split draft
             let activeGuests = draft.guests.filter { $0.isIncluded }
             guard !activeGuests.isEmpty else { return nil }
-            
-            // Map active guests to their owed amounts
-            return activeGuests.indices.compactMap { idx in
-                draft.perGuestCents.indices.contains(idx) ? draft.perGuestCents[idx] : nil
+
+            // Convert to SplitPayload types and use shared SplitMath
+            let mode: SplitPayload.Mode = {
+                switch draft.mode {
+                case .equally: return .equally
+                case .custom: return .custom
+                case .byItems: return .byItems
+                }
+            }()
+
+            let guests: [SplitPayload.Guest] = draft.guests.map {
+                SplitPayload.Guest(n: $0.name, inc: $0.isIncluded, me: $0.isMe)
             }
+
+            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerGuestId }) ?? 0
+
+            let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
+                let slots = item.assignedGuestIds.compactMap { gid in
+                    draft.guests.firstIndex(where: { $0.id == gid })
+                }
+                return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
+            }
+
+            let allOwed = SplitMath.computeOwedCents(
+                mode: mode,
+                guests: guests,
+                payerIndex: payerIndex,
+                totalCents: draft.totalCents,
+                perGuestActive: draft.perGuestCents,
+                items: items,
+                feesCents: draft.feesCents,
+                taxCents: draft.taxCents,
+                tipCents: draft.tipCents,
+                discountCents: draft.discountCents
+            )
+
+            // Return only active guests' amounts
+            return draft.guests.indices.filter { draft.guests[$0].isIncluded }.map { allOwed[$0] }
         } else {
             // No draft yet - compute default equal split
             guard participantCount > 0 else { return nil }
@@ -231,10 +269,6 @@ struct ConfirmationView: View {
 
                     withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
                     onSend()
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                        withAnimation(.easeInOut(duration: 0.2)) { showSuccess = false }
-                    }
                     dragIntent = .none
                     return
                 }
@@ -281,7 +315,7 @@ struct ConfirmationView: View {
 
                 Text(dragIntent == .left ? "Swipe left to delete" :
                         dragIntent == .right ? "Swipe right for split options" :
-                        "Swipe up to send")
+                        isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
                     .padding(.top, 10)
@@ -304,11 +338,23 @@ struct ConfirmationView: View {
                 .contentShape(Rectangle())
                 .padding(.horizontal, 24)
 
-                Text("Tap to preview receipt")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 12)
-                    .opacity(buttonsOpacity)
+                VStack(spacing: 6) {
+                    if isLoadingItems {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("Loading receipt items...")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Text("Tap to preview receipt")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.top, 12)
+                .opacity(buttonsOpacity)
 
                 HStack(spacing: 12) {
                     // 1) Back or Delete
@@ -356,8 +402,8 @@ struct ConfirmationView: View {
                             .cornerRadius(18)
                     }
                     .buttonStyle(.plain)
-                    .disabled(displayAmount == "$0" || amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || amount == "0")
-                    .opacity((displayAmount == "$0" || amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || amount == "0") ? 0.4 : 1.0)
+                    .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
+                    .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
                     .opacity(buttonsOpacity)
 
 
@@ -367,7 +413,6 @@ struct ConfirmationView: View {
                     Button(action: { animateSplitThenAct() }) {
                         Text("Split")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .background(
@@ -402,6 +447,7 @@ struct ConfirmationView: View {
                         .shadow(radius: 6)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(hex: "#06A77D"))
                 .transition(.opacity)
             }
         }

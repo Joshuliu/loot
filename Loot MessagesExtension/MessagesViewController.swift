@@ -13,12 +13,16 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     private let uiModel = LootUIModel()
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
+    private var hasSetupRootView = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
-
+        view.isOpaque = true
+        view.backgroundColor = .systemBackground
         addChild(hostingController)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        hostingController.view.isOpaque = true
+        hostingController.view.backgroundColor = .systemBackground
         view.addSubview(hostingController.view)
         NSLayoutConstraint.activate([
             hostingController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -31,35 +35,8 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
-        applySelectedMessageIfAny(conversation: conversation)
-
-        // Minimal context for the UI
-        let payerUUID = conversation.localParticipantIdentifier.uuidString
-        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
-
-        // Only clear receipt state if no message is selected
-        if conversation.selectedMessage == nil {
-            uiModel.currentReceipt = nil
-        }
-
-        // Keep expansion state in sync (used by your ManualInputView numpad)
-        uiModel.isExpanded = (presentationStyle == .expanded)
-
-        hostingController.rootView = RootContainerView(
-            uiModel: uiModel,
-            participantCount: participantCount,
-            onScan:   { print("Scan tapped") },
-            onExpand: { [weak self] in self?.requestPresentationStyle(.expanded) },
-            onCollapse: { [weak self] in self?.requestPresentationStyle(.compact) },
-            onSendBill: { [weak self] receiptName, amount in
-                self?.sendBillMessage(
-                    receiptName: receiptName,
-                    amount: amount,
-                    payerUUID: payerUUID,
-                    participantCount: participantCount
-                )
-            }
-        )
+        applyMessage(conversation.selectedMessage, conversation: conversation)
+        setupRootView(conversation: conversation)
     }
 
     override func didTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
@@ -69,30 +46,33 @@ final class MessagesViewController: MSMessagesAppViewController {
     
     override func didSelect(_ message: MSMessage, conversation: MSConversation) {
         super.didSelect(message, conversation: conversation)
-        applySelectedMessageIfAny(conversation: conversation)
+        // Use the message parameter directly, not conversation.selectedMessage
+        applyMessage(message, conversation: conversation)
     }
 }
 
 // MARK: - Card render + sending (no backend, no storage)
 
 extension MessagesViewController {
-    private func applySelectedMessageIfAny(conversation: MSConversation) {
-        let payerUUID = conversation.localParticipantIdentifier.uuidString
-        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
+    private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
         // expansion state
         uiModel.isExpanded = (presentationStyle == .expanded)
 
-        if let msg = conversation.selectedMessage,
+        if let msg = message,
            let url = msg.url,
            let payload = LootMessageCodec.payload(from: url) {
 
             uiModel.openedMessagePayload = payload
             uiModel.currentReceipt = payload.toReceiptDisplay()
-        } else {
-            uiModel.openedMessagePayload = nil
-            uiModel.currentReceipt = nil
+            uiModel.currentScreen = .messageViewer
         }
+        // Don't clear openedMessagePayload when message is deselected -
+        // the user is still viewing it. Only clear when they explicitly close.
+    }
+
+    private func setupRootView(conversation: MSConversation) {
+        let participantCount = conversation.remoteParticipantIdentifiers.count + 1
 
         hostingController.rootView = RootContainerView(
             uiModel: uiModel,
@@ -104,7 +84,6 @@ extension MessagesViewController {
                 self?.sendBillMessage(
                     receiptName: receiptName,
                     amount: amount,
-                    payerUUID: payerUUID,
                     participantCount: participantCount
                 )
             }
@@ -113,7 +92,6 @@ extension MessagesViewController {
     
     func renderCardImage(receiptName: String,
                          displayAmount: String,
-                         payerUUID: String,
                          participantCount: Int,
                          splitPayload: SplitPayload) -> UIImage {
         
@@ -131,20 +109,19 @@ extension MessagesViewController {
             owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,  // Only pass if non-empty
             totalCents: splitPayload.tot
         )
-        .background(Color(.systemBackground))
-        .padding(.top, -50)
 
         let hosting = UIHostingController(rootView: card)
         hosting.view.backgroundColor = .clear
+        hosting.safeAreaRegions = []  // Remove safe area insets that cause offset
 
         let size = CGSize(width: 250, height: 150)
-        hosting.view.bounds = CGRect(origin: .zero, size: size)
+        hosting.view.frame = CGRect(origin: .zero, size: size)
         hosting.view.setNeedsLayout()
         hosting.view.layoutIfNeeded()
 
         let renderer = UIGraphicsImageRenderer(size: size)
         return renderer.image { _ in
-            hosting.view.drawHierarchy(in: CGRect(origin: .zero, size: size),
+            hosting.view.drawHierarchy(in: hosting.view.bounds,
                                        afterScreenUpdates: true)
         }
     }
@@ -159,7 +136,6 @@ extension MessagesViewController {
 
     func sendBillMessage(receiptName: String,
                          amount: String,
-                         payerUUID: String,
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
 
@@ -204,7 +180,6 @@ extension MessagesViewController {
         layout.image = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
-            payerUUID: payerUUID,
             participantCount: participantCount,
             splitPayload: splitPayload
         )
@@ -294,7 +269,7 @@ private extension LootMessagePayload {
     }
 }
 
-// MARK: - Build SplitPayload / ReceiptPayload from your in-app models (✅ OPTIMIZED)
+// MARK: - Build SplitPayload / ReceiptPayload
 
 private extension SplitPayload {
     static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
@@ -362,7 +337,7 @@ private extension SplitPayload {
             g: guests,
             pi: payerIndex,
             o: owed,
-            f: fees == 0 ? nil : fees,          // ✅ Only include if non-zero
+            f: fees == 0 ? nil : fees,
             tx: tax == 0 ? nil : tax,
             tip: tip == 0 ? nil : tip,
             d: discount == 0 ? nil : discount,
@@ -405,7 +380,7 @@ private extension ReceiptPayload {
 
 // MARK: - Math (equal/custom/by-items) with stable cents (✅ UPDATED signature)
 
-private enum SplitMath {
+enum SplitMath {
     static func computeOwedCents(
         mode: SplitPayload.Mode,
         guests: [SplitPayload.Guest],

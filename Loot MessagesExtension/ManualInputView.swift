@@ -44,15 +44,8 @@ struct ManualInputView: View {
 
     var body: some View {
         VStack {
-            // Top bar with Back
-            HStack {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                    Text("Back")
-                }
-                .padding(.leading, 16)
-                Spacer()
-            }
+            // Top bar
+            Spacer().frame(height: 36)
             
             // Title / receipt name
             TextField("New Receipt", text: $receiptName)
@@ -144,13 +137,20 @@ struct ManualInputView: View {
             // Buttons
             HStack(spacing: 12) {
                 Button(action: onBack) {
-                    Text("Back")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(18)
+                    Group {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
+                    }
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .foregroundStyle(Color.primary)
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(18)
                 }
+                .buttonStyle(.plain)
                 
                 // Add a tip button
                 Button(action: onAddTip) {
@@ -158,6 +158,7 @@ struct ManualInputView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
+                        .foregroundStyle(Color.primary)
                         .background(Color(.secondarySystemBackground))
                         .cornerRadius(18)
                 }
