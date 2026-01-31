@@ -105,7 +105,7 @@ private struct SplitRingView: View {
         return owedAmounts.prefix(idx + 1).reduce(0, +)
     }
 
-    private func lastActiveIndex(before idx: Int) -> Int {
+    private func lastActiveIndex(idx: Int) -> Int {
         for j in stride(from: idx - 1, through: 0, by: -1) {
             if owedAmounts[j] > 0 {
                 return j
@@ -149,7 +149,7 @@ private struct SplitRingView: View {
                         let ang = -(.pi / 1.99) + (start * 2 * .pi)
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
-                        let colorIdx = lastActiveIndex(before: i)
+                        let colorIdx = lastActiveIndex(idx: i)
                         if sumBefore(i) != sumThrough(i) && owedAmounts[colorIdx] > 0 {
                             Circle()
                                 .fill(BadgeColors.color(for: colorIdx))

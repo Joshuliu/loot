@@ -668,7 +668,7 @@ struct SplitView: View {
                                                     style: .init(lineWidth: lineW * 4.5,
                                                                  lineCap: .round))
                                             .rotationEffect(.degrees(-90))
-                                            .frame(width: (size - 20), height: (size - 20))
+                                            .frame(width: size, height: size)
                                         )
                                     .onTapGesture {
                                         guard interactive else { return }

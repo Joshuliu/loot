@@ -14,7 +14,7 @@ struct SplitsSummaryView: View {
     @State private var selectedIndex: Int = 0
 
     private var includedIndices: [Int] {
-        split.g.indices.filter { split.g[$0].inc }
+        split.g.indices.filter { split.o.indices.contains($0) && split.o[$0] > 0 }
     }
 
     private var safeTotal: Int {
@@ -55,7 +55,16 @@ struct SplitsSummaryView: View {
         let upTo = includedIndices.prefix(includedSlot + 1)
         return upTo.reduce(0) { $0 + owed(for: $1) }
     }
-
+    
+    private func lastActiveIndex(idx: Int) -> Int {
+        for j in stride(from: idx - 1, through: 0, by: -1) {
+            if includedIndices[j] > 0 {
+                return j
+            }
+        }
+        return 0
+    }
+    
     var body: some View {
         let included = includedIndices
         let count = included.count
@@ -90,17 +99,17 @@ struct SplitsSummaryView: View {
                                         .rotationEffect(.degrees(-90))
                                         .frame(width: size, height: size)
                                 }
-                                if count > 0, i > 0 {
+                                let colorIdx = lastActiveIndex(idx: i)
+                                if sumBeforeIncludedSlot(i) != sumThroughIncludedSlot(i) {
                                     let ang = -(.pi / 1.975) + (start * 2 * .pi)
                                     let hx = center.x + handleRadius * cos(ang)
                                     let hy = center.y + handleRadius * sin(ang)
-                                    
                                     Circle()
-                                        .fill(colorForSlot(i - 1))
+                                        .fill(BadgeColors.color(for: colorIdx))
                                         .overlay(
-                                                Circle().stroke(colorForSlot(i - 1), lineWidth: 0.05)
-                                            )
-                                        .frame(width: 30, height: 30)
+                                            Circle().stroke(BadgeColors.color(for: colorIdx), lineWidth: 0.05)
+                                        )
+                                        .frame(width: lineW, height: lineW)
                                         .position(x: hx, y: hy)
                                 }
                             }
