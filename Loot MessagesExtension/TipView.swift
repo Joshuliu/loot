@@ -9,23 +9,50 @@ import SwiftUI
 
 struct TipView: View {
     let subtotalString: String
+    let taxCents: Int
+    let feesCents: Int
+    let discountCents: Int
+    let existingTipCents: Int
     let onBack: () -> Void
     let onNext: (String, String) -> Void  // (tipAmount, newTotal)
-    
+
+    // Convenience initializer for simple cases (manual input with no breakdown)
+    init(subtotalString: String, existingTipCents: Int = 0, onBack: @escaping () -> Void, onNext: @escaping (String, String) -> Void) {
+        self.subtotalString = subtotalString
+        self.taxCents = 0
+        self.feesCents = 0
+        self.discountCents = 0
+        self.existingTipCents = existingTipCents
+        self.onBack = onBack
+        self.onNext = onNext
+    }
+
+    // Full initializer for scanned receipts with breakdown
+    init(subtotalString: String, taxCents: Int, feesCents: Int, discountCents: Int, existingTipCents: Int = 0, onBack: @escaping () -> Void, onNext: @escaping (String, String) -> Void) {
+        self.subtotalString = subtotalString
+        self.taxCents = taxCents
+        self.feesCents = feesCents
+        self.discountCents = discountCents
+        self.existingTipCents = existingTipCents
+        self.onBack = onBack
+        self.onNext = onNext
+    }
+
     @State private var tipPercent: Double = 15.0
-    
+    @State private var hasInitialized: Bool = false
+
     private let minPercent: Double = 0
     private let maxPercent: Double = 100
-    
+
     // Convert string to cents for calculations
-    private var subtotalCents: Int {
+    private var itemSubtotalCents: Int {
         let cleaned = subtotalString
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
-        
+
         guard !cleaned.isEmpty else { return 0 }
-        
+
         if cleaned.contains(".") {
             let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
             let dollars = Int(parts.first ?? "0") ?? 0
@@ -34,16 +61,22 @@ struct TipView: View {
             let cents = Int(String(cents2.prefix(2))) ?? 0
             return dollars * 100 + cents
         }
-        
+
         return (Int(cleaned) ?? 0) * 100
     }
-    
-    private var tipCents: Int {
-        Int(round(Double(subtotalCents) * (tipPercent / 100.0)))
+
+    // Pre-tip total: subtotal + taxes + fees - discounts
+    // This is the amount the tip percentage should be applied to
+    private var preTipTotalCents: Int {
+        itemSubtotalCents + taxCents + feesCents - discountCents
     }
-    
+
+    private var tipCents: Int {
+        Int(round(Double(preTipTotalCents) * (tipPercent / 100.0)))
+    }
+
     private var totalCents: Int {
-        subtotalCents + tipCents
+        preTipTotalCents + tipCents
     }
     
     private func formatMoney(_ cents: Int) -> String {
@@ -58,12 +91,12 @@ struct TipView: View {
                 VStack(spacing: 12) {
                     // Receipt-style breakdown
                     VStack(spacing: 0) {
-                        // Subtotal row
+                        // Pre-tip total row (subtotal + taxes + fees - discounts)
                         HStack {
-                            Text("Subtotal")
+                            Text("Pre-tip total")
                                 .font(.system(size: 15, weight: .regular))
                             Spacer()
-                            Text(formatMoney(subtotalCents))
+                            Text(formatMoney(preTipTotalCents))
                                 .font(.system(size: 15, weight: .regular))
                         }
                         .padding(.horizontal, 16)
@@ -144,6 +177,17 @@ struct TipView: View {
             .padding(.horizontal, 40)
             .padding(.top, 16)
             .padding(.bottom, 20)
+        }
+        .onAppear {
+            guard !hasInitialized else { return }
+            hasInitialized = true
+
+            // If there's an existing tip, calculate what percentage it represents
+            if existingTipCents > 0 && preTipTotalCents > 0 {
+                let calculatedPercent = (Double(existingTipCents) / Double(preTipTotalCents)) * 100.0
+                // Keep exact percentage to preserve user's precise setting
+                tipPercent = calculatedPercent
+            }
         }
     }
 }

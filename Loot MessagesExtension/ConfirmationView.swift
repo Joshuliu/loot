@@ -413,7 +413,6 @@ struct ConfirmationView: View {
                     Button(action: { animateSplitThenAct() }) {
                         Text("Split")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .background(

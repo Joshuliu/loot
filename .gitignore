@@ -26,3 +26,6 @@ Package.resolved
 # Secrets
 Secrets.xcconfig
 Secrets.plist
+Loot.xcodeproj/xcshareddata/xcschemes/Loot MessagesExtension.xcscheme
+*.xcscheme
+*.xcscheme

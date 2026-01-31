@@ -1580,15 +1580,29 @@ struct RootContainerView: View {
                         let breakdown = fullParsed.breakdownDefaults()
                         let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees - breakdown.tip + breakdown.discount))
 
-                        // Prefill tip if present
-                        if breakdown.tip > 0 {
+                        // Check if user already added a tip manually (don't overwrite it)
+                        let userAddedTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
+                        let existingUserTip = uiModel.currentReceipt?.tipCents ?? 0
+
+                        // Only prefill tip from scan if user hasn't added one manually
+                        if !userAddedTip && existingUserTip == 0 && breakdown.tip > 0 {
                             tipAmount = String(format: "%.2f", Double(breakdown.tip) / 100.0)
+                        }
+
+                        // Preserve user's tip if they added one, otherwise use scanned tip
+                        let finalTipCents: Int
+                        if userAddedTip {
+                            finalTipCents = amountToCents(tipAmount)
+                        } else if existingUserTip > 0 {
+                            finalTipCents = existingUserTip
+                        } else {
+                            finalTipCents = breakdown.tip
                         }
 
                         // Update subtotal field
                         amountString = String(format: "%.2f", Double(subtotal) / 100.0)
 
-                        // Rebuild currentReceipt with items + breakdown
+                        // Rebuild currentReceipt with items + breakdown, preserving user's tip
                         uiModel.currentReceipt = ReceiptDisplay(
                             id: uiModel.currentReceipt?.id ?? UUID().uuidString,
                             title: phase1.merchant ?? (receiptName.isEmpty ? "New Receipt" : receiptName),
@@ -1596,9 +1610,9 @@ struct RootContainerView: View {
                             subtotalCents: subtotal,
                             feesCents: breakdown.fees,
                             taxCents: breakdown.tax,
-                            tipCents: breakdown.tip,
+                            tipCents: finalTipCents,
                             discountCents: breakdown.discount,
-                            totalCents: knownTotal,
+                            totalCents: subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents,
                             items: fullParsed.toDisplayItems()
                         )
 
@@ -1743,20 +1757,44 @@ struct RootContainerView: View {
                         .transition(.opacity)
                         
                     case .tipview:
+                        // Pass breakdown values from scanned receipt if available
+                        // This ensures tip is calculated on subtotal + tax + fees - discounts
                         TipView(
-                            subtotalString: amountString,  // Pass the subtotal directly
+                            subtotalString: amountString,  // Pass the item subtotal
+                            taxCents: uiModel.currentReceipt?.taxCents ?? 0,
+                            feesCents: uiModel.currentReceipt?.feesCents ?? 0,
+                            discountCents: uiModel.currentReceipt?.discountCents ?? 0,
+                            existingTipCents: uiModel.currentReceipt?.tipCents ?? 0,
                             onBack: {
-                                // Return to fill without changes
+                                // Return to previous screen (fill for manual, confirmation for scanned)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    uiModel.currentScreen = .fill
+                                    uiModel.currentScreen = confirmationCameFromManual ? .fill : .confirmation
                                 }
                             },
-                            onNext: { tip, _ in
-                                // Only update the tip amount, subtotal stays in amountString
+                            onNext: { tip, newTotal in
+                                // Update the tip amount
                                 tipAmount = tip
 
-                                // Create receipt with tip breakdown
-                                uiModel.currentReceipt = makePreviewReceipt()
+                                // Update the receipt with the new tip
+                                if let receipt = uiModel.currentReceipt {
+                                    // For scanned receipts, preserve the breakdown and update tip
+                                    let tipCentsValue = amountToCents(tip)
+                                    uiModel.currentReceipt = ReceiptDisplay(
+                                        id: receipt.id,
+                                        title: receipt.title,
+                                        createdAt: receipt.createdAt,
+                                        subtotalCents: receipt.subtotalCents,
+                                        feesCents: receipt.feesCents,
+                                        taxCents: receipt.taxCents,
+                                        tipCents: tipCentsValue,
+                                        discountCents: receipt.discountCents,
+                                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents + tipCentsValue,
+                                        items: receipt.items
+                                    )
+                                } else {
+                                    // For manual input, create a simple receipt
+                                    uiModel.currentReceipt = makePreviewReceipt()
+                                }
 
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .confirmation
