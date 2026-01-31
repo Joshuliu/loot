@@ -10,6 +10,7 @@ import SwiftUI
 
 struct SplitsSummaryView: View {
     let split: SplitPayload
+    let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
 
     @State private var selectedIndex: Int = 0
 
@@ -43,6 +44,11 @@ struct SplitsSummaryView: View {
     // Use shared BadgeColors
     private func colorForSlot(_ i: Int) -> Color {
         BadgeColors.color(for: i)
+    }
+
+    // Get items assigned to a specific guest slot (for byItems mode)
+    private func itemsForSlot(_ slotIndex: Int) -> [ReceiptItemPayload] {
+        items.filter { $0.rs.contains(slotIndex) }
     }
 
     private func sumBeforeIncludedSlot(_ includedSlot: Int) -> Int {
@@ -137,20 +143,44 @@ struct SplitsSummaryView: View {
                 VStack(spacing: 10) {
                     ForEach(0..<count, id: \.self) { i in
                         let gi = included[i]
+                        // Get items for this guest slot
+                        let guestItems = itemsForSlot(i)
+
                         Button {
                             selectedIndex = i
                         } label: {
-                            HStack {
-                                ColoredCircleBadge(
-                                    text: BadgeColors.initials(from: displayName(for: gi), fallback: gi),
-                                    color: colorForSlot(i)
-                                )
+                            VStack(alignment: .leading, spacing: 0) {
+                                HStack {
+                                    ColoredCircleBadge(
+                                        text: BadgeColors.initials(from: displayName(for: gi), fallback: gi),
+                                        color: colorForSlot(i)
+                                    )
 
-                                Text(displayName(for: gi))
-                                    .font(.system(size: 15, weight: i == selectedIndex ? .semibold : .regular))
-                                Spacer()
-                                Text(ReceiptDisplay.money(owed(for: gi)))
-                                    .font(.system(size: 15, weight: .semibold))
+                                    Text(displayName(for: gi))
+                                        .font(.system(size: 15, weight: i == selectedIndex ? .semibold : .regular))
+                                    Spacer()
+                                    Text(ReceiptDisplay.money(owed(for: gi)))
+                                        .font(.system(size: 15, weight: .semibold))
+                                }
+
+                                // Show items for this guest
+                                if !guestItems.isEmpty {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        ForEach(guestItems, id: \.id) { item in
+                                            HStack(spacing: 6) {
+                                                Circle()
+                                                    .fill(colorForSlot(i).opacity(0.5))
+                                                    .frame(width: 6, height: 6)
+                                                Text(item.l)
+                                                    .font(.system(size: 13))
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                    }
+                                    .padding(.leading, 10)
+                                    .padding(.top, 8)
+                                }
                             }
                             .padding(.horizontal, 14)
                             .padding(.vertical, 12)
@@ -162,14 +192,6 @@ struct SplitsSummaryView: View {
                     }
                 }
                 .padding(.top, 15)
-
-                // Tiny "by items" hint (optional but useful)
-                if split.m == .byItems {
-                    Text("Items are saved per person inside this message.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 4)
-                }
 
                 Spacer().frame(height: 24)
             }

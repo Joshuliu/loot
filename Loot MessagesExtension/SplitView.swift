@@ -1253,7 +1253,7 @@ struct SplitView: View {
                             .foregroundColor(.secondary)
                     }
 
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    HStack(alignment: .center, spacing: 2) {
                         Text("$")
                             .font(.system(size: 32, weight: .bold))
                         TextField("0", text: $amountInputText)
