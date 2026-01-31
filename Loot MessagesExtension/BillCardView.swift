@@ -140,15 +140,16 @@ private struct SplitRingView: View {
                         let ang = -(.pi / 1.99) + (start * 2 * .pi)
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
-
-                        Circle()
-                            .fill(BadgeColors.color(for: i - 1))
-                            .overlay(
-                                Circle().stroke(BadgeColors.color(for: i - 1), lineWidth: 0.05)
-                            )
-                            .frame(width: 16, height: 16)
-                            .position(x: hx, y: hy)
-                    }
+                        if sumBefore(i) != sumThrough(i) && sumBefore(i-1) != sumThrough(i-1) {
+                            Circle()
+                                .fill(BadgeColors.color(for: i - 1))
+                                .overlay(
+                                    Circle().stroke(BadgeColors.color(for: i - 1), lineWidth: 0.05)
+                                )
+                                .frame(width: 16, height: 16)
+                                .position(x: hx, y: hy)
+                                            }
+                        }
                 }
 
                 // Center text - Total amount
