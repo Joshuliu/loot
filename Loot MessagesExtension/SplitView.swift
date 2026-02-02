@@ -644,6 +644,7 @@ struct SplitView: View {
             Text(subtitle)
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
+                .padding(.bottom, 5)
             
             GeometryReader { geo in
                 let size = min(geo.size.width, 210)
@@ -1224,14 +1225,15 @@ struct SplitView: View {
                         .allowsHitTesting(mode == .custom)
                         
                         // BY ITEM
-                        byItemPanel()
-                            .opacity(mode == .byItems ? 1 : 0)
-                            .allowsHitTesting(mode == .byItems)
+                        if mode == .byItems {
+                            byItemPanel()
+                                .allowsHitTesting(mode == .byItems)
+                        }
                     }
                     .animation(.easeInOut(duration: 0.22), value: mode)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
-                    .padding(.bottom, 110)
+                    .padding(.bottom, 190)
                 }
             }
         }
