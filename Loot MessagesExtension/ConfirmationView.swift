@@ -20,6 +20,9 @@ struct ConfirmationView: View {
     let onDeleteToLanding: () -> Void
     let onGoToSplit: () -> Void
     let onAddTip: () -> Void
+    let onTipChanged: (String, String) -> Void  // (tipAmount, newTotal)
+    let onSelectMode: (SplitDraft.Mode) -> Void
+    let collapsedHeight: CGFloat = 132
 
     let onRequestCollapse: () -> Void
 
@@ -32,8 +35,13 @@ struct ConfirmationView: View {
     @State private var hasSent: Bool = false
     @State private var showSuccess: Bool = false
     @State private var dragIntent: DragIntent = .none
+    @State private var tipPercent: Double = 15.0
+    @State private var hasTipInitialized: Bool = false
+    @State private var isBottomHeaderExpanded: Bool = false
 
     private enum DragIntent { case none, up, left, right }
+
+//    private let collapsedHeight: CGFloat = 60
 
     private func clamp01(_ x: CGFloat) -> CGFloat { min(max(x, 0), 1) }
 
@@ -76,6 +84,51 @@ struct ConfirmationView: View {
     private var displayAmount: String { "$" + formatAmount(amount) }
     private var hasTip: Bool {
         !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
+    }
+
+    // Pre-tip total for tip percentage calculations
+    private var preTipTotalCents: Int {
+        if let draft = splitDraft {
+            return draft.totalCents - draft.tipCents
+        } else {
+            return amountToCents(amount)
+        }
+    }
+
+    // Tip cents based on current slider percentage
+    private var sliderTipCents: Int {
+        Int(round(Double(preTipTotalCents) * (tipPercent / 100.0)))
+    }
+
+    // Total with current tip
+    private var totalWithTipCents: Int {
+        preTipTotalCents + sliderTipCents
+    }
+
+    private func formatMoney(_ cents: Int) -> String {
+        let dollars = cents / 100
+        let centsRemainder = cents % 100
+        return "$\(dollars).\(String(format: "%02d", centsRemainder))"
+    }
+
+    //modebutton for the three split options that appear during expandedview***NEEDS WORK***
+    private func modeButton(_ m: SplitDraft.Mode) -> some View {
+        let selected = (m == splitMode)
+        return Button {
+            animateSplitThenAct()
+            onSelectMode(m)
+        } label: {
+            Text(m.rawValue)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(selected ? .white : .primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(selected ? Color.blue : buttonBase))
+        }
+        .buttonStyle(.plain)
+        
     }
 
     // Extract owed amounts and total from split draft (or compute default equal split)
@@ -182,6 +235,39 @@ struct ConfirmationView: View {
             return "\(trimmed).00"
         }
     }
+
+    // MARK: - Bottom Header
+//    private func header() -> some View {
+//        HStack {
+//            Text("Split Options")
+//                .font(.system(size: 15, weight: .semibold))
+//            Spacer()
+//            Image(systemName: isBottomHeaderExpanded ? "chevron.down" : "chevron.up")
+//                .font(.system(size: 14, weight: .medium))
+//                .foregroundColor(.secondary)
+//        }
+//        .padding(.horizontal, 16)
+//        .padding(.vertical, 12)
+//        .background(Color(.secondarySystemBackground))
+//        .contentShape(Rectangle())
+//        .onTapGesture {
+//            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+//                isBottomHeaderExpanded.toggle()
+//            }
+//        }
+//    }
+
+    @ViewBuilder
+    private func expandedBody() -> some View {
+        VStack(spacing: 12) {
+            Text("Additional split options will appear here")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+
     private var swipeCardGesture: some Gesture {
         DragGesture(minimumDistance: 8)
             .onChanged { value in
@@ -355,85 +441,171 @@ struct ConfirmationView: View {
                 }
                 .padding(.top, 12)
                 .opacity(buttonsOpacity)
-
-                HStack(spacing: 12) {
-                    // 1) Back or Delete
-                    let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
-
-                    Button(action: {
-                        if cameFromManual { onBack() } else { animateDeleteThenAct() }
-                    }) {
-                        Group {
-                            if cameFromManual {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "chevron.left")
-                                    Text("Back")
-                                }
-                            } else {
-                                Image(systemName: "trash")
+                
+                // Tip options when expanded
+                if uiModel.isExpanded {
+                    VStack(spacing: 12) {
+                        // Tip breakdown
+                        VStack(spacing: 0) {
+                            HStack {
+                                Text("Pre-tip total")
+                                    .font(.system(size: 15, weight: .regular))
+                                Spacer()
+                                Text(formatMoney(preTipTotalCents))
+                                    .font(.system(size: 15, weight: .regular))
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+
+                            HStack {
+                                Text("Tip (\(String(format: "%.0f", tipPercent))%)")
+                                    .font(.system(size: 15, weight: .regular))
+                                Spacer()
+                                Text(formatMoney(sliderTipCents))
+                                    .font(.system(size: 15, weight: .regular))
+                                    .foregroundColor(.blue)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+
+                            Divider()
+                                .padding(.horizontal, 16)
+
+                            HStack {
+                                Text("Total")
+                                    .font(.system(size: 17, weight: .semibold))
+                                Spacer()
+                                Text(formatMoney(totalWithTipCents))
+                                    .font(.system(size: 17, weight: .semibold))
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
                         }
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .foregroundStyle(
-                            cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
-                        )
-                        .background(
-                            RoundedRectangle(cornerRadius: 18)
-                                .fill(buttonBase)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 18)
-                                        .fill(Color.red)
-                                        .opacity(Double(trashProgress))
-                                )
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
+                        .background(Color(.secondarySystemBackground))
+                        .cornerRadius(16)
+                        .padding(.horizontal, 24)
 
-                    // 2) Add Tip (same behavior/label as ManualInputView)
-                    Button(action: onAddTip) {
-                        Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(buttonBase)
-                            .cornerRadius(18)
+                        // Percentage slider
+                        PercentageSlider(
+                            percent: $tipPercent,
+                            minPercent: 0,
+                            maxPercent: 100
+                        )
+                        .frame(height: 60)
+                        .padding(.horizontal, 24)
+                        .onChange(of: tipPercent) { _, _ in
+                            // Update tip when slider changes
+                            let tipString = formatMoney(sliderTipCents).replacingOccurrences(of: "$", with: "")
+                            let totalString = formatMoney(totalWithTipCents).replacingOccurrences(of: "$", with: "")
+                            onTipChanged(tipString, totalString)
+                        }
+
+                        Text("Scroll to adjust • Tap a % to jump")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
-                    .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
+                    .padding(.vertical, 24)
+                    .padding(.top, 20)
                     .opacity(buttonsOpacity)
+                    
+                    //mode buttons should prompt you to respective splitby screen
+                    HStack(spacing: 12) {
+                        modeButton(.equally)
+                        modeButton(.byItems)
+                        modeButton(.custom)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
+                    
+                    header()
+                        .frame(height: collapsedHeight)
 
+                    if isBottomHeaderExpanded == false {
+                        Divider()
+                        expandedBody()
+                    }
+                }
+                
+                if uiModel.isExpanded == false {
+                    HStack(spacing: 12) {
+                        // 1) Back or Delete
+                        let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
 
-                    // 3) Split
-                    let splitProgress = (dragIntent == .right) ? rightProgress : 0
-
-                    Button(action: { animateSplitThenAct() }) {
-                        Text("Split")
+                        Button(action: {
+                            if cameFromManual { onBack() } else { animateDeleteThenAct() }
+                        }) {
+                            Group {
+                                if cameFromManual {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "chevron.left")
+                                        Text("Back")
+                                    }
+                                } else {
+                                    Image(systemName: "trash")
+                                }
+                            }
                             .font(.system(size: 17, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
+                            .foregroundStyle(
+                                cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
+                            )
                             .background(
                                 RoundedRectangle(cornerRadius: 18)
                                     .fill(buttonBase)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 18)
-                                            .fill(gold)
-                                            .opacity(Double(splitProgress))
+                                            .fill(Color.red)
+                                            .opacity(Double(trashProgress))
                                     )
                             )
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
+
+                        // 2) Add Tip (same behavior/label as ManualInputView)
+                        Button(action: onAddTip) {
+                            Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
+                                .font(.system(size: 17, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(buttonBase)
+                                .cornerRadius(18)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
+                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
+                        .opacity(buttonsOpacity)
+
+
+                        // 3) Split
+                        let splitProgress = (dragIntent == .right) ? rightProgress : 0
+
+                        Button(action: { animateSplitThenAct() }) {
+                            Text("Split")
+                                .font(.system(size: 17, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(buttonBase)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 18)
+                                                .fill(gold)
+                                                .opacity(Double(splitProgress))
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                        .opacity(dragIntent == .right ? 1 : buttonsOpacity)
+
+
                     }
-                    .buttonStyle(.plain)
-                    .opacity(dragIntent == .right ? 1 : buttonsOpacity)
-
-
+                    .padding(.horizontal, 40)
+                    .padding(.top, 16)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal, 40)
-                .padding(.top, 16)
-                .padding(.bottom, 20)
-
             }
 
             if showSuccess {
@@ -472,6 +644,17 @@ struct ConfirmationView: View {
             cardRotation = 0
             hasSent = false
             showSuccess = false
+
+            // Initialize tip percentage from existing tip
+            if !hasTipInitialized {
+                hasTipInitialized = true
+                let existingTipCents = splitDraft?.tipCents ?? amountToCents(tipAmount)
+                if existingTipCents > 0 && preTipTotalCents > 0 {
+                    tipPercent = (Double(existingTipCents) / Double(preTipTotalCents)) * 100.0
+                } else {
+                    tipPercent = 15.0
+                }
+            }
         }
     }
 }

@@ -1173,6 +1173,7 @@ struct SplitView: View {
     
     var body: some View {
         ZStack(alignment: .bottom) {
+            
             VStack(spacing: 0) {
                 HStack {
                     Button(action: onBack) {

@@ -1846,6 +1846,70 @@ struct RootContainerView: View {
                                     uiModel.currentScreen = .tipview
                                 }
                             },
+                            onTipChanged: { tip, total in
+                                // Update the tip amount from inline slider
+                                tipAmount = tip
+
+                                // Update the receipt if it exists
+                                if let receipt = uiModel.currentReceipt {
+                                    let tipCentsValue = amountToCents(tip)
+                                    uiModel.currentReceipt = ReceiptDisplay(
+                                        id: receipt.id,
+                                        title: receipt.title,
+                                        createdAt: receipt.createdAt,
+                                        subtotalCents: receipt.subtotalCents,
+                                        feesCents: receipt.feesCents,
+                                        taxCents: receipt.taxCents,
+                                        tipCents: tipCentsValue,
+                                        discountCents: receipt.discountCents,
+                                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents + tipCentsValue,
+                                        items: receipt.items
+                                    )
+                                }
+
+                                // Update split draft if it exists
+                                if var draft = uiModel.currentSplitDraft {
+                                    let oldTip = draft.tipCents
+                                    let newTip = amountToCents(tip)
+                                    draft.tipCents = newTip
+                                    draft.totalCents = draft.totalCents - oldTip + newTip
+                                    uiModel.currentSplitDraft = draft
+                                }
+                            },
+                            onSelectMode: { newMode in
+                                if var draft = uiModel.currentSplitDraft {
+                                    draft.mode = newMode
+                                    uiModel.currentSplitDraft = draft
+                                    splitDraft = draft
+                                } else if var draft = splitDraft {
+                                    draft.mode = newMode
+                                    splitDraft = draft
+                                    uiModel.currentSplitDraft = draft
+                                } else {
+                                    // Create a minimal draft with the selected mode
+                                    let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+                                    var seededGuests: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true)]
+                                    if participantCount > 1 {
+                                        for _ in 1..<participantCount {
+                                            seededGuests.append(SplitGuest(name: "", isIncluded: true, isMe: false))
+                                        }
+                                    }
+                                    let newDraft = SplitDraft(
+                                        guests: seededGuests,
+                                        payerGuestId: seededGuests.first?.id ?? UUID(),
+                                        mode: newMode,
+                                        totalCents: amountToCents(totalAmount),
+                                        perGuestCents: [],
+                                        items: [],
+                                        feesCents: uiModel.currentReceipt?.feesCents ?? 0,
+                                        taxCents: uiModel.currentReceipt?.taxCents ?? 0,
+                                        tipCents: uiModel.currentReceipt?.tipCents ?? amountToCents(tipAmount),
+                                        discountCents: uiModel.currentReceipt?.discountCents ?? 0
+                                    )
+                                    splitDraft = newDraft
+                                    uiModel.currentSplitDraft = newDraft
+                                }
+                            },
                             onRequestCollapse: onCollapse
                         )
                         .transition(.opacity)
