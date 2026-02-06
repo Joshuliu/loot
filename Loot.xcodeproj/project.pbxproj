@@ -8,6 +8,10 @@
 
 /* Begin PBXBuildFile section */
 		F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = F615A0592F0738EA005E6C5E /* Secrets.xcconfig */; };
+		F62737242F36700200EC3388 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000002 /* FirebaseAuth */; };
+		F62737252F36700200EC3388 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000003 /* FirebaseFirestore */; };
+		F62737672F3674AF00EC3388 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F62737662F3674AF00EC3388 /* GoogleService-Info.plist */; };
+		F62737682F3674AF00EC3388 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F62737662F3674AF00EC3388 /* GoogleService-Info.plist */; };
 		F64F33C72F0674A10065BCB2 /* Loot MessagesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F64F33CC2F0674A10065BCB2 /* Messages.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F64F33CB2F0674A10065BCB2 /* Messages.framework */; };
 /* End PBXBuildFile section */
@@ -38,6 +42,7 @@
 
 /* Begin PBXFileReference section */
 		F615A0592F0738EA005E6C5E /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		F62737662F3674AF00EC3388 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		F64F33BD2F06749F0065BCB2 /* Loot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Loot MessagesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F64F33CB2F0674A10065BCB2 /* Messages.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Messages.framework; path = System/Library/Frameworks/Messages.framework; sourceTree = SDKROOT; };
@@ -84,6 +89,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F62737252F36700200EC3388 /* FirebaseFirestore in Frameworks */,
+				F62737242F36700200EC3388 /* FirebaseAuth in Frameworks */,
 				F64F33CC2F0674A10065BCB2 /* Messages.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -94,6 +101,7 @@
 		F64F33B62F06749F0065BCB2 = {
 			isa = PBXGroup;
 			children = (
+				F62737662F3674AF00EC3388 /* GoogleService-Info.plist */,
 				F64F33BF2F06749F0065BCB2 /* Loot */,
 				F64F33CD2F0674A10065BCB2 /* Loot MessagesExtension */,
 				F64F33CA2F0674A10065BCB2 /* Frameworks */,
@@ -161,6 +169,8 @@
 			);
 			name = "Loot MessagesExtension";
 			packageProductDependencies = (
+				A1B2C3D42F0A00000000002 /* FirebaseAuth */,
+				A1B2C3D42F0A00000000003 /* FirebaseFirestore */,
 			);
 			productName = "Loot MessagesExtension";
 			productReference = F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */;
@@ -194,6 +204,9 @@
 			);
 			mainGroup = F64F33B62F06749F0065BCB2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F64F33BE2F06749F0065BCB2 /* Products */;
 			projectDirPath = "";
@@ -211,6 +224,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */,
+				F62737672F3674AF00EC3388 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -218,6 +232,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F62737682F3674AF00EC3388 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -251,7 +266,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7N7438SMWS;
+				DEVELOPMENT_TEAM = L3XC4CJCL6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Loot MessagesExtension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Loot;
@@ -290,7 +305,7 @@
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7N7438SMWS;
+				DEVELOPMENT_TEAM = L3XC4CJCL6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Loot MessagesExtension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Loot;
@@ -451,7 +466,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7N7438SMWS;
+				DEVELOPMENT_TEAM = L3XC4CJCL6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Loot/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Loot uses the camera to scan receipts and extract items and totals.";
@@ -480,7 +495,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 7N7438SMWS;
+				DEVELOPMENT_TEAM = L3XC4CJCL6;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Loot/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Loot uses the camera to scan receipts and extract items and totals.";
@@ -531,6 +546,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D42F0A00000000002 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		A1B2C3D42F0A00000000003 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F64F33B72F06749F0065BCB2 /* Project object */;
 }
