@@ -22,6 +22,7 @@ struct ConfirmationView: View {
     let onAddTip: () -> Void
     let onTipChanged: (String, String) -> Void  // (tipAmount, newTotal)
     let onSelectMode: (SplitDraft.Mode) -> Void
+    let onGuestsChanged: ([SplitGuest], UUID) -> Void  // (guests, payerGuestId)
     let collapsedHeight: CGFloat = 132
 
     let onRequestCollapse: () -> Void
@@ -38,6 +39,12 @@ struct ConfirmationView: View {
     @State private var tipPercent: Double = 15.0
     @State private var hasTipInitialized: Bool = false
     @State private var isBottomHeaderExpanded: Bool = false
+
+    // Guest drawer state
+    @State private var showGuestEditor: Bool = false
+    @State private var guestEditorMode: GuestEditorMode? = nil
+    @State private var draftGuests: [SplitGuest] = []
+    @State private var draftPayerGuestId: UUID = UUID()
 
     private enum DragIntent { case none, up, left, right }
 
@@ -396,10 +403,12 @@ struct ConfirmationView: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
+        ZStack(alignment: .bottom) {
+            // Main content
+            ZStack {
+                VStack(spacing: 0) {
 
-                Text(dragIntent == .left ? "Swipe left to delete" :
+                    Text(dragIntent == .left ? "Swipe left to delete" :
                         dragIntent == .right ? "Swipe right for split options" :
                         isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
                     .font(.system(size: 14, weight: .regular))
@@ -505,7 +514,7 @@ struct ConfirmationView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(.vertical, 24)
-                    .padding(.top, 20)
+                    .padding(.top, 15)
                     .opacity(buttonsOpacity)
                     
                     //mode buttons should prompt you to respective splitby screen
@@ -516,15 +525,15 @@ struct ConfirmationView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 50)  // Extra padding to sit above SplitGuestDrawer (collapsed height 132)
                     
-                    header()
-                        .frame(height: collapsedHeight)
-
-                    if isBottomHeaderExpanded == false {
-                        Divider()
-                        expandedBody()
-                    }
+//                    header()
+//                        .frame(height: collapsedHeight)
+//
+//                    if isBottomHeaderExpanded == false {
+//                        Divider()
+//                        expandedBody()
+//                    }
                 }
                 
                 if uiModel.isExpanded == false {
@@ -608,31 +617,55 @@ struct ConfirmationView: View {
                 }
             }
 
-            if showSuccess {
-                VStack {
-                    Text("Sent!")
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color(.systemBackground))
-                        .cornerRadius(12)
-                        .shadow(radius: 6)
+                if showSuccess {
+                    VStack {
+                        Text("Sent!")
+                            .font(.system(size: 16, weight: .semibold))
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(12)
+                            .shadow(radius: 6)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(hex: "#06A77D"))
+                    .transition(.opacity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(hex: "#06A77D"))
-                .transition(.opacity)
             }
-        }
-        .background {
-            ZStack {
-                Color.black.opacity(0.10)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background {
+                ZStack {
+                    Color.black.opacity(0.10)
 
-                Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
-                Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
-                Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+                    Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
+                    Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
+                    Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+                }
             }
             .ignoresSafeArea()
+
+            // Guest drawer - shows "Split with" / "Paid by" header at very bottom
+            // Only show when expanded
+            if uiModel.isExpanded {
+                SplitGuestDrawer(
+                    isExpanded: $showGuestEditor,
+                    mode: $guestEditorMode,
+                    guests: $draftGuests,
+                    payerGuestId: $draftPayerGuestId
+                )
+            }
         }
+        .ignoresSafeArea(edges: .bottom)
+//        .background {
+//            ZStack {
+//                Color.black.opacity(0.10)
+//
+//                Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
+//                Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
+//                Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+//            }
+//            .ignoresSafeArea()
+//        }
         .animation(.easeInOut(duration: 0.12), value: dragIntent)
         .animation(.easeInOut(duration: 0.12), value: cardOffset)
         .task {
@@ -655,6 +688,31 @@ struct ConfirmationView: View {
                     tipPercent = 15.0
                 }
             }
+
+            // Initialize guest draft from splitDraft or create default
+            if draftGuests.isEmpty {
+                if let draft = splitDraft, !draft.guests.isEmpty {
+                    draftGuests = draft.guests
+                    draftPayerGuestId = draft.payerGuestId
+                } else {
+                    // Create default guests
+                    let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+                    var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true)]
+                    if participantCount > 1 {
+                        for _ in 1..<participantCount {
+                            seeded.append(SplitGuest(name: "", isIncluded: true, isMe: false))
+                        }
+                    }
+                    draftGuests = seeded
+                    draftPayerGuestId = seeded.first?.id ?? UUID()
+                }
+            }
+        }
+        .onChange(of: draftGuests) { _, newGuests in
+            onGuestsChanged(newGuests, draftPayerGuestId)
+        }
+        .onChange(of: draftPayerGuestId) { _, newPayerId in
+            onGuestsChanged(draftGuests, newPayerId)
         }
     }
 }

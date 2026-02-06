@@ -307,8 +307,7 @@ struct SplitGuestDrawer: View {
     }
 
 
-    private func header() -> some View {
-        
+    func header() -> some View {
         HStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Split with")

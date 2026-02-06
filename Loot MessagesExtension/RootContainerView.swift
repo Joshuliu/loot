@@ -1910,6 +1910,31 @@ struct RootContainerView: View {
                                     uiModel.currentSplitDraft = newDraft
                                 }
                             },
+                            onGuestsChanged: { newGuests, newPayerId in
+                                // Update splitDraft with new guests/payer
+                                if var draft = splitDraft {
+                                    draft.guests = newGuests
+                                    draft.payerGuestId = newPayerId
+                                    splitDraft = draft
+                                    uiModel.currentSplitDraft = draft
+                                } else {
+                                    // Create a new draft with the guests
+                                    let newDraft = SplitDraft(
+                                        guests: newGuests,
+                                        payerGuestId: newPayerId,
+                                        mode: .equally,
+                                        totalCents: amountToCents(totalAmount),
+                                        perGuestCents: [],
+                                        items: [],
+                                        feesCents: uiModel.currentReceipt?.feesCents ?? 0,
+                                        taxCents: uiModel.currentReceipt?.taxCents ?? 0,
+                                        tipCents: uiModel.currentReceipt?.tipCents ?? amountToCents(tipAmount),
+                                        discountCents: uiModel.currentReceipt?.discountCents ?? 0
+                                    )
+                                    splitDraft = newDraft
+                                    uiModel.currentSplitDraft = newDraft
+                                }
+                            },
                             onRequestCollapse: onCollapse
                         )
                         .transition(.opacity)
