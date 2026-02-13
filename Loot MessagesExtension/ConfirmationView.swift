@@ -24,10 +24,9 @@ struct ConfirmationView: View {
     let onSelectMode: (SplitDraft.Mode) -> Void
     let onGuestsChanged: ([SplitGuest], UUID) -> Void  // (guests, payerGuestId)
     let collapsedHeight: CGFloat = 132
-
     let onRequestCollapse: () -> Void
 
-    private var isLoadingItems: Bool {
+    var isLoadingItems: Bool {
         uiModel.itemsLoadingState.isLoading
     }
 
@@ -41,10 +40,38 @@ struct ConfirmationView: View {
     @State private var isBottomHeaderExpanded: Bool = false
 
     // Guest drawer state
-    @State private var showGuestEditor: Bool = false
-    @State private var guestEditorMode: GuestEditorMode? = nil
-    @State private var draftGuests: [SplitGuest] = []
-    @State private var draftPayerGuestId: UUID = UUID()
+    @State var showGuestEditor: Bool = false
+    @State var guestEditorMode: GuestEditorMode? = nil
+    @State var draftGuests: [SplitGuest] = []
+    @State var draftPayerGuestId: UUID = UUID()
+
+    // Split panel state (used by extension in SplitView.swift)
+    @State var mode: SplitDraft.Mode = .equally
+    @State var lastMode: SplitDraft.Mode = .equally
+    @State var guests: [SplitGuest] = []
+    @State var payerGuestId: UUID = UUID()
+    @State var guestSelectedIndex: Int = 0
+    @State var guestAmountsCents: [Int] = []
+    @State var donutDrag: DonutDrag? = nil
+    @State var fineTunerScrollTarget: Int? = nil
+    @State var isEditingAmount: Bool = false
+    @State var editingGuestIndex: Int? = nil
+    @State var amountInputText: String = ""
+    @FocusState var isAmountFieldFocused: Bool
+    @State var editingGuestNameId: UUID? = nil
+    @FocusState var guestNameFocusedId: UUID?
+    @State var haptic = UIImpactFeedbackGenerator(style: .light)
+    @State var lastHapticCents: Int = 0
+    @State var byItemItems: [DraftReceiptItem] = []
+    @State var byItemSelectedGuestId: UUID = UUID()
+    @State var feesString: String = ""
+    @State var taxString: String = ""
+    @State var tipString: String = ""
+    @State var discountString: String = ""
+    @State var didInitByItem: Bool = false
+    @State var showEditReceipt: Bool = false
+    @State var confirmed: Bool = true
+
 
     private enum DragIntent { case none, up, left, right }
 
@@ -118,26 +145,6 @@ struct ConfirmationView: View {
         return "$\(dollars).\(String(format: "%02d", centsRemainder))"
     }
 
-    //modebutton for the three split options that appear during expandedview***NEEDS WORK***
-    private func modeButton(_ m: SplitDraft.Mode) -> some View {
-        let selected = (m == splitMode)
-        return Button {
-            animateSplitThenAct()
-            onSelectMode(m)
-        } label: {
-            Text(m.rawValue)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(selected ? .white : .primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(selected ? Color.blue : buttonBase))
-        }
-        .buttonStyle(.plain)
-        
-    }
-
     // Extract owed amounts and total from split draft (or compute default equal split)
     private var owedAmounts: [Int]? {
         let total = amountToCents(amount)
@@ -190,7 +197,7 @@ struct ConfirmationView: View {
         }
     }
     
-    private var totalCents: Int? {
+    var totalCents: Int {
         if let draft = splitDraft {
             return draft.totalCents
         } else {
@@ -209,7 +216,7 @@ struct ConfirmationView: View {
         return out
     }
     
-    private func amountToCents(_ str: String) -> Int {
+    func amountToCents(_ str: String) -> Int {
         let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "$", with: "")
             .replacingOccurrences(of: ",", with: "")
@@ -402,283 +409,223 @@ struct ConfirmationView: View {
         }
     }
 
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            // Main content
-            ZStack {
-                VStack(spacing: 0) {
+    // MARK: - Confirmation Panel (card + swipe-to-send + bottom buttons)
+    private func confirmationPanel() -> some View {
+        VStack(spacing: 0) {
+            Text(dragIntent == .left ? "Swipe left to delete" :
+                dragIntent == .right ? "Swipe right for split options" :
+                isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
+            .font(.system(size: 14, weight: .regular))
+            .foregroundColor(.secondary)
+            .padding(.top, 10)
 
-                    Text(dragIntent == .left ? "Swipe left to delete" :
-                        dragIntent == .right ? "Swipe right for split options" :
-                        isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 10)
+            Color.clear.frame(height: 18)
 
-                Color.clear.frame(height: 18)
+            // Card with split ring
+            BillCardView(
+                receiptName: receiptName,
+                displayAmount: displayAmount,
+                displayName: myDisplayNameFromDefaults(),
+                splitLabel: splitLabel,
+                owedAmounts: owedAmounts,
+                totalCents: totalCents
+            )
+            .offset(cardOffset)
+            .rotationEffect(.degrees(cardRotation), anchor: .bottom)
+            .gesture(swipeCardGesture)
+            .simultaneousGesture(TapGesture().onEnded { onPreviewReceipt() })
+            .contentShape(Rectangle())
+            .padding(.horizontal, 24)
 
-                // Card with split ring
-                BillCardView(
-                    receiptName: receiptName,
-                    displayAmount: displayAmount,
-                    displayName: myDisplayNameFromDefaults(),
-                    splitLabel: splitLabel,
-                    owedAmounts: owedAmounts,
-                    totalCents: totalCents
-                )
-                .offset(cardOffset)
-                .rotationEffect(.degrees(cardRotation), anchor: .bottom)
-                .gesture(swipeCardGesture)
-                .simultaneousGesture(TapGesture().onEnded { onPreviewReceipt() })
-                .contentShape(Rectangle())
-                .padding(.horizontal, 24)
-
-                VStack(spacing: 6) {
-                    if isLoadingItems {
-                        HStack(spacing: 6) {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                            Text("Loading receipt items...")
-                                .font(.system(size: 13))
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        Text("Tap to preview receipt")
-                            .font(.system(size: 14, weight: .regular))
+            VStack(spacing: 6) {
+                if isLoadingItems {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        Text("Loading receipt items...")
+                            .font(.system(size: 13))
                             .foregroundColor(.secondary)
                     }
+                } else {
+                    Text("Tap to preview receipt")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.secondary)
                 }
-                .padding(.top, 12)
-                .opacity(buttonsOpacity)
-                
-                // Tip options when expanded
-                if uiModel.isExpanded {
-                    VStack(spacing: 12) {
-                        // Tip breakdown
-                        VStack(spacing: 0) {
-                            HStack {
-                                Text("Pre-tip total")
-                                    .font(.system(size: 15, weight: .regular))
-                                Spacer()
-                                Text(formatMoney(preTipTotalCents))
-                                    .font(.system(size: 15, weight: .regular))
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+            }
+            .padding(.top, 12)
+            .opacity(buttonsOpacity)
 
-                            HStack {
-                                Text("Tip (\(String(format: "%.0f", tipPercent))%)")
-                                    .font(.system(size: 15, weight: .regular))
-                                Spacer()
-                                Text(formatMoney(sliderTipCents))
-                                    .font(.system(size: 15, weight: .regular))
-                                    .foregroundColor(.blue)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+            HStack(spacing: 12) {
+                // 1) Back or Delete
+                let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
 
-                            Divider()
-                                .padding(.horizontal, 16)
-
-                            HStack {
-                                Text("Total")
-                                    .font(.system(size: 17, weight: .semibold))
-                                Spacer()
-                                Text(formatMoney(totalWithTipCents))
-                                    .font(.system(size: 17, weight: .semibold))
+                Button(action: {
+                    if cameFromManual { onBack() } else { animateDeleteThenAct() }
+                }) {
+                    Group {
+                        if cameFromManual {
+                            HStack(spacing: 6) {
+                                Image(systemName: "chevron.left")
+                                Text("Back")
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
+                        } else {
+                            Image(systemName: "trash")
                         }
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(16)
-                        .padding(.horizontal, 24)
-
-                        // Percentage slider
-                        PercentageSlider(
-                            percent: $tipPercent,
-                            minPercent: 0,
-                            maxPercent: 100
-                        )
-                        .frame(height: 60)
-                        .padding(.horizontal, 24)
-                        .onChange(of: tipPercent) { _, _ in
-                            // Update tip when slider changes
-                            let tipString = formatMoney(sliderTipCents).replacingOccurrences(of: "$", with: "")
-                            let totalString = formatMoney(totalWithTipCents).replacingOccurrences(of: "$", with: "")
-                            onTipChanged(tipString, totalString)
-                        }
-
-                        Text("Scroll to adjust • Tap a % to jump")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
                     }
-                    .padding(.vertical, 24)
-                    .padding(.top, 15)
-                    .opacity(buttonsOpacity)
-                    
-                    //mode buttons should prompt you to respective splitby screen
-                    HStack(spacing: 12) {
-                        modeButton(.equally)
-                        modeButton(.byItems)
-                        modeButton(.custom)
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 16)
-                    .padding(.bottom, 50)  // Extra padding to sit above SplitGuestDrawer (collapsed height 132)
-                    
-//                    header()
-//                        .frame(height: collapsedHeight)
-//
-//                    if isBottomHeaderExpanded == false {
-//                        Divider()
-//                        expandedBody()
-//                    }
-                }
-                
-                if uiModel.isExpanded == false {
-                    HStack(spacing: 12) {
-                        // 1) Back or Delete
-                        let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
-
-                        Button(action: {
-                            if cameFromManual { onBack() } else { animateDeleteThenAct() }
-                        }) {
-                            Group {
-                                if cameFromManual {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "chevron.left")
-                                        Text("Back")
-                                    }
-                                } else {
-                                    Image(systemName: "trash")
-                                }
-                            }
-                            .font(.system(size: 17, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .foregroundStyle(
-                                cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
-                            )
-                            .background(
+                    .font(.system(size: 17, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .foregroundStyle(
+                        cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
+                    )
+                    .background(
+                        RoundedRectangle(cornerRadius: 18)
+                            .fill(buttonBase)
+                            .overlay(
                                 RoundedRectangle(cornerRadius: 18)
-                                    .fill(buttonBase)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 18)
-                                            .fill(Color.red)
-                                            .opacity(Double(trashProgress))
-                                    )
+                                    .fill(Color.red)
+                                    .opacity(Double(trashProgress))
                             )
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
+                    )
+                }
+                .buttonStyle(.plain)
+                .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
 
-                        // 2) Add Tip (same behavior/label as ManualInputView)
-                        Button(action: onAddTip) {
-                            Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(buttonBase)
-                                .cornerRadius(18)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
-                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
-                        .opacity(buttonsOpacity)
+                // 2) Add Tip
+                Button(action: onAddTip) {
+                    Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(buttonBase)
+                        .cornerRadius(18)
+                }
+                .buttonStyle(.plain)
+                .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
+                .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
+                .opacity(buttonsOpacity)
 
+                // 3) Split
+                let splitProgress = (dragIntent == .right) ? rightProgress : 0
 
-                        // 3) Split
-                        let splitProgress = (dragIntent == .right) ? rightProgress : 0
-
-                        Button(action: { animateSplitThenAct() }) {
-                            Text("Split")
-                                .font(.system(size: 17, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(
+                Button(action: { animateSplitThenAct() }) {
+                    Text("Split")
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(buttonBase)
+                                .overlay(
                                     RoundedRectangle(cornerRadius: 18)
-                                        .fill(buttonBase)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 18)
-                                                .fill(gold)
-                                                .opacity(Double(splitProgress))
-                                        )
+                                        .fill(gold)
+                                        .opacity(Double(splitProgress))
                                 )
+                        )
+                }
+                .buttonStyle(.plain)
+                .opacity(dragIntent == .right ? 1 : buttonsOpacity)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 16)
+            .padding(.bottom, 20)
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            // Main content
+            ScrollView {
+                VStack(spacing: 0) {
+                    if uiModel.isExpanded{
+                        // Mode selector
+                        HStack(spacing: 12) {
+                            splitModeButton(.equally)
+                            splitModeButton(.byItems)
+                            splitModeButton(.custom)
                         }
-                        .buttonStyle(.plain)
-                        .opacity(dragIntent == .right ? 1 : buttonsOpacity)
-
-
+                        .padding(.horizontal, 24)
+                        .padding(.top, 16)
                     }
-                    .padding(.horizontal, 40)
-                    .padding(.top, 16)
-                    .padding(.bottom, 20)
-                }
-            }
+                    // Phase 5 layout: ZStack { byGuestPanel, byItemPanel, confirmationPanel }
+                    ZStack(alignment: .top) {
+                        // Donut panel (equally / custom) — behind card
+                        if uiModel.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
+                            byGuestPanel(
+                                interactive: mode == .custom,
+                                subtitle: mode == .equally ? "Split equally" : "Custom split"
+                            )
+                            .padding(.horizontal, 24)
+                            .padding(.top, 20)
+                        }
 
-                if showSuccess {
-                    VStack {
-                        Text("Sent!")
-                            .font(.system(size: 16, weight: .semibold))
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .background(Color(.systemBackground))
-                            .cornerRadius(12)
-                            .shadow(radius: 6)
+                        // Items panel (byItems) — behind card
+                        if uiModel.isExpanded && confirmed == false && mode == .byItems {
+                            byItemPanel()
+                                .padding(.horizontal, 24)
+                                .padding(.top, 20)
+                        }
+
+                        // Card shows if confirmed == True
+                        if confirmed == true {
+                            confirmationPanel()
+                                .padding(.top,15)
+                        }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color(hex: "#06A77D"))
-                    .transition(.opacity)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background {
-                ZStack {
-                    Color.black.opacity(0.10)
 
-                    Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
-                    Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
-                    Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
-                }
-            }
-            .ignoresSafeArea()
+                    // Expanded content below the ZStack
+                    if uiModel.isExpanded {
 
-            // Guest drawer - shows "Split with" / "Paid by" header at very bottom
-            // Only show when expanded
-            if uiModel.isExpanded {
-                SplitGuestDrawer(
-                    isExpanded: $showGuestEditor,
-                    mode: $guestEditorMode,
-                    guests: $draftGuests,
-                    payerGuestId: $draftPayerGuestId
-                )
+                        // Guest list
+                        guestList()
+                            .padding(.horizontal, 10)
+                            .padding(.top, 16)
+                            .padding(.bottom, 50)
+                    }
+                }
+                .padding(.top, 20)
+            }
+            .scrollDismissesKeyboard(.interactively)
+
+            // Success overlay
+            if showSuccess {
+                VStack {
+                    Text("Sent!")
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemBackground))
+                        .cornerRadius(12)
+                        .shadow(radius: 6)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(hex: "#06A77D"))
+                .transition(.opacity)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background {
+            ZStack {
+                Color.black.opacity(0.10)
+
+                Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
+                Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
+                Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+            }
+        }
+        .ignoresSafeArea()
         .ignoresSafeArea(edges: .bottom)
-//        .background {
-//            ZStack {
-//                Color.black.opacity(0.10)
-//
-//                Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
-//                Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
-//                Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
-//            }
-//            .ignoresSafeArea()
-//        }
         .animation(.easeInOut(duration: 0.12), value: dragIntent)
         .animation(.easeInOut(duration: 0.12), value: cardOffset)
         .task {
             onRequestCollapse()
         }
         .onAppear {
-            // Reset state each time
             cardOffset = .zero
             cardRotation = 0
             hasSent = false
             showSuccess = false
 
-            // Initialize tip percentage from existing tip
             if !hasTipInitialized {
                 hasTipInitialized = true
                 let existingTipCents = splitDraft?.tipCents ?? amountToCents(tipAmount)
@@ -689,13 +636,11 @@ struct ConfirmationView: View {
                 }
             }
 
-            // Initialize guest draft from splitDraft or create default
             if draftGuests.isEmpty {
                 if let draft = splitDraft, !draft.guests.isEmpty {
                     draftGuests = draft.guests
                     draftPayerGuestId = draft.payerGuestId
                 } else {
-                    // Create default guests
                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
                     var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true)]
                     if participantCount > 1 {
@@ -707,6 +652,9 @@ struct ConfirmationView: View {
                     draftPayerGuestId = seeded.first?.id ?? UUID()
                 }
             }
+
+            // Initialize split state
+            initializeSplitState()
         }
         .onChange(of: draftGuests) { _, newGuests in
             onGuestsChanged(newGuests, draftPayerGuestId)

@@ -1990,26 +1990,8 @@ struct RootContainerView: View {
                         }
                     }
                 ) { PhotoLibraryPicker(image: $photoLibraryImage).ignoresSafeArea() }
-                .sheet(isPresented: $showSplitViewSheet) {
-                    SplitView(
-                        uiModel: uiModel,
-                        amountString: totalAmount,
-                        participantCount: participantCount,
-                        initialDraft: splitDraft,
-                        onBack: {
-                            showSplitViewSheet = false
-                        },
-                        onApply: { draft in
-                            splitDraft = draft
-                            uiModel.currentSplitDraft = draft
-                            applySplitDraftToCurrentReceipt(draft)
-                            showSplitViewSheet = false
-                        }
-                    )
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationContentInteraction(.scrolls)
-                }
+                // SplitView sheet removed — split panels now integrated into ConfirmationView extension
+                // TODO: Wire up showSplitViewSheet to inline split editing in Phase 5
                 .overlay {
                     if isAnalyzing {
                         ZStack {
