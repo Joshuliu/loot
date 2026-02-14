@@ -17,6 +17,16 @@ final class TabService {
 
     // MARK: - User
 
+    /// Fetches the display name for a user from Firestore, or nil if not found.
+    func fetchUserDisplayName(userId: String) async throws -> String? {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let snapshot = try await db.collection("users").document(userId).getDocument()
+        guard snapshot.exists, let data = snapshot.data() else { return nil }
+        let name = data["displayName"] as? String
+        return (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name
+    }
+
     func createOrUpdateUser(userId: String, displayName: String) async throws {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
 
@@ -255,6 +265,42 @@ final class TabService {
 
     private func cacheKey(for conversationKey: String) -> String {
         "\(DefaultsKeys.conversationTabMap)_\(conversationKey)"
+    }
+
+    // MARK: - Payment Methods
+
+    func updatePaymentMethods(userId: String, methods: [PaymentMethod]) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let encoded = try methods.map { try Firestore.Encoder().encode($0) }
+        try await db.collection("users").document(userId).updateData([
+            "paymentMethods": encoded,
+            "updatedAt": FieldValue.serverTimestamp()
+        ])
+        print("[TabService] updatePaymentMethods: \(methods.count) methods for \(userId)")
+    }
+
+    func fetchPaymentMethods(userId: String) async throws -> [PaymentMethod]? {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let snapshot = try await db.collection("users").document(userId).getDocument()
+        guard snapshot.exists, let data = snapshot.data(),
+              let raw = data["paymentMethods"] as? [[String: Any]]
+        else { return nil }
+
+        return raw.compactMap { dict -> PaymentMethod? in
+            guard let typeStr = dict["type"] as? String,
+                  let type = PaymentMethodType(rawValue: typeStr)
+            else { return nil }
+            let identifier = dict["identifier"] as? String ?? ""
+            return PaymentMethod(type: type, identifier: identifier)
+        }
+    }
+
+    func removeConversationMapping(conversationKey: String) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+        try await db.collection("conversationTabs").document(conversationKey).delete()
+        print("[TabService] removeConversationMapping: \(conversationKey)")
     }
 
     // MARK: - Private

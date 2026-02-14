@@ -48,7 +48,7 @@ struct ManualInputView: View {
             Spacer().frame(height: 36)
             
             // Title / receipt name
-            TextField("New Receipt", text: $receiptName)
+            TextField("Enter Receipt Name", text: $receiptName)
                 .multilineTextAlignment(.center)
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(receiptName.isEmpty ? .gray : .primary)

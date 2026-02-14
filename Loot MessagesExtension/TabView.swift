@@ -254,15 +254,11 @@ struct LootTabView: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Add up this chat's transactions with Loot Tabs! We'll do the math to settle up. When Loot is opened from this chat, receipts will be added to the selected tab.")
+                Text("Add up this chat's transactions with Loot Tabs!")
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 startNewTabButton
-                orDivider
-                Text("Join an existing tab by accepting a tab invite")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
                 orDivider
                 Text("Select another tab for this chat to add a new receipt to it. ")
                     .font(.system(size: 14))

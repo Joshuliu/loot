@@ -8,6 +8,7 @@ import SwiftUI
 struct AccountView: View {
     let onBack: () -> Void
     let onRequestExpand: () -> Void
+    let onPaymentMethods: () -> Void
 
     @AppStorage(DefaultsKeys.myDisplayName) private var displayName: String = ""
     @State private var editedName: String = ""
@@ -68,6 +69,36 @@ struct AccountView: View {
             .buttonStyle(.borderedProminent)
             .disabled(!hasChanges)
             .opacity(hasChanges ? 1.0 : 0.4)
+
+            Divider()
+                .padding(.vertical, 4)
+
+            Button(action: onPaymentMethods) {
+                HStack(spacing: 12) {
+                    Image(systemName: "creditcard.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.primary)
+                    Text("Payment Methods")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    let count = savedPaymentMethods().count
+                    if count > 0 {
+                        Text("\(count)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Color.accentColor)
+                            .clipShape(Capsule())
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
 
             Spacer()
         }

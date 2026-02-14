@@ -61,7 +61,8 @@ struct SplitPayload: Codable, Equatable {
     var g: [Guest]  // guests
     var pi: Int     // payerIndex
     var o: [Int]    // owedCents
-    
+    var pd: [Bool]? // paidStatus per guest slot (nil = all unpaid)
+
     // Breakdown (only if non-zero to save space)
     var f: Int?   // feesCents
     var tx: Int?  // taxCents
