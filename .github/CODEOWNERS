@@ -1,0 +1,3 @@
+
+# Only joshuliu can approve changes to Xcode project files
+*.xcodeproj/ @joshuliu

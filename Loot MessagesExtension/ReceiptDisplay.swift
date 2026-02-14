@@ -93,6 +93,7 @@ enum AppScreen {
     case tabInviteConfirmation
     case joinTab
     case account
+    case paymentMethods
 }
 
 @MainActor

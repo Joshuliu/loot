@@ -1,0 +1,33 @@
+name: Block Xcode project changes (except joshuliu)
+
+on:
+  pull_request:
+    branches: [ "develop", "staging", "main" ]
+
+jobs:
+  block-xcodeproj:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fail if .xcodeproj changed by non-owner
+        run: |
+          set -euo pipefail
+          OWNER="joshuliu"
+
+          BASE="origin/${{ github.base_ref }}"
+          HEAD="${{ github.sha }}"
+
+          CHANGED="$(git diff --name-only "$BASE...$HEAD")"
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          if echo "$CHANGED" | grep -E '\.xcodeproj/' >/dev/null; then
+            echo ".xcodeproj files changed in this PR."
+            if [ "${{ github.actor }}" != "$OWNER" ]; then
+              echo "ERROR: Only $OWNER may modify .xcodeproj files."
+              exit 1
+            fi
+          fi

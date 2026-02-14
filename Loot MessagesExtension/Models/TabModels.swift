@@ -16,8 +16,110 @@ struct LootUser: Codable, Identifiable {
     var email: String?
     var phoneNumber: String?
     var avatarUrl: String?
+    var paymentMethods: [PaymentMethod]?
     @ServerTimestamp var createdAt: Timestamp?
     @ServerTimestamp var updatedAt: Timestamp?
+}
+
+// MARK: - Payment Methods
+
+enum PaymentMethodType: String, Codable, CaseIterable {
+    case venmo
+    case zelle
+    case cashapp
+    case paypal
+    case applePay
+    case cash
+
+    var displayName: String {
+        switch self {
+        case .venmo: return "Venmo"
+        case .zelle: return "Zelle"
+        case .cashapp: return "Cash App"
+        case .paypal: return "PayPal"
+        case .applePay: return "Apple Pay"
+        case .cash: return "Cash"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .venmo: return "v.square.fill"
+        case .zelle: return "dollarsign.arrow.circlepath"
+        case .cashapp: return "dollarsign.square.fill"
+        case .paypal: return "p.square.fill"
+        case .applePay: return "apple.logo"
+        case .cash: return "banknote.fill"
+        }
+    }
+
+    var requiresIdentifier: Bool {
+        switch self {
+        case .venmo, .zelle, .cashapp, .paypal: return true
+        case .applePay, .cash: return false
+        }
+    }
+
+    var identifierPlaceholder: String {
+        switch self {
+        case .venmo: return "@username"
+        case .zelle: return "phone number or email"
+        case .cashapp: return "$cashtag"
+        case .paypal: return "username or email"
+        case .applePay, .cash: return ""
+        }
+    }
+
+    var identifierLabel: String {
+        switch self {
+        case .venmo: return "Username"
+        case .zelle: return "Phone / Email"
+        case .cashapp: return "Cashtag"
+        case .paypal: return "Username / Email"
+        case .applePay, .cash: return ""
+        }
+    }
+
+    /// Builds a deep link URL for the payment app, or nil if no deep link exists.
+    func deepLinkURL(identifier: String, amountCents: Int, note: String) -> URL? {
+        let dollars = String(format: "%.2f", Double(amountCents) / 100.0)
+
+        switch self {
+        case .venmo:
+            let user = identifier.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "@", with: "")
+            guard !user.isEmpty else { return nil }
+            var comps = URLComponents(string: "venmo://paycharge")!
+            comps.queryItems = [
+                URLQueryItem(name: "txn", value: "pay"),
+                URLQueryItem(name: "recipients", value: user),
+                URLQueryItem(name: "amount", value: dollars),
+                URLQueryItem(name: "note", value: note)
+            ]
+            return comps.url
+
+        case .cashapp:
+            let tag = identifier.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "$", with: "")
+            guard !tag.isEmpty else { return nil }
+            return URL(string: "https://cash.app/$\(tag)/\(dollars)")
+
+        case .paypal:
+            let user = identifier.trimmingCharacters(in: .whitespaces)
+            guard !user.isEmpty else { return nil }
+            return URL(string: "https://paypal.me/\(user)/\(dollars)")
+
+        case .zelle, .applePay, .cash:
+            return nil
+        }
+    }
+}
+
+struct PaymentMethod: Codable, Identifiable, Equatable {
+    var type: PaymentMethodType
+    var identifier: String
+
+    var id: String { type.rawValue }
 }
 
 // MARK: - Tab

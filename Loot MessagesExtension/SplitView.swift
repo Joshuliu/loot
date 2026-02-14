@@ -977,12 +977,6 @@ extension ConfirmationView {
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
         }
         ensureGuestArrays()
-
-        // Auto-edit the new guest's name
-        editingGuestNameId = new.id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            guestNameFocusedId = new.id
-        }
     }
 
     func removeGuestInline(guestId: UUID) {

@@ -14,6 +14,7 @@ struct RootContainerView: View {
 
     @State private var showSplitViewSheet: Bool = false
     @State private var confirmationCameFromManual: Bool = false
+    @State private var paymentMethodsIsPostSend: Bool = false
 
     @State private var receiptName: String = ""
     @State private var splitDraft: SplitDraft? = nil
@@ -67,6 +68,9 @@ struct RootContainerView: View {
     
     @State private var isAnalyzing: Bool = false
     @State private var analyzeError: String?
+
+    // Backend user restore state
+    @State private var isCheckingBackendUser: Bool = true
 
     init(uiModel: LootUIModel) {
         self.uiModel = uiModel
@@ -1697,7 +1701,22 @@ struct RootContainerView: View {
 
     var body: some View {
         Group {
-            if myName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if myName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isCheckingBackendUser {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .task {
+                        do {
+                            if let name = try await TabService.shared.fetchUserDisplayName(
+                                userId: KeychainHelper.getOrCreateUserId()
+                            ) {
+                                myName = name
+                            }
+                        } catch {
+                            print("[RootContainerView] backend user check failed: \(error)")
+                        }
+                        isCheckingBackendUser = false
+                    }
+            } else if myName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 IntroView(
                     onRequestExpand: onExpand,
                     onContinue: { name in
@@ -1767,6 +1786,9 @@ struct RootContainerView: View {
                                 uiModel.activeTab = nil
                                 if let convKey = uiModel.conversationKey {
                                     TabService.shared.cacheTab(nil, for: convKey)
+                                    Task {
+                                        try? await TabService.shared.removeConversationMapping(conversationKey: convKey)
+                                    }
                                 }
                             },
                             onInviteMembers: {
@@ -1887,7 +1909,12 @@ struct RootContainerView: View {
                                 onSendBill(receiptName, totalAmount)  // Send the total amount
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                        uiModel.currentScreen = .tabview
+                                        if !hasPaymentMethodsConfigured() {
+                                            paymentMethodsIsPostSend = true
+                                            uiModel.currentScreen = .paymentMethods
+                                        } else {
+                                            uiModel.currentScreen = .tabview
+                                        }
                                     }
                                 }
                             },
@@ -2067,13 +2094,15 @@ struct RootContainerView: View {
                             isExpanded: uiModel.isExpanded,
                             onRequestExpand: onExpand,
                             onBack: {
+                                pendingTabId = ""
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .tabview
                                 }
                             },
                             onNext: { name, colorHex in
-                                // Create local tab instantly (no network) and go to invite confirmation
-                                let tabId = TabService.shared.generateTabId()
+                                // Reuse existing pending tab ID if user came back from invite screen,
+                                // otherwise generate a new one to avoid creating duplicates.
+                                let tabId = pendingTabId.isEmpty ? TabService.shared.generateTabId() : pendingTabId
                                 let tab = TabService.shared.createLocalTab(name: name, colorHex: colorHex, tabId: tabId)
 
                                 pendingTabName = tab.name
@@ -2089,7 +2118,7 @@ struct RootContainerView: View {
                                     uiModel.currentScreen = .tabInviteConfirmation
                                 }
 
-                                // Upload to Firestore in the background
+                                // Upload (or overwrite) to Firestore in the background
                                 Task {
                                     do {
                                         try await TabService.shared.uploadTab(tab, tabId: tabId, conversationKey: uiModel.conversationKey ?? "")
@@ -2178,7 +2207,30 @@ struct RootContainerView: View {
                                     uiModel.currentScreen = .tabview
                                 }
                             },
-                            onRequestExpand: onExpand
+                            onRequestExpand: onExpand,
+                            onPaymentMethods: {
+                                paymentMethodsIsPostSend = false
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .paymentMethods
+                                }
+                            }
+                        )
+                        .transition(.opacity)
+
+                    case .paymentMethods:
+                        PaymentMethodView(
+                            onBack: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = paymentMethodsIsPostSend ? .tabview : .account
+                                }
+                            },
+                            onRequestExpand: onExpand,
+                            onSaved: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = paymentMethodsIsPostSend ? .tabview : .account
+                                }
+                            },
+                            isPostSendPrompt: paymentMethodsIsPostSend
                         )
                         .transition(.opacity)
                     }

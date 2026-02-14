@@ -145,6 +145,7 @@ struct TabInviteCardView: View {
                 
                 Text(tabName)
                     .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
             }

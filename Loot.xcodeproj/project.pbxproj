@@ -10,8 +10,6 @@
 		F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = F615A0592F0738EA005E6C5E /* Secrets.xcconfig */; };
 		F62737242F36700200EC3388 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000002 /* FirebaseAuth */; };
 		F62737252F36700200EC3388 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000003 /* FirebaseFirestore */; };
-		F62737672F3674AF00EC3388 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F62737662F3674AF00EC3388 /* GoogleService-Info.plist */; };
-		F62737682F3674AF00EC3388 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = F62737662F3674AF00EC3388 /* GoogleService-Info.plist */; };
 		F64F33C72F0674A10065BCB2 /* Loot MessagesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F64F33CC2F0674A10065BCB2 /* Messages.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F64F33CB2F0674A10065BCB2 /* Messages.framework */; };
 /* End PBXBuildFile section */
@@ -42,7 +40,6 @@
 
 /* Begin PBXFileReference section */
 		F615A0592F0738EA005E6C5E /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
-		F62737662F3674AF00EC3388 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		F64F33BD2F06749F0065BCB2 /* Loot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Loot MessagesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F64F33CB2F0674A10065BCB2 /* Messages.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Messages.framework; path = System/Library/Frameworks/Messages.framework; sourceTree = SDKROOT; };
@@ -101,7 +98,6 @@
 		F64F33B62F06749F0065BCB2 = {
 			isa = PBXGroup;
 			children = (
-				F62737662F3674AF00EC3388 /* GoogleService-Info.plist */,
 				F64F33BF2F06749F0065BCB2 /* Loot */,
 				F64F33CD2F0674A10065BCB2 /* Loot MessagesExtension */,
 				F64F33CA2F0674A10065BCB2 /* Frameworks */,
@@ -224,7 +220,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */,
-				F62737672F3674AF00EC3388 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -232,7 +227,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				F62737682F3674AF00EC3388 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -280,7 +274,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot.MessagesExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -319,7 +313,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot.MessagesExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -475,7 +469,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -504,7 +498,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = jasmineliu.Loot;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
