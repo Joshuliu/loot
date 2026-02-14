@@ -16,19 +16,25 @@ struct LootUser: Codable, Identifiable {
     var email: String?
     var phoneNumber: String?
     var avatarUrl: String?
-    var tabIds: [String]
     @ServerTimestamp var createdAt: Timestamp?
     @ServerTimestamp var updatedAt: Timestamp?
 }
 
 // MARK: - Tab
 
-struct Tab: Codable, Identifiable {
+enum TabColorOptions {
+    static let all = ["052F5F", "005377", "06A77D", "D5C67A", "DAA806"]
+    static let defaultHex = "005377"
+}
+
+struct LootTab: Codable, Identifiable {
     @DocumentID var id: String?
     var name: String
+    var colorHex: String?
     var createdBy: String
     var status: TabStatus
     var members: [TabMember]
+    var memberIds: [String]
     var receiptCount: Int
     @ServerTimestamp var createdAt: Timestamp?
     @ServerTimestamp var updatedAt: Timestamp?
@@ -101,7 +107,7 @@ struct Settlement: Codable, Identifiable {
 
 // MARK: - Balance Helpers
 
-extension Tab {
+extension LootTab {
     /// Apply a receipt to member balances. Call within a Firestore transaction.
     /// The payer gets +totalCents, each split member gets -owedCents.
     mutating func applyReceipt(_ receipt: TabReceipt) {

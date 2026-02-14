@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>me.plsloot</string>
+	<string>me.plsloot.MessagesExtension</string>
 	<key>PROJECT_ID</key>
 	<string>loot-ab87c</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:703856658291:ios:1a342eb7020a92b4fae706</string>
+	<string>1:703856658291:ios:adf0f0810f0bc85cfae706</string>
 </dict>
 </plist>

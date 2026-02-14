@@ -89,6 +89,10 @@ enum AppScreen {
     case confirmation
     case receipt
     case messageViewer
+    case newTab
+    case tabInviteConfirmation
+    case joinTab
+    case account
 }
 
 @MainActor
@@ -110,9 +114,22 @@ final class LootUIModel: ObservableObject {
     // NEW: decoded message payload when user taps a Loot message
     @Published var openedMessagePayload: LootMessagePayload? = nil
 
+    // Firestore doc ID of the opened message (needed for updates like slot claims)
+    @Published var openedMessageDocId: String? = nil
+
+    // Firestore message loading state
+    @Published var messageLoadingState: LoadingState<LootMessagePayload> = .idle
+
     // Two-phase parsing: items loading state (phase 2 runs in background)
     @Published var itemsLoadingState: LoadingState<Phase2Result> = .idle
     var phase2Task: Task<Void, Never>? = nil
+
+    // MARK: - Loot Tabs state
+    @Published var activeTab: LootTab? = nil
+    @Published var userTabs: [LootTab] = []
+    @Published var localParticipantId: String? = nil
+    @Published var conversationKey: String? = nil
+    @Published var pendingTabInviteId: String? = nil
 
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
@@ -125,6 +142,8 @@ final class LootUIModel: ObservableObject {
         scanImageCropped = nil
         currentSplitDraft = nil
         openedMessagePayload = nil
+        openedMessageDocId = nil
+        messageLoadingState = .idle
         itemsLoadingState = .idle
     }
 }

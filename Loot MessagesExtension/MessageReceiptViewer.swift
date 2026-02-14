@@ -39,11 +39,12 @@ struct MessageReceiptViewer: View {
             // Content
             ZStack {
                 if tab == .splits {
-                    SplitsSummaryView(split: payload.s, items: payload.r.i)
+                    SplitsSummaryView(uiModel: uiModel, split: payload.s, items: payload.r.i)
+                        .id(uiModel.openedMessageDocId ?? payload.r.id)
                         .transition(.opacity)
                 } else {
                     if let receipt = uiModel.currentReceipt {
-                        ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false, showCaptureButton: false)
+                        ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false, showCaptureButton: true, compactCaptureButton: true)
                             .transition(.opacity)
                     } else {
                         ProgressView("Loading…")

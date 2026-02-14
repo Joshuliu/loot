@@ -1,0 +1,30 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /sharedReceipts/{docId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow create, update: if request.auth != null;
+      allow read: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /tabs/{tabId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+
+    match /conversationTabs/{convKey} {
+      allow create, update: if request.auth != null;
+      allow read: if request.auth != null;
+      allow delete: if false;
+    }
+  }
+}

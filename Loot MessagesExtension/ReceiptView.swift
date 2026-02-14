@@ -15,6 +15,7 @@ struct ReceiptView: View {
 
     var showBackRow: Bool = true
     var showCaptureButton: Bool = true
+    var compactCaptureButton: Bool = false
     @State private var showCapture: Bool = false
     @State private var showEditReceipt: Bool = false
 
@@ -25,7 +26,42 @@ struct ReceiptView: View {
     private var isLoadingItems: Bool {
         uiModel.itemsLoadingState.isLoading
     }
-    
+
+    @ViewBuilder
+    private var captureButton: some View {
+        let button = Button {
+            showCapture = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.viewfinder")
+                Text("View capture")
+            }
+            .font(.system(size: 16, weight: .semibold))
+        }
+        .buttonStyle(.plain)
+
+        if compactCaptureButton {
+            button
+                .padding(.vertical, 14)
+                .padding(.horizontal, 20)
+                .background(Color(.tertiarySystemFill))
+                .cornerRadius(14)
+                .padding(.bottom, 16)
+        } else {
+            button
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(.tertiarySystemFill))
+                .cornerRadius(14)
+                .padding(.horizontal, 18)
+                .padding(.top, 30)
+                .padding(.bottom, 50)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
+                .shadow(color: Color.black.opacity(0.15), radius: 18, x: 0, y: -2)
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if showBackRow {
@@ -138,29 +174,8 @@ struct ReceiptView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if showCaptureButton && uiModel.isExpanded == true {
-                Button {
-                    showCapture = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "doc.viewfinder")
-                        Text("View capture")
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color(.tertiarySystemFill))
-                    .cornerRadius(14)
-                    .padding(.horizontal, 18)
-                }
-                .buttonStyle(.plain)
-                .opacity(1)
-                .padding(.top, 30)
-                .padding(.bottom, 50)
-                .background(Color(.secondarySystemBackground).opacity(1))
-                .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-                .shadow(color: Color.black.opacity(0.15), radius: 18, x: 0, y: -2)
-                .allowsHitTesting(captureImage != nil)
+            if showCaptureButton && uiModel.isExpanded == true && captureImage != nil {
+                captureButton
             }
         }
         .sheet(isPresented: $showCapture) {

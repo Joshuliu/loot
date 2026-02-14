@@ -181,8 +181,8 @@ enum TabBalanceTests {
 
     // MARK: - Helpers
 
-    private static func makeTab(memberNames: [String]) -> Tab {
-        Tab(
+    private static func makeTab(memberNames: [String]) -> LootTab {
+        LootTab(
             id: "tab-1",
             name: "Test Tab",
             createdBy: "user-\(memberNames[0].lowercased())",
@@ -196,13 +196,14 @@ enum TabBalanceTests {
                     isActive: true
                 )
             },
+            memberIds: memberNames.map { "user-\($0.lowercased())" },
             receiptCount: 0,
             createdAt: nil,
             updatedAt: nil
         )
     }
 
-    private static func assertBalancesSumToZero(_ tab: Tab) {
+    private static func assertBalancesSumToZero(_ tab: LootTab) {
         let sum = tab.members.reduce(0) { $0 + $1.balanceCents }
         assert(sum == 0, "Sum of balances should be 0, got \(sum)")
     }

@@ -10,6 +10,8 @@ import Foundation
 
 enum DefaultsKeys {
     static let myDisplayName = "my_display_name"
+    static let localParticipantId = "local_participant_id"
+    static let conversationTabMap = "conversation_tab_map"
 }
 
 func myDisplayNameFromDefaults() -> String {

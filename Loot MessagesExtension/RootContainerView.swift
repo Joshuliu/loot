@@ -44,6 +44,13 @@ struct RootContainerView: View {
     let onExpand: () -> Void
     let onCollapse: () -> Void
     let onSendBill: (String, String) -> Void
+    let onSendTabInvite: ((String, String, String) -> Void)?  // (tabName, tabColorHex, tabId)
+
+    // Tab creation state
+    @State private var pendingTabName: String = ""
+    @State private var pendingTabColor: String = TabColorOptions.defaultHex
+    @State private var pendingTabId: String = ""
+    @State private var tabInviteCameFromTabView: Bool = false
 
     // DEBUG: Set to true to only run VisionKit OCR and print JSON (no Gemini)
     private let DEBUG_OCR_ONLY = false
@@ -68,6 +75,7 @@ struct RootContainerView: View {
         self.onExpand = {}
         self.onCollapse = {}
         self.onSendBill = { _, _ in }
+        self.onSendTabInvite = nil
     }
 
     init(
@@ -76,7 +84,8 @@ struct RootContainerView: View {
         onScan: @escaping () -> Void,
         onExpand: @escaping () -> Void,
         onCollapse: @escaping () -> Void,
-        onSendBill: @escaping (String, String) -> Void
+        onSendBill: @escaping (String, String) -> Void,
+        onSendTabInvite: ((String, String, String) -> Void)? = nil
     ) {
         self.uiModel = uiModel
         self.participantCount = participantCount
@@ -84,6 +93,7 @@ struct RootContainerView: View {
         self.onExpand = onExpand
         self.onCollapse = onCollapse
         self.onSendBill = onSendBill
+        self.onSendTabInvite = onSendTabInvite
     }
 
     // MARK: - Helpers
@@ -1397,10 +1407,6 @@ struct RootContainerView: View {
 
                     // Get word-level recognition
                     var words: [OCRWord] = []
-                    if let recognizedText = try? topCandidate.boundingBox(for: topCandidate.string.startIndex..<topCandidate.string.endIndex) {
-                        // For now, treat the whole line as one "word" since word segmentation requires more work
-                        // You can enhance this later
-                    }
 
                     // Try to get individual word boxes (VisionKit 2.0+)
                     let wordRanges = self.getWordRanges(from: topCandidate.string)
@@ -1696,6 +1702,12 @@ struct RootContainerView: View {
                     onRequestExpand: onExpand,
                     onContinue: { name in
                         myName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        Task {
+                            try? await TabService.shared.createOrUpdateUser(
+                                userId: KeychainHelper.getOrCreateUserId(),
+                                displayName: myName
+                            )
+                        }
                     }
                 )
             } else {
@@ -1705,7 +1717,7 @@ struct RootContainerView: View {
                     switch uiModel.currentScreen {
 
                     case .tabview:
-                        TabView(
+                        LootTabView(
                             tabName: Binding(
                                 get: { receiptName },
                                 set: { receiptName = $0 }
@@ -1719,6 +1731,59 @@ struct RootContainerView: View {
                             onFill: {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .fill
+                                }
+                            },
+                            activeTab: uiModel.activeTab,
+                            userTabs: uiModel.userTabs,
+                            isExpanded: uiModel.isExpanded,
+                            onStartTab: {
+                                pendingTabName = ""
+                                pendingTabColor = TabColorOptions.defaultHex
+                                onExpand()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .newTab
+                                }
+                            },
+                            onSelectTab: { tab in
+                                uiModel.activeTab = tab
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(tab, for: convKey)
+                                    Task {
+                                        do {
+                                            try await TabService.shared.associateConversation(
+                                                tabId: tab.id ?? "",
+                                                conversationKey: convKey
+                                            )
+                                        } catch {
+                                            print("[RootContainer] associateConversation failed: \(error)")
+                                        }
+                                    }
+                                }
+                            },
+                            onTabNameTapped: {
+                                onExpand()
+                            },
+                            onClearTab: {
+                                uiModel.activeTab = nil
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(nil, for: convKey)
+                                }
+                            },
+                            onInviteMembers: {
+                                if let tab = uiModel.activeTab {
+                                    pendingTabName = tab.name
+                                    pendingTabColor = tab.colorHex ?? TabColorOptions.defaultHex
+                                    pendingTabId = tab.id ?? ""
+                                    tabInviteCameFromTabView = true
+                                    onCollapse()
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        uiModel.currentScreen = .tabInviteConfirmation
+                                    }
+                                }
+                            },
+                            onAccountTapped: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .account
                                 }
                             }
                         )
@@ -1888,7 +1953,7 @@ struct RootContainerView: View {
                                 } else {
                                     // Create a minimal draft with the selected mode
                                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                                    var seededGuests: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true)]
+                                    var seededGuests: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
                                     if participantCount > 1 {
                                         for _ in 1..<participantCount {
                                             seededGuests.append(SplitGuest(name: "", isIncluded: true, isMe: false))
@@ -1957,15 +2022,165 @@ struct RootContainerView: View {
                                 payload: payload,
                                 onClose: {
                                     uiModel.openedMessagePayload = nil
+                                    uiModel.messageLoadingState = .idle
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                         uiModel.currentScreen = .tabview
                                     }
                                 }
                             )
                             .ignoresSafeArea(edges: .bottom)
+                        } else if uiModel.messageLoadingState.isLoading {
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                Text("Loading receipt...")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if let error = uiModel.messageLoadingState.error {
+                            VStack(spacing: 16) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .font(.largeTitle)
+                                    .foregroundStyle(.secondary)
+                                Text("Couldn't load receipt")
+                                    .font(.headline)
+                                Text(error.localizedDescription)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                                Button("Go Back") {
+                                    uiModel.messageLoadingState = .idle
+                                    uiModel.openedMessagePayload = nil
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        uiModel.currentScreen = .tabview
+                                    }
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            .padding()
                         } else {
                             ProgressView("Loading…")
                         }
+
+                    case .newTab:
+                        NewTabView(
+                            uiModel: uiModel,
+                            isExpanded: uiModel.isExpanded,
+                            onRequestExpand: onExpand,
+                            onBack: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .tabview
+                                }
+                            },
+                            onNext: { name, colorHex in
+                                // Create local tab instantly (no network) and go to invite confirmation
+                                let tabId = TabService.shared.generateTabId()
+                                let tab = TabService.shared.createLocalTab(name: name, colorHex: colorHex, tabId: tabId)
+
+                                pendingTabName = tab.name
+                                pendingTabColor = tab.colorHex ?? colorHex
+                                pendingTabId = tabId
+                                tabInviteCameFromTabView = false
+                                uiModel.activeTab = tab
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(tab, for: convKey)
+                                }
+                                onCollapse()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .tabInviteConfirmation
+                                }
+
+                                // Upload to Firestore in the background
+                                Task {
+                                    do {
+                                        try await TabService.shared.uploadTab(tab, tabId: tabId, conversationKey: uiModel.conversationKey ?? "")
+                                        print("[RootContainer] Tab uploaded: \(tabId)")
+                                    } catch {
+                                        print("[RootContainer] Tab upload failed: \(error)")
+                                    }
+                                }
+                            },
+                            tabName: $pendingTabName,
+                            selectedColor: $pendingTabColor
+                        )
+                        .transition(.opacity)
+
+                    case .tabInviteConfirmation:
+                        TabInviteConfirmationView(
+                            uiModel: uiModel,
+                            tabName: pendingTabName,
+                            tabColor: pendingTabColor,
+                            tabId: pendingTabId,
+                            creatorName: myName.isEmpty ? "Me" : myName,
+                            onBack: {
+                                if tabInviteCameFromTabView {
+                                    onExpand()
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        uiModel.currentScreen = .tabview
+                                    }
+                                } else {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        uiModel.currentScreen = .newTab
+                                    }
+                                }
+                            },
+                            onSend: { tabName, tabColorHex, tabId in
+                                onSendTabInvite?(tabName, tabColorHex, tabId)
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                        uiModel.currentScreen = .tabview
+                                    }
+                                }
+                            },
+                            onRequestCollapse: onCollapse
+                        )
+                        .transition(.opacity)
+
+                    case .joinTab:
+                        JoinTabView(
+                            uiModel: uiModel,
+                            isExpanded: uiModel.isExpanded,
+                            onRequestExpand: onExpand,
+                            onBack: {
+                                uiModel.pendingTabInviteId = nil
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .tabview
+                                }
+                            },
+                            onJoined: { tab in
+                                uiModel.activeTab = tab
+                                uiModel.pendingTabInviteId = nil
+                                // Persist the conversation→tab link so it survives re-entry
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(tab, for: convKey)
+                                    Task {
+                                        try? await TabService.shared.associateConversation(
+                                            tabId: tab.id ?? "",
+                                            conversationKey: convKey
+                                        )
+                                    }
+                                }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .tabview
+                                }
+                            },
+                            onAccountTapped: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .account
+                                }
+                            }
+                        )
+                        .transition(.opacity)
+
+                    case .account:
+                        AccountView(
+                            onBack: {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .tabview
+                                }
+                            },
+                            onRequestExpand: onExpand
+                        )
+                        .transition(.opacity)
                     }
                 }
                 .sheet(
@@ -2040,6 +2255,3 @@ struct RootContainerView: View {
         }
     }
 }
-
-// MARK: - Debug OCR Visualization View
-// DebugOCRView is defined in DebugOCRView.swift

@@ -51,7 +51,7 @@ struct SplitPayload: Codable, Equatable {
     struct Guest: Codable, Equatable {
         var n: String   // name
         var inc: Bool   // included
-        var me: Bool    // isMe
+        var uid: String? // Keychain UUID of this guest (nil for unknown/other guests)
     }
     
     // ✅ REMOVED: Item array (redundant with receipt items)

@@ -17,6 +17,7 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        SharedReceiptService.configureFirebaseIfNeeded()
         view.isOpaque = true
         view.backgroundColor = .systemBackground
         addChild(hostingController)
@@ -42,6 +43,11 @@ final class MessagesViewController: MSMessagesAppViewController {
     override func didTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
         super.didTransition(to: presentationStyle)
         uiModel.isExpanded = (presentationStyle == .expanded)
+
+        // Force layout so the hosting controller picks up the new container size
+        // (fixes content offset after collapse → re-open)
+        hostingController.view.setNeedsLayout()
+        hostingController.view.layoutIfNeeded()
     }
     
     override func didSelect(_ message: MSMessage, conversation: MSConversation) {
@@ -59,20 +65,104 @@ extension MessagesViewController {
         // expansion state
         uiModel.isExpanded = (presentationStyle == .expanded)
 
-        if let msg = message,
-           let url = msg.url,
-           let payload = LootMessageCodec.payload(from: url) {
+        guard let msg = message, let url = msg.url else { return }
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
 
+        // New path: Firestore doc ID
+        if let docId = comps?.queryItems?.first(where: { $0.name == "id" })?.value,
+           !docId.isEmpty {
+            // Clear old payload first so MessageReceiptViewer unmounts,
+            // then remounts fresh once the new payload arrives.
+            uiModel.openedMessagePayload = nil
+            uiModel.messageLoadingState = .loading
+            uiModel.openedMessageDocId = docId
+            uiModel.currentScreen = .messageViewer
+            Task { @MainActor in
+                do {
+                    let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
+                    uiModel.openedMessagePayload = payload
+                    uiModel.currentReceipt = payload.toReceiptDisplay()
+                    if let captureImage {
+                        uiModel.scanImageCropped = captureImage
+                    }
+                    uiModel.messageLoadingState = .loaded(payload)
+                } catch {
+                    print("[applyMessage] Firestore fetch failed: \(error)")
+                    uiModel.messageLoadingState = .failed(error)
+                }
+            }
+            return
+        }
+
+        // Tab invite path: ?tabInvite=<tabId>
+        if let tabId = comps?.queryItems?.first(where: { $0.name == "tabInvite" })?.value,
+           !tabId.isEmpty {
+            // Navigate immediately so the screen change is synchronous —
+            // avoids race with didTransition when re-tapping the same invite.
+            requestPresentationStyle(.expanded)
+            uiModel.pendingTabInviteId = tabId
+            uiModel.currentScreen = .joinTab
+            return
+        }
+
+        // Legacy path: inline payload
+        if let payload = LootMessageCodec.payload(from: url) {
             uiModel.openedMessagePayload = payload
             uiModel.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
         }
-        // Don't clear openedMessagePayload when message is deselected -
-        // the user is still viewing it. Only clear when they explicitly close.
     }
 
     private func setupRootView(conversation: MSConversation) {
         let participantCount = conversation.remoteParticipantIdentifiers.count + 1
+
+        // Cache localParticipantIdentifier for convenience
+        let localId = conversation.localParticipantIdentifier.uuidString
+        UserDefaults.standard.set(localId, forKey: DefaultsKeys.localParticipantId)
+        uiModel.localParticipantId = localId
+
+        // Compute conversation key from ALL participant identifiers (local + remote)
+        var identifiers = conversation.remoteParticipantIdentifiers.map { $0.uuidString }
+        identifiers.append(localId)
+        uiModel.conversationKey = TabService.conversationKey(from: identifiers)
+
+        // Try to load active tab for this conversation and sync user doc
+        if let convKey = uiModel.conversationKey {
+            // Instant: restore from local cache so the tab shows immediately
+            if uiModel.currentScreen != .joinTab {
+                uiModel.activeTab = TabService.shared.cachedTab(for: convKey)
+            }
+
+            Task { @MainActor in
+                // Only restore the conversation's tab if we're not in the middle
+                // of a join flow — otherwise this would overwrite the tab the user
+                // is about to join / just joined.
+                if uiModel.currentScreen != .joinTab {
+                    let tab = try? await TabService.shared.getTabForConversation(conversationKey: convKey)
+                    uiModel.activeTab = tab
+                    // Keep local cache in sync with server
+                    TabService.shared.cacheTab(tab, for: convKey)
+                }
+                uiModel.userTabs = (try? await TabService.shared.fetchUserTabs()) ?? []
+
+                // Ensure user doc exists and display name stays in sync
+                let displayName = myDisplayNameFromDefaults()
+                if !displayName.isEmpty {
+                    try? await TabService.shared.createOrUpdateUser(
+                        userId: KeychainHelper.getOrCreateUserId(),
+                        displayName: displayName
+                    )
+                }
+            }
+        }
+
+        // Only create the SwiftUI root view once. Re-creating it on every
+        // willBecomeActive causes layout glitches when the extension is simply
+        // collapsed (tap text field) and re-opened — the new view tree renders
+        // while the container is still animating, producing an offset.
+        // State updates above still run every time via uiModel.
+        guard !hasSetupRootView else { return }
+        hasSetupRootView = true
 
         hostingController.rootView = RootContainerView(
             uiModel: uiModel,
@@ -86,6 +176,9 @@ extension MessagesViewController {
                     amount: amount,
                     participantCount: participantCount
                 )
+            },
+            onSendTabInvite: { [weak self] tabName, tabColorHex, tabId in
+                self?.sendTabInvite(tabName: tabName, tabColorHex: tabColorHex, tabId: tabId)
             }
         )
     }
@@ -139,12 +232,6 @@ extension MessagesViewController {
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
 
-        // Base URL (keep your current structure)
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "bill.example"
-        components.path = "/loot"
-
         // Build a "portable" receipt + split payload
         let fallbackTotalCents = centsFromAmountString(amount)
         let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
@@ -169,20 +256,28 @@ extension MessagesViewController {
 
         let payload = LootMessagePayload(r: receiptPayload, s: splitPayload)
 
-        // Put legacy fields too (nice for debugging / older messages)
-        components.queryItems = [
-            URLQueryItem(name: "title", value: receiptDisplay.title),
-            URLQueryItem(name: "amount", value: formattedDisplayAmount(from: amount))
-        ]
-        LootMessageCodec.writePayload(into: &components, payload: payload)
+        // Capture scan image before async block (will be nil for manual receipts)
+        let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal
 
-        let layout = MSMessageTemplateLayout()
-        layout.image = renderCardImage(
+        // Render card image synchronously (before async block)
+        let cardImage = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
             participantCount: participantCount,
             splitPayload: splitPayload
         )
+
+        // Pre-generate a Firestore doc ID (local, no network)
+        let docId = SharedReceiptService.shared.generateDocId()
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "plsloot.me"
+        components.path = "/loot"
+        components.queryItems = [URLQueryItem(name: "id", value: docId)]
+
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
 
         let message = MSMessage(session: MSSession())
         message.layout = layout
@@ -190,6 +285,57 @@ extension MessagesViewController {
 
         conversation.insert(message) { error in
             if let error { print("Error inserting message: \(error)") }
+        }
+
+        requestPresentationStyle(.compact)
+
+        // Upload to Firestore in the background
+        Task {
+            do {
+                try await SharedReceiptService.shared.upload(payload, captureImage: captureImage, docId: docId)
+                print("[sendBillMessage] Uploaded to Firestore: \(docId)")
+            } catch {
+                print("[sendBillMessage] Firestore upload failed: \(error)")
+            }
+        }
+    }
+
+    func sendTabInvite(tabName: String, tabColorHex: String, tabId: String) {
+        guard let conversation = activeConversation else { return }
+
+        // Render invite card image
+        let card = TabInviteCardView(
+            tabName: tabName,
+            tabColorHex: tabColorHex,
+            creatorName: myDisplayNameFromDefaults()
+        )
+        let hosting = UIHostingController(rootView: card)
+        hosting.view.backgroundColor = .clear
+        hosting.safeAreaRegions = []
+        let size = CGSize(width: 250, height: 150)
+        hosting.view.frame = CGRect(origin: .zero, size: size)
+        hosting.view.setNeedsLayout()
+        hosting.view.layoutIfNeeded()
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let cardImage = renderer.image { _ in
+            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
+        }
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "plsloot.me"
+        components.path = "/loot"
+        components.queryItems = [URLQueryItem(name: "tabInvite", value: tabId)]
+
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
+
+        let message = MSMessage(session: MSSession())
+        message.layout = layout
+        message.url = components.url
+
+        conversation.insert(message) { error in
+            if let error { print("Error inserting tab invite: \(error)") }
         }
 
         requestPresentationStyle(.compact)
@@ -240,7 +386,7 @@ private extension LootMessagePayload {
                     let g = splitData.g[slot]
                     let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !t.isEmpty { return t }
-                    return g.me ? "Me" : "Guest \(slot + 1)"
+                    return g.uid == KeychainHelper.getOrCreateUserId() ? "Me" : "Guest \(slot + 1)"
                 }()
                 return ReceiptDisplay.Responsible(slotIndex: slot, displayName: nm)
             }
@@ -276,13 +422,13 @@ private extension SplitPayload {
         // Seed guests if no draft
         let guests: [Guest] = {
             if let d = draft, !d.guests.isEmpty {
-                return d.guests.map { Guest(n: $0.name, inc: $0.isIncluded, me: $0.isMe) }
+                return d.guests.map { Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid) }
             }
             // default: me + N-1 unnamed
-            var out: [Guest] = [Guest(n: myDisplayNameFromDefaults(), inc: true, me: true)]
+            var out: [Guest] = [Guest(n: myDisplayNameFromDefaults(), inc: true, uid: KeychainHelper.getOrCreateUserId())]
             if participantCount > 1 {
                 for _ in 1..<participantCount {
-                    out.append(Guest(n: "", inc: true, me: false))
+                    out.append(Guest(n: "", inc: true, uid: nil))
                 }
             }
             return out
@@ -510,3 +656,4 @@ enum SplitMath {
         return out
     }
 }
+

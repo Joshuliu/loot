@@ -154,7 +154,7 @@ struct DebugOCRView: View {
         // For each pair, find unmatched blocks that belong to it
         for i in 0..<result.count {
             let currentItemY = result[i].itemBlock.boundingBox.y
-            let currentAmountY = result[i].amountBlock.boundingBox.y
+//            let currentAmountY = result[i].amountBlock.boundingBox.y
 
             // Find Y boundary for next item (or 0 if this is the last item)
             let nextItemY: Double

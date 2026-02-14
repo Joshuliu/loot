@@ -163,7 +163,7 @@ struct ConfirmationView: View {
             }()
 
             let guests: [SplitPayload.Guest] = draft.guests.map {
-                SplitPayload.Guest(n: $0.name, inc: $0.isIncluded, me: $0.isMe)
+                SplitPayload.Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid)
             }
 
             let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerGuestId }) ?? 0
@@ -430,6 +430,7 @@ struct ConfirmationView: View {
                 owedAmounts: owedAmounts,
                 totalCents: totalCents
             )
+            .cardPhysics(isDragging: cardOffset != .zero)
             .offset(cardOffset)
             .rotationEffect(.degrees(cardRotation), anchor: .bottom)
             .gesture(swipeCardGesture)
@@ -642,7 +643,7 @@ struct ConfirmationView: View {
                     draftPayerGuestId = draft.payerGuestId
                 } else {
                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                    var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true)]
+                    var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
                     if participantCount > 1 {
                         for _ in 1..<participantCount {
                             seeded.append(SplitGuest(name: "", isIncluded: true, isMe: false))
@@ -665,7 +666,7 @@ struct ConfirmationView: View {
     }
 }
 
-private extension Color {
+extension Color {
     init(hex: String) {
         var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if h.hasPrefix("#") { h.removeFirst() }

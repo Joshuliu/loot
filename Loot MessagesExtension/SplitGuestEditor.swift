@@ -7,12 +7,14 @@ struct SplitGuest: Identifiable, Equatable {
     var name: String
     var isIncluded: Bool
     var isMe: Bool
+    var uid: String?
 
-    init(id: UUID = UUID(), name: String = "", isIncluded: Bool = true, isMe: Bool = false) {
+    init(id: UUID = UUID(), name: String = "", isIncluded: Bool = true, isMe: Bool = false, uid: String? = nil) {
         self.id = id
         self.name = name
         self.isIncluded = isIncluded
         self.isMe = isMe
+        self.uid = uid
     }
 
     var trimmedName: String {
