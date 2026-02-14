@@ -15,7 +15,7 @@ jobs:
       - name: Fail if .xcodeproj changed by non-owner
         run: |
           set -euo pipefail
-          OWNER="joshuliu"
+          OWNER="Joshuliu"
 
           BASE="origin/${{ github.base_ref }}"
           HEAD="${{ github.sha }}"
