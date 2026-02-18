@@ -188,8 +188,8 @@ struct ConfirmationView: View {
                 discountCents: draft.discountCents
             )
 
-            // Return only active guests' amounts
-            return draft.guests.indices.filter { draft.guests[$0].isIncluded }.map { allOwed[$0] }
+            // Return all guests' amounts (excluded guests get 0, preserving color slot indices)
+            return allOwed
         } else {
             // No draft yet - compute default equal split
             guard participantCount > 0 else { return nil }
@@ -414,7 +414,7 @@ struct ConfirmationView: View {
         VStack(spacing: 0) {
             Text(dragIntent == .left ? "Swipe left to delete" :
                 dragIntent == .right ? "Swipe right for split options" :
-                isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
+                    "Swipe card up to send")
             .font(.system(size: 14, weight: .regular))
             .foregroundColor(.secondary)
             .padding(.top, 10)
@@ -428,30 +428,22 @@ struct ConfirmationView: View {
                 displayName: myDisplayNameFromDefaults(),
                 splitLabel: splitLabel,
                 owedAmounts: owedAmounts,
-                totalCents: totalCents
+                totalCents: totalCents,
+                tabName: uiModel.activeTab?.name,
+                tabColorHex: uiModel.activeTab?.colorHex
             )
             .cardPhysics(isDragging: cardOffset != .zero)
             .offset(cardOffset)
             .rotationEffect(.degrees(cardRotation), anchor: .bottom)
             .gesture(swipeCardGesture)
-            .simultaneousGesture(TapGesture().onEnded { onPreviewReceipt() })
+            .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems {showEditReceipt = true} })
             .contentShape(Rectangle())
             .padding(.horizontal, 24)
 
             VStack(spacing: 6) {
-                if isLoadingItems {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .scaleEffect(0.7)
-                        Text("Loading receipt items...")
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                    }
-                } else {
-                    Text("Tap to preview receipt")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.secondary)
-                }
+                Text(isLoadingItems ? "Loading receipt items" : "Tap to edit receipt")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(.secondary)
             }
             .padding(.top, 12)
             .opacity(buttonsOpacity)
@@ -641,6 +633,14 @@ struct ConfirmationView: View {
                 if let draft = splitDraft, !draft.guests.isEmpty {
                     draftGuests = draft.guests
                     draftPayerGuestId = draft.payerGuestId
+                } else if let tab = uiModel.activeTab {
+                    let myUid = KeychainHelper.getOrCreateUserId()
+                    let seeded = tab.members.filter { $0.isActive }.map { member in
+                        SplitGuest(name: member.displayName, isIncluded: true,
+                                   isMe: member.userId == myUid, uid: member.userId)
+                    }
+                    draftGuests = seeded
+                    draftPayerGuestId = seeded.first(where: { $0.isMe })?.id ?? seeded.first?.id ?? UUID()
                 } else {
                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
                     var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
@@ -662,6 +662,18 @@ struct ConfirmationView: View {
         }
         .onChange(of: draftPayerGuestId) { _, newPayerId in
             onGuestsChanged(draftGuests, newPayerId)
+        }
+        .sheet(isPresented: $showEditReceipt) {
+            EditReceiptView(
+                uiModel: uiModel,
+                onSave: { updatedReceipt in
+                    uiModel.currentReceipt = updatedReceipt
+                    showEditReceipt = false
+                },
+                onCancel: {
+                    showEditReceipt = false
+                }
+            )
         }
     }
 }

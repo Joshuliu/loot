@@ -293,7 +293,9 @@ final class TabService {
                   let type = PaymentMethodType(rawValue: typeStr)
             else { return nil }
             let identifier = dict["identifier"] as? String ?? ""
-            return PaymentMethod(type: type, identifier: identifier)
+            let bankName = dict["bankName"] as? String
+            let bankURL = dict["bankURL"] as? String
+            return PaymentMethod(type: type, identifier: identifier, bankName: bankName, bankURL: bankURL)
         }
     }
 

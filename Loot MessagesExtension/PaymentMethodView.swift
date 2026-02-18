@@ -13,6 +13,8 @@ struct PaymentMethodView: View {
 
     @State private var methods: [PaymentMethod] = []
     @State private var isSaving: Bool = false
+    @State private var showBankPicker: Bool = false
+    @State private var bankPickerIndex: Int? = nil
 
     private var availableTypes: [PaymentMethodType] {
         let added = Set(methods.map(\.type))
@@ -142,6 +144,14 @@ struct PaymentMethodView: View {
         .task {
             onRequestExpand()
         }
+        .sheet(isPresented: $showBankPicker) {
+            BankPickerView { bankName, bankURL in
+                if let idx = bankPickerIndex, methods.indices.contains(idx) {
+                    methods[idx].bankName = bankName
+                    methods[idx].bankURL = bankURL
+                }
+            }
+        }
     }
 
     // MARK: - Method Row
@@ -176,6 +186,34 @@ struct PaymentMethodView: View {
                     .font(.system(size: 14))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
+                }
+
+                if method.type == .zelle {
+                    Button {
+                        bankPickerIndex = index
+                        showBankPicker = true
+                    } label: {
+                        if let bankName = method.bankName, !bankName.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "building.columns")
+                                    .font(.system(size: 11))
+                                Text(bankName)
+                                    .font(.system(size: 13, weight: .medium))
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10))
+                            }
+                            .foregroundStyle(.blue)
+                        } else {
+                            HStack(spacing: 4) {
+                                Image(systemName: "building.columns")
+                                    .font(.system(size: 11))
+                                Text("Select Bank")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            .foregroundStyle(.blue)
+                        }
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 

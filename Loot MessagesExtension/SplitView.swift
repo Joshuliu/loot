@@ -334,10 +334,16 @@ extension ConfirmationView {
     }
 
     func colorForGuestId(_ id: UUID) -> Color {
-        guard let idx = activeGuests.firstIndex(where: { $0.id == id }) else {
+        guard let idx = guests.firstIndex(where: { $0.id == id }) else {
             return BadgeColors.palette[0]
         }
         return colorForSlot(idx)
+    }
+
+    /// Color for a guest at an active-guests index, using their full-array slot.
+    func colorForActiveIdx(_ i: Int) -> Color {
+        guard activeGuests.indices.contains(i) else { return BadgeColors.palette[0] }
+        return colorForGuestId(activeGuests[i].id)
     }
 
     // MARK: - Guest navigation (for toolbar)
@@ -628,7 +634,7 @@ extension ConfirmationView {
                             if endFrac > startFrac {
                                 Circle()
                                     .trim(from: startFrac, to: endFrac)
-                                    .stroke(colorForSlot(i),
+                                    .stroke(colorForActiveIdx(i),
                                             style: .init(lineWidth: lineW, lineCap: .round))
                                     .opacity(1)
                                     .rotationEffect(.degrees(-90))
@@ -655,9 +661,9 @@ extension ConfirmationView {
                                 let hy = center.y + handleRadius * sin(ang)
 
                                 Circle()
-                                    .fill(colorForSlot(colorIdx))
+                                    .fill(colorForActiveIdx(colorIdx))
                                     .overlay(
-                                        Circle().stroke(colorForSlot(colorIdx), lineWidth: 0.05)
+                                        Circle().stroke(colorForActiveIdx(colorIdx), lineWidth: 0.05)
                                     )
                                     .frame(width: 30, height: 30)
                                     .position(x: hx, y: hy)
@@ -678,7 +684,7 @@ extension ConfirmationView {
                         let hy = center.y + handleRadius * sin(ang)
 
                         Circle()
-                            .fill(colorForSlot(guestSelectedIndex))
+                            .fill(colorForActiveIdx(guestSelectedIndex))
                             .frame(width: 32, height: 32)
                             .overlay(Circle().stroke(.white, lineWidth: 5))
                             .position(x: hx, y: hy)
@@ -789,7 +795,7 @@ extension ConfirmationView {
                             }
                         ),
                         maxCents: remainingExcluding(guestSelectedIndex),
-                        color: colorForSlot(guestSelectedIndex),
+                        color: colorForActiveIdx(guestSelectedIndex),
                         isDraggingDonut: donutDrag != nil,
                         scrollTarget: $fineTunerScrollTarget
                     )
@@ -980,8 +986,10 @@ extension ConfirmationView {
     }
 
     func removeGuestInline(guestId: UUID) {
-        guard let idx = guests.firstIndex(where: { $0.id == guestId }),
-              !guests[idx].isMe else { return }
+        guard let idx = guests.firstIndex(where: { $0.id == guestId }) else { return }
+        // Block if this is the last included guest
+        if activeGuests.count <= 1 { return }
+        let hasUid = !((guests[idx].uid ?? "").isEmpty)
 
         // Snapshot old amounts by guest ID
         let oldActive = activeGuests
@@ -989,13 +997,20 @@ extension ConfirmationView {
             uniqueKeysWithValues: zip(oldActive.map(\.id), guestAmountsCents.prefix(oldActive.count))
         )
 
-        guests.remove(at: idx)
+        if hasUid {
+            // Exclude (recoverable) — guest stays in array with isIncluded = false
+            guests[idx].isIncluded = false
+        } else {
+            // Permanently delete guests without a uid
+            guests.remove(at: idx)
+        }
         draftGuests = guests
 
-        // Reassign payer if removed
+        // Reassign payer if removed/excluded
         if payerGuestId == guestId {
-            if let me = guests.first(where: { $0.isMe }) { payerGuestId = me.id }
-            else if let first = guests.first { payerGuestId = first.id }
+            let remaining = activeGuests
+            if let me = remaining.first(where: { $0.isMe }) { payerGuestId = me.id }
+            else if let first = remaining.first { payerGuestId = first.id }
             draftPayerGuestId = payerGuestId
         }
 
@@ -1022,6 +1037,30 @@ extension ConfirmationView {
         if !newActive.contains(where: { $0.id == byItemSelectedGuestId }) {
             byItemSelectedGuestId = newActive.first?.id ?? UUID()
         }
+    }
+
+    func reIncludeGuest(guestId: UUID) {
+        guard let idx = guests.firstIndex(where: { $0.id == guestId }) else { return }
+
+        // Snapshot old amounts by guest ID
+        let oldActive = activeGuests
+        let oldAmounts: [UUID: Int] = Dictionary(
+            uniqueKeysWithValues: zip(oldActive.map(\.id), guestAmountsCents.prefix(oldActive.count))
+        )
+
+        guests[idx].isIncluded = true
+        draftGuests = guests
+
+        // Rebuild amounts
+        let newActive = activeGuests
+        switch mode {
+        case .equally:
+            guestAmountsCents = equalSplitCents(total: totalCents, count: newActive.count)
+        case .custom, .byItems:
+            // Re-included guest gets 0 — user must manually assign in custom/byItems
+            guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
+        }
+        ensureGuestArrays()
     }
 
     // MARK: - Shared guest list (used by all split modes)
@@ -1075,17 +1114,18 @@ extension ConfirmationView {
                     ColoredCircleBadge(
                         text: BadgeColors.initials(
                             from: displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)),
-                            fallback: i
+                            fallback: allIndex(for: gid) ?? i
                         ),
-                        color: colorForSlot(i)
+                        color: colorForActiveIdx(i)
                     )
                     .onTapGesture {
                         if mode == .byItems { byItemSelectedGuestId = gid }
                         else { guestSelectedIndex = i }
                     }
 
-                    // Name – tap to edit inline
-                    if editingGuestNameId == gid && !guest.isMe {
+                    // Name – tap to edit inline (disabled for tab members)
+                    let isTabMember = uiModel.activeTab != nil && guest.uid != nil && !guest.uid!.isEmpty
+                    if editingGuestNameId == gid && !guest.isMe && !isTabMember {
                         TextField(
                             "Guest name",
                             text: Binding(
@@ -1110,8 +1150,9 @@ extension ConfirmationView {
                     } else {
                         Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)))
                             .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(.secondary)
                             .onTapGesture {
-                                if !guest.isMe {
+                                if !guest.isMe && !isTabMember {
                                     editingGuestNameId = gid
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                         guestNameFocusedId = gid
@@ -1143,8 +1184,8 @@ extension ConfirmationView {
                             }
                     }
 
-                    // Remove button (non-Me guests only)
-                    if !guest.isMe {
+                    // Remove/exclude button (hidden when only one included guest remains)
+                    if activeCount > 1 {
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                                 removeGuestInline(guestId: gid)
@@ -1188,22 +1229,60 @@ extension ConfirmationView {
                 .padding(.top, 4)
             }
 
-            // Add guest button
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                    addGuestInline()
+            // Add guest button (hidden when tab is active — guests come from tab members)
+            if uiModel.activeTab == nil {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        addGuestInline()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 16))
+                        Text("Add Guest")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.blue)
                 }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 16))
-                    Text("Add Guest")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundColor(.blue)
+                .buttonStyle(.plain)
+                .padding(.top, 8)
             }
-            .buttonStyle(.plain)
-            .padding(.top, 8)
+
+            // Excluded guests section (only guests with UIDs)
+            let excludedWithUid = guests.filter { !$0.isIncluded && !(($0.uid ?? "").isEmpty) }
+            if !excludedWithUid.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Not Included")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+
+                    ForEach(excludedWithUid) { guest in
+                        HStack(spacing: 8) {
+                            ColoredCircleBadge(
+                                text: BadgeColors.initials(from: displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: guest.id)), fallback: allIndex(for: guest.id) ?? 0),
+                                color: colorForGuestId(guest.id)
+                            )
+                            Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: guest.id)))
+                                .font(.system(size: 15))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    reIncludeGuest(guestId: guest.id)
+                                }
+                            } label: {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(.blue.opacity(0.7))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+                .padding(.horizontal, 14)
+            }
         }
         .onChange(of: guestNameFocusedId) { _, newValue in
             if newValue == nil {
@@ -1228,10 +1307,6 @@ extension ConfirmationView {
             Spacer()
 
             HStack(spacing: 8) {
-                ColoredCircleBadge(
-                    text: BadgeColors.initials(from: currentGuestName, fallback: currentGuestIndex),
-                    color: colorForSlot(currentGuestIndex)
-                )
                 Text(currentGuestName)
                     .font(.system(size: 15, weight: .semibold))
                     .lineLimit(1)
@@ -1265,9 +1340,17 @@ extension ConfirmationView {
             if let existingDraft = splitDraft, !existingDraft.guests.isEmpty {
                 guests = existingDraft.guests
                 payerGuestId = existingDraft.payerGuestId
+            } else if let tab = uiModel.activeTab {
+                let myUid = KeychainHelper.getOrCreateUserId()
+                let seeded = tab.members.filter { $0.isActive }.map { member in
+                    SplitGuest(name: member.displayName, isIncluded: true,
+                               isMe: member.userId == myUid, uid: member.userId)
+                }
+                guests = seeded
+                payerGuestId = seeded.first(where: { $0.isMe })?.id ?? seeded.first?.id ?? UUID()
             } else {
                 let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true)]
+                var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
                 if participantCount > 1 {
                     for _ in 1..<participantCount {
                         seeded.append(SplitGuest(name: "", isIncluded: true, isMe: false))

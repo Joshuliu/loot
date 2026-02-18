@@ -18,6 +18,15 @@ final class MessagesViewController: MSMessagesAppViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         SharedReceiptService.configureFirebaseIfNeeded()
+
+        uiModel.openInSafari = { url in
+            // Dynamically access UIApplication.shared to open in Safari
+            // (UIApplication is unavailable at compile time in extensions)
+            guard let appClass = NSClassFromString("UIApplication"),
+                  let app = appClass.value(forKey: "sharedApplication") as? NSObject else { return }
+            app.perform(NSSelectorFromString("openURL:"), with: url)
+        }
+
         view.isOpaque = true
         view.backgroundColor = .systemBackground
         addChild(hostingController)
@@ -186,21 +195,24 @@ extension MessagesViewController {
     func renderCardImage(receiptName: String,
                          displayAmount: String,
                          participantCount: Int,
-                         splitPayload: SplitPayload) -> UIImage {
-        
-        // Extract owed amounts for ring display (only included guests)
-        let activeGuests = splitPayload.g.indices.filter { splitPayload.g[$0].inc }
-        let owedAmounts: [Int] = activeGuests.map { idx in
-            splitPayload.o.indices.contains(idx) ? max(0, splitPayload.o[idx]) : 0
+                         splitPayload: SplitPayload,
+                         tabName: String? = nil,
+                         tabColorHex: String? = nil) -> UIImage {
+
+        // Extract owed amounts for ring display (all guests, excluded get 0 to preserve color slots)
+        let owedAmounts: [Int] = splitPayload.g.indices.map { idx in
+            splitPayload.g[idx].inc && splitPayload.o.indices.contains(idx) ? max(0, splitPayload.o[idx]) : 0
         }
-        
+
         let card = BillCardView(
             receiptName: receiptName,
             displayAmount: displayAmount,
             displayName: myDisplayNameFromDefaults(),
             splitLabel: splitLabelFromMode(splitPayload.m),
             owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,  // Only pass if non-empty
-            totalCents: splitPayload.tot
+            totalCents: splitPayload.tot,
+            tabName: tabName,
+            tabColorHex: tabColorHex
         )
 
         let hosting = UIHostingController(rootView: card)
@@ -254,7 +266,7 @@ extension MessagesViewController {
 
         let receiptPayload = ReceiptPayload.from(receipt: receiptDisplay, split: splitPayload)
 
-        let payload = LootMessagePayload(r: receiptPayload, s: splitPayload)
+        let payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: uiModel.activeTab?.id)
 
         // Capture scan image before async block (will be nil for manual receipts)
         let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal
@@ -264,7 +276,9 @@ extension MessagesViewController {
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
             participantCount: participantCount,
-            splitPayload: splitPayload
+            splitPayload: splitPayload,
+            tabName: uiModel.activeTab?.name,
+            tabColorHex: uiModel.activeTab?.colorHex
         )
 
         // Pre-generate a Firestore doc ID (local, no network)

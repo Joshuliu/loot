@@ -1807,7 +1807,8 @@ struct RootContainerView: View {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .account
                                 }
-                            }
+                            },
+                            onRequestCollapse: onCollapse
                         )
                         .transition(.opacity)
                         

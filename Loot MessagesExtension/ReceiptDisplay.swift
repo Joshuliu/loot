@@ -132,6 +132,9 @@ final class LootUIModel: ObservableObject {
     @Published var conversationKey: String? = nil
     @Published var pendingTabInviteId: String? = nil
 
+    /// Opens a URL in Safari app (via extensionContext). Set by MessagesViewController.
+    var openInSafari: ((URL) -> Void)?
+
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
         phase2Task?.cancel()

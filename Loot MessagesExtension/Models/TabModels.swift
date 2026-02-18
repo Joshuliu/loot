@@ -81,7 +81,7 @@ enum PaymentMethodType: String, Codable, CaseIterable {
     }
 
     /// Builds a deep link URL for the payment app, or nil if no deep link exists.
-    func deepLinkURL(identifier: String, amountCents: Int, note: String) -> URL? {
+    func deepLinkURL(identifier: String, amountCents: Int, note: String, bankURL: String? = nil, payeeName: String? = nil) -> URL? {
         let dollars = String(format: "%.2f", Double(amountCents) / 100.0)
 
         switch self {
@@ -109,7 +109,29 @@ enum PaymentMethodType: String, Codable, CaseIterable {
             guard !user.isEmpty else { return nil }
             return URL(string: "https://paypal.me/\(user)/\(dollars)")
 
-        case .zelle, .applePay, .cash:
+        case .zelle:
+            guard let bankURL, !bankURL.isEmpty else { return nil }
+            let trimmed = identifier.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return nil }
+            // Strip to 10-digit phone number if possible
+            let digitsOnly = trimmed.filter(\.isNumber)
+            let token = digitsOnly.count == 10
+                ? String(digitsOnly)
+                : trimmed
+            let firstName = (payeeName?.components(separatedBy: " ").first ?? "").uppercased()
+            let json: [String: String] = [
+                "name": firstName,
+                "action": "payment",
+                "token": token
+            ]
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]),
+                  let base64 = jsonData.base64EncodedString()
+                    .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            else { return nil }
+            return URL(string: "\(bankURL)?context=qr-codes&data=s%2F%3Fdata%3D\(base64)"
+                .replacingOccurrences(of: "http://", with: "https://"))
+
+        case .applePay, .cash:
             return nil
         }
     }
@@ -118,6 +140,8 @@ enum PaymentMethodType: String, Codable, CaseIterable {
 struct PaymentMethod: Codable, Identifiable, Equatable {
     var type: PaymentMethodType
     var identifier: String
+    var bankName: String?
+    var bankURL: String?
 
     var id: String { type.rawValue }
 }

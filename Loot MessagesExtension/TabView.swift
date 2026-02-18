@@ -24,9 +24,11 @@ struct LootTabView: View {
     var onClearTab: (() -> Void)? = nil
     var onInviteMembers: (() -> Void)? = nil
     var onAccountTapped: (() -> Void)? = nil
-
+    let onRequestCollapse: () -> Void
+    
     @AppStorage(DefaultsKeys.myDisplayName) private var myDisplayName: String = ""
     @State private var showingTabSwitcher: Bool = false
+    @State private var showingAddReceiptPanel: Bool = false
     @State private var selectedSegment: Int = 0
 
     private var resolvedHeaderColor: Color {
@@ -34,7 +36,7 @@ struct LootTabView: View {
     }
 
     private var isColoredCompact: Bool {
-        activeTab != nil && !isExpanded
+        activeTab != nil && (!isExpanded || showingAddReceiptPanel)
     }
     
     var initials: String {
@@ -54,18 +56,20 @@ struct LootTabView: View {
             // Top section: the whole compact view, shrinks to just the bar when expanded.
             // Its color never changes — only depends on which tab is selected.
             VStack(spacing: 0) {
-                if !isExpanded {
+                if !isExpanded || activeTab == nil || showingAddReceiptPanel {
                     compactInnerContent
-                        .padding(.top, 20)
+                        .padding(.vertical, 20)
                         .transition(.asymmetric(
                             insertion: .opacity.animation(.easeIn(duration: 0.25).delay(0.35)),
                             removal: .opacity.animation(.easeOut(duration: 0.15))
                         ))
-
-                    Spacer()
+                    if !isExpanded {
+                        Spacer()
+                    }
                 }
                 tabBar
             }
+            .animation(.spring(response: 0.4, dampingFraction: 0.85), value: activeTab != nil)
             .background(
                 activeTab != nil
                     ? resolvedHeaderColor
@@ -73,7 +77,7 @@ struct LootTabView: View {
             )
 
             // Bottom section: expanded content slides up from below
-            if isExpanded {
+            if isExpanded && !showingAddReceiptPanel {
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 12) {
                         expandedTabContent
@@ -89,74 +93,9 @@ struct LootTabView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(UIColor.systemBackground))
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isExpanded)
-    }
-
-    // MARK: - Tab Bar (pill + circle, animates between compact/expanded layout)
-
-    var tabBar: some View {
-        ZStack {
-            // Tab pill — left-center in compact, bottom-left in expanded
-            Button(action: { onTabNameTapped?() }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "rectangle.stack.fill")
-                        .font(.system(size: 18))
-                    Text((!showingTabSwitcher ? activeTab?.name : nil) ?? "Loot Tabs")
-                        .font(.system(size: 24, weight: .semibold))
-                        .scaleEffect(isExpanded ? 1.0 : 20.0 / 24.0, anchor: .leading)
-                        .lineLimit(1)
-                    if !isExpanded {
-                        if activeTab != nil {
-                                Button(action: { onClearTab?() }) {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 18))
-                                        .foregroundColor(activeTab != nil ? .white.opacity(0.5) : .secondary)
-                                }
-                                .buttonStyle(.plain)
-                        } else {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(activeTab != nil ? .white.opacity(0.5) : .secondary)
-                        }
-                    }
-                }
-                .foregroundColor(activeTab != nil ? .white : .primary)
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
-                .background(
-                    activeTab != nil ?
-                        Color.white.opacity(isExpanded ? 0 : 0.15) :
-                        isExpanded ?
-                            Color.clear :
-                            Color(UIColor.secondarySystemBackground)
-                )
-                .cornerRadius(12)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, maxHeight: .infinity,
-                   alignment: isExpanded ? .bottomLeading : .leading)
-
-            // Account circle — right-center in compact, top-right in expanded
-            Button(action: { onAccountTapped?() }) {
-                Text(initials)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(activeTab != nil ? resolvedHeaderColor : .white)
-                    .frame(width: 38, height: 38)
-                    .background(activeTab != nil ? Color.white : Color.black)
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, maxHeight: .infinity,
-                   alignment: isExpanded ? .topTrailing : .trailing)
+        .onChange(of: isExpanded) { _, newValue in
+            if !newValue { showingAddReceiptPanel = false }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(height: isExpanded ? 120 : 66)
-        .frame(maxWidth: .infinity)
-        .background(
-            activeTab != nil
-                ? resolvedHeaderColor
-                : Color.clear
-        )
     }
 
     // MARK: - Compact Inner Content (title + buttons + labels)
@@ -226,12 +165,86 @@ struct LootTabView: View {
             .padding(.horizontal, 16)
         }
     }
+    
+    // MARK: - Tab Bar (pill + circle, animates between compact/expanded layout)
+
+    var tabBar: some View {
+        ZStack {
+            // Tab pill — left-center in compact, bottom-left in expanded
+            Button(action: {
+                if showingAddReceiptPanel {
+                    showingAddReceiptPanel = false
+                } else {
+                    onTabNameTapped?()
+                }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "rectangle.stack.fill")
+                        .font(.system(size: 18))
+                    Text((!showingTabSwitcher ? activeTab?.name : nil) ?? "Loot Tabs")
+                        .font(.system(size: 24, weight: .semibold))
+                        .scaleEffect(isExpanded ? 1.0 : 20.0 / 24.0, anchor: .leading)
+                        .lineLimit(1)
+                    if activeTab != nil {
+                            Button(action: { onClearTab?() }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundColor(activeTab != nil ? .white.opacity(0.5) : .secondary)
+                            }
+                            .buttonStyle(.plain)
+                    } else if !isExpanded {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(activeTab != nil ? .white.opacity(0.5) : .secondary)
+                    }
+                }
+                .foregroundColor(activeTab != nil ? .white : .primary)
+                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .background(
+                    activeTab != nil ?
+                        Color.white.opacity(isExpanded ? 0 : 0.15) :
+                        isExpanded ?
+                            Color.clear :
+                            Color(UIColor.secondarySystemBackground)
+                )
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: isExpanded ? .bottomLeading : .leading)
+
+            // Account circle
+            Button(action: { onAccountTapped?() }) {
+                Text(initials)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(activeTab != nil ? resolvedHeaderColor : .white)
+                    .frame(width: 38, height: 38)
+                    .background(activeTab != nil ? Color.white : Color.black)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .frame(maxWidth: .infinity, maxHeight: .infinity,
+                   alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(height: activeTab == nil || showingAddReceiptPanel || !isExpanded ? 66 : 120)
+        .frame(maxWidth: .infinity)
+        .background(
+            activeTab != nil
+                ? resolvedHeaderColor
+                : Color.clear
+        )
+    }
 
     // MARK: - Expanded Tab Content
 
     @ViewBuilder
     private var expandedTabContent: some View {
         if let tab = activeTab, !showingTabSwitcher {
+            addNewReceiptButton
+        
             balanceSummaryCard(for: tab)
             segmentedPicker
             if selectedSegment == 0 {
@@ -259,10 +272,6 @@ struct LootTabView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 startNewTabButton
-                orDivider
-                Text("Select another tab for this chat to add a new receipt to it. ")
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
                 ScrollView {
                     VStack(spacing: 8) {
                         ForEach(userTabs) { tab in
@@ -306,7 +315,24 @@ struct LootTabView: View {
     }
 
     // MARK: - Reusable Sub-views
-
+    private var addNewReceiptButton: some View {
+        Button(action: {
+            showingAddReceiptPanel = true
+            onRequestCollapse()
+        }) {
+            HStack(spacing: 8) {
+                Text("Add New Receipt")
+                    .font(.system(size: 16, weight: .semibold))
+            }
+            .foregroundColor(.blue)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(14)
+        }
+        .buttonStyle(.plain)
+    }
+    
     private var startNewTabButton: some View {
         Button(action: { onStartTab?() }) {
             HStack(spacing: 8) {

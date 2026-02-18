@@ -19,37 +19,43 @@ struct BillCardView: View {
     
     let owedAmounts: [Int]?  // Owed amounts in cents for each person
     let totalCents: Int?      // Total in cents
+    var tabName: String? = nil
+    var tabColorHex: String? = nil
+
+    private var hasTabColor: Bool { tabColorHex != nil }
+    private var primaryFg: Color { hasTabColor ? .white : .primary }
+    private var secondaryFg: Color { hasTabColor ? .white.opacity(0.7) : .secondary }
 
     var body: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 8) {
                 Text(receiptName.isEmpty ? "New Receipt" : receiptName)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
+                    .foregroundColor(primaryFg)
                     .lineLimit(2)
                     .truncationMode(.tail)
                     .frame(width: 95, alignment: .leading)
-                
+
                 VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Split method")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
-                        
+                            .foregroundColor(secondaryFg)
+
                         Text(splitLabel)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .foregroundColor(primaryFg)
                             .lineLimit(1)
                     }
-                    
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Paid by")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
 
-                        Text(displayName)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tabName == nil ? "Paid by" : "Loot Tab")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(secondaryFg)
+
+                        Text(tabName ?? displayName)
                             .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.primary)
+                            .foregroundColor(primaryFg)
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -63,7 +69,8 @@ struct BillCardView: View {
                     participantCount: owedAmounts.filter { $0 != 0}.count,
                     owedAmounts: owedAmounts,
                     totalCents: totalCents,
-                    displayAmount: displayAmount
+                    displayAmount: displayAmount,
+                    tabColorHex: tabColorHex
                 )
                 .frame(width: 120, height: 110, alignment: .center)
             }
@@ -72,12 +79,17 @@ struct BillCardView: View {
         .padding(.horizontal, 9)
         .frame(width: 260, height: 160, alignment: .center)
         .background(
-//            Color(.secondarySystemBackground)
-            Color(isDarkMode ? .systemBackground : .secondarySystemBackground)
-                    .overlay(
-                        Color.white.opacity(isDarkMode ? 0.018 : 0)
+            Group {
+                if let hex = tabColorHex {
+                    Color(hex: hex)
+                } else {
+                    Color(isDarkMode ? .systemBackground : .secondarySystemBackground)
+                        .overlay(
+                            Color.white.opacity(isDarkMode ? 0.018 : 0)
                         )
-            )
+                }
+            }
+        )
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
 
@@ -91,6 +103,7 @@ private struct SplitRingView: View {
     let owedAmounts: [Int]
     let totalCents: Int
     let displayAmount: String
+    var tabColorHex: String? = nil
     
     private var safeTotal: Int {
         max(1, totalCents)  // Avoid division by zero
@@ -125,7 +138,7 @@ private struct SplitRingView: View {
             ZStack {
                 // Background ring
                 Circle()
-                    .stroke(Color(.secondarySystemBackground),
+                    .stroke(tabColorHex != nil ? Color.white.opacity(0.2) : Color(.secondarySystemBackground),
                             style: .init(lineWidth: lineW, lineCap: .round))
                     .frame(width: size, height: size)
 
@@ -166,13 +179,13 @@ private struct SplitRingView: View {
                 VStack(spacing: 2) {
                     Text(displayAmount)
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(tabColorHex != nil ? .white : .primary)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
 
                         Text("Split \(participantCount) \(participantCount == 1 ? "way" : "ways")")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(tabColorHex != nil ? .white.opacity(0.7) : .secondary)
                 }
                 .frame(width: size - lineW * 2)
             }

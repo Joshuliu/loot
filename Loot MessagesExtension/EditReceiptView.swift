@@ -20,6 +20,9 @@ struct EditReceiptView: View {
     @State private var tipString: String  // Separate tip field (below discounts)
     @State private var preTipTotalOverride: String  // Single override for pre-tip total
 
+    // Capture preview
+    @State private var showCapture: Bool = false
+
     // Editor state for inline add/edit
     @State private var editorMode: EditorMode = .none
     @State private var editorLabel: String = ""
@@ -402,6 +405,10 @@ struct EditReceiptView: View {
         onSave(updatedReceipt)
     }
     
+    private var captureImage: UIImage? {
+        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -419,11 +426,23 @@ struct EditReceiptView: View {
 
                     Spacer()
 
-                    Button("Save") {
-                        saveReceipt()
+                    HStack(spacing: 16) {
+                        if captureImage != nil {
+                            Button {
+                                showCapture = true
+                            } label: {
+                                Image(systemName: "doc.viewfinder")
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button("Save") {
+                            saveReceipt()
+                        }
+                        .buttonStyle(.plain)
+                        .fontWeight(.semibold)
                     }
-                    .buttonStyle(.plain)
-                    .fontWeight(.semibold)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
@@ -683,7 +702,7 @@ struct EditReceiptView: View {
                                 .foregroundColor(.secondary)
 
                             HStack {
-                                Text("Calculated pre-tip")
+                                Text("Calculated total")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
                                 Text(formatMoney(calculatedPreTipTotalCents))
@@ -693,7 +712,7 @@ struct EditReceiptView: View {
 
                             VStack(spacing: 0) {
                                 HStack {
-                                    Text("Override pre-tip total")
+                                    Text("Override total")
                                         .font(.system(size: 15))
 
                                     Spacer()
@@ -715,7 +734,7 @@ struct EditReceiptView: View {
                                 HStack(spacing: 6) {
                                     Image(systemName: "exclamationmark.triangle.fill")
                                         .font(.system(size: 13))
-                                    Text("Pre-tip total doesn't match calculated")
+                                    Text("Total does not match calculated")
                                         .font(.system(size: 13, weight: .medium))
                                 }
                                 .foregroundColor(.orange)
@@ -743,7 +762,7 @@ struct EditReceiptView: View {
                             .cornerRadius(12)
 
                             HStack {
-                                Text("Final total")
+                                Text("Grand total")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
                                 Text(formatMoney(calculatedTotalCents))
@@ -822,6 +841,11 @@ struct EditReceiptView: View {
                 }
                 .transition(.move(edge: .bottom))
                 .animation(.spring(response: 0.3, dampingFraction: 0.8), value: editorMode.isActive)
+            }
+        }
+        .sheet(isPresented: $showCapture) {
+            CapturePreviewView(image: captureImage) {
+                showCapture = false
             }
         }
     }

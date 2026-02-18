@@ -197,6 +197,7 @@ struct SplitsSummaryView: View {
     @ViewBuilder
     private func paymentMethodButtons(methods: [PaymentMethod], amountCents: Int) -> some View {
         let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
+        let payerName = displayName(for: split.pi)
 
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
@@ -204,12 +205,18 @@ struct SplitsSummaryView: View {
                     let deepLink = method.type.deepLinkURL(
                         identifier: method.identifier,
                         amountCents: amountCents,
-                        note: note
+                        note: note,
+                        bankURL: method.bankURL,
+                        payeeName: payerName
                     )
 
                     Button {
                         if let url = deepLink {
-                            openURL(url)
+                            if method.type == .zelle {
+                                uiModel.openInSafari?(url)
+                            } else {
+                                openURL(url)
+                            }
                         } else if method.type == .zelle {
                             UIPasteboard.general.string = method.identifier
                             copiedMethodId = method.id
@@ -254,7 +261,7 @@ struct SplitsSummaryView: View {
             HStack {
                 ColoredCircleBadge(
                     text: BadgeColors.initials(from: displayName(for: gi), fallback: gi),
-                    color: colorForSlot(i)
+                    color: colorForSlot(gi)
                 )
 
                 Text(displayName(for: gi))
@@ -281,7 +288,7 @@ struct SplitsSummaryView: View {
                     ForEach(guestItems, id: \.id) { item in
                         HStack(spacing: 6) {
                             Circle()
-                                .fill(colorForSlot(i).opacity(0.5))
+                                .fill(colorForSlot(gi).opacity(0.5))
                                 .frame(width: 6, height: 6)
                             Text(item.l)
                                 .font(.system(size: 13))
@@ -312,19 +319,18 @@ struct SplitsSummaryView: View {
                                     from: displayName(for: gj),
                                     to: displayName(for: gi),
                                     amount: owed(for: gj),
-                                    color: colorForSlot(j),
+                                    color: colorForSlot(gj),
                                     guestIndex: gj
                                 )
                             }
                         }
                     } else {
                         // Non-payer: show what they owe the payer
-                        let payerIncludedIdx = included.firstIndex(of: split.pi) ?? 0
                         transactionRow(
                             from: displayName(for: gi),
                             to: displayName(for: split.pi),
                             amount: owed(for: gi),
-                            color: colorForSlot(payerIncludedIdx),
+                            color: colorForSlot(split.pi),
                             guestIndex: gi
                         )
                     }
@@ -401,26 +407,28 @@ struct SplitsSummaryView: View {
 
                         ForEach(0..<count, id: \.self) { i in
                             if safeTotal > 0 {
+                                let gi = included[i]
                                 let start = Double(sumBeforeIncludedSlot(i)) / Double(safeTotal)
                                 let end = Double(sumThroughIncludedSlot(i)) / Double(safeTotal)
                                 if end > start {
                                     Circle()
                                         .trim(from: start, to: end)
-                                        .stroke(colorForSlot(i),
+                                        .stroke(colorForSlot(gi),
                                                 style: .init(lineWidth: lineW, lineCap: .round))
                                         .colorMultiply(i == selectedIndex ? .white : dimmer)
                                         .rotationEffect(.degrees(-90))
                                         .frame(width: size, height: size)
                                 }
                                 let colorIdx = lastActiveIndex(idx: i)
-                                if sumBeforeIncludedSlot(i) != sumThroughIncludedSlot(i) && selectedIndex != i {
+                                let colorGi = included.indices.contains(colorIdx) ? included[colorIdx] : colorIdx
+                                if i == 0 || selectedIndex != i {
                                     let ang = -(.pi / 1.975) + (start * 2 * .pi)
                                     let hx = center.x + handleRadius * cos(ang)
                                     let hy = center.y + handleRadius * sin(ang)
                                     Circle()
-                                        .fill(BadgeColors.color(for: colorIdx))
+                                        .fill(BadgeColors.color(for: colorGi))
                                         .overlay(
-                                            Circle().stroke(BadgeColors.color(for: colorIdx), lineWidth: 0.05)
+                                            Circle().stroke(BadgeColors.color(for: selectedIndex == 0 ? i : colorGi), lineWidth: 0.05)
                                         )
                                         .colorMultiply(colorIdx != selectedIndex ? dimmer : .white)
                                         .frame(width: lineW, height: lineW)

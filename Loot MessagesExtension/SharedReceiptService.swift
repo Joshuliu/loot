@@ -23,11 +23,30 @@ final class SharedReceiptService {
     static func configureFirebaseIfNeeded() {
         guard FirebaseApp.app() == nil else { return }
         FirebaseApp.configure()
+
+        // Use memory-only cache to avoid persistent-cache file errors
+        // in the iMessage extension sandbox (iOS 26+).
+        let settings = Firestore.firestore().settings
+        settings.cacheSettings = MemoryCacheSettings()
+        Firestore.firestore().settings = settings
     }
 
     func ensureAnonymousAuth() async throws {
         Self.configureFirebaseIfNeeded()
-        if Auth.auth().currentUser != nil { return }
+
+        // If there's a cached user, verify the token is still valid.
+        // Stale Keychain credentials (e.g. server-purged anonymous accounts)
+        // cause Firestore to go permanently offline.
+        if let user = Auth.auth().currentUser {
+            do {
+                _ = try await user.getIDTokenResult(forcingRefresh: true)
+                return
+            } catch {
+                // Token refresh failed — sign out stale user and re-auth below
+                try? Auth.auth().signOut()
+            }
+        }
+
         try await Auth.auth().signInAnonymously()
     }
 

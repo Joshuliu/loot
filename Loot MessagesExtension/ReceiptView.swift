@@ -200,7 +200,7 @@ struct ReceiptView: View {
 
 // MARK: - Capture preview sheet
 
-private struct CapturePreviewView: View {
+struct CapturePreviewView: View {
     let image: UIImage?
     let onClose: () -> Void
 
