@@ -2053,7 +2053,9 @@ struct RootContainerView: View {
                                     uiModel.currentSplitDraft = newDraft
                                 }
                             },
-                            onRequestCollapse: onCollapse
+                            onRequestCollapse: onCollapse,
+                            onRequestExpand: onExpand
+
                         )
                         .transition(.opacity)
                         

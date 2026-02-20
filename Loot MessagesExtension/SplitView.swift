@@ -811,6 +811,10 @@ extension ConfirmationView {
             HStack{
                 Spacer()
                 Button(action: {
+                    let draft = buildSplitDraft()
+                    uiModel.currentSplitDraft = draft
+                    onSelectMode(mode)
+                    onGuestsChanged(guests, payerGuestId)
                     confirmed = true
                 }) {
                     Text("Next")
@@ -943,6 +947,10 @@ extension ConfirmationView {
             HStack{
                 Spacer()
                 Button(action: {
+                    let draft = buildSplitDraft()
+                    uiModel.currentSplitDraft = draft
+                    onSelectMode(mode)
+                    onGuestsChanged(guests, payerGuestId)
                     confirmed = true
                 }) {
                     Text("Next")
