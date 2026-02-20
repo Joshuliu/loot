@@ -25,6 +25,7 @@ struct ConfirmationView: View {
     let onGuestsChanged: ([SplitGuest], UUID) -> Void  // (guests, payerGuestId)
     let collapsedHeight: CGFloat = 132
     let onRequestCollapse: () -> Void
+    let onRequestExpand: () -> Void
 
     var isLoadingItems: Bool {
         uiModel.itemsLoadingState.isLoading
@@ -73,7 +74,7 @@ struct ConfirmationView: View {
     @State var confirmed: Bool = true
 
 
-    private enum DragIntent { case none, up, left, right }
+    private enum DragIntent { case none, up, left, right, down }
 
 //    private let collapsedHeight: CGFloat = 60
 
@@ -88,6 +89,9 @@ struct ConfirmationView: View {
     private var rightProgress: CGFloat {
         dragIntent == .right ? clamp01((cardOffset.width) / 180) : 0
     }
+    private var downProgress: CGFloat {
+        dragIntent == .down ? clamp01((cardOffset.height) / 180) : 0
+    }
 
     private var buttonBase: Color { Color(.secondarySystemBackground) }
     private var gold: Color { Color(hex: "#DAA806") }
@@ -98,6 +102,7 @@ struct ConfirmationView: View {
         if dragIntent == .left { return Double(1 - leftProgress) }
         // drag right: fade everything except modify (split) button
         if dragIntent == .right { return Double(1 - rightProgress) }
+        if dragIntent == .down { return Double (1 - downProgress) }
         return 1
     }
 
@@ -113,6 +118,13 @@ struct ConfirmationView: View {
         case .byItems: return "Split by items"
         case .custom: return "Custom split"
         case .equally, .none: return "Split evenly"
+        }
+    }
+    private var splitType: String {
+        switch splitMode {
+        case .byItems: return "Items"
+        case .custom: return "Custom"
+        case .equally, .none: return "Equal"
         }
     }
     private var displayAmount: String { "$" + formatAmount(amount) }
@@ -297,6 +309,8 @@ struct ConfirmationView: View {
 
                 if isMostlyVertical, dy < 0 {
                     dragIntent = .up
+                } else if isMostlyVertical, dy > 0 {
+                    dragIntent = .down
                 } else if isMostlyHorizontal, dx < 0 {
                     dragIntent = .left
                 } else if isMostlyHorizontal, dx > 0 {
@@ -335,7 +349,7 @@ struct ConfirmationView: View {
                     return
                 }
 
-                // ✅ Right swipe = go to SplitView
+                // ✅ Right swipe = add tip
                 if isMostlyHorizontal, dx > horizontalTrigger {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
@@ -345,7 +359,28 @@ struct ConfirmationView: View {
                     }
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        onGoToSplit()
+                        onAddTip()
+
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            cardOffset = .zero
+                            cardRotation = 0
+                        }
+                    }
+                    dragIntent = .none
+                    return
+                }
+
+                // ✅ Down swipe = expand
+                if isMostlyVertical, dy > verticalTrigger {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        cardOffset = CGSize(width: 0, height: 500)
+                        cardRotation = 6
+                    }
+
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        onRequestExpand()
 
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             cardOffset = .zero
@@ -394,6 +429,7 @@ struct ConfirmationView: View {
 
     private func animateSplitThenAct() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             cardOffset = CGSize(width: 500, height: 0)
             cardRotation = 6
@@ -413,7 +449,8 @@ struct ConfirmationView: View {
     private func confirmationPanel() -> some View {
         VStack(spacing: 0) {
             Text(dragIntent == .left ? "Swipe left to delete" :
-                dragIntent == .right ? "Swipe right for split options" :
+                dragIntent == .right ? "Swipe right to edit tip" :
+                dragIntent == .down ? "Swipe down for split options" :
                 isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
             .font(.system(size: 14, weight: .regular))
             .foregroundColor(.secondary)
@@ -465,15 +502,19 @@ struct ConfirmationView: View {
                 }) {
                     Group {
                         if cameFromManual {
-                            HStack(spacing: 6) {
+                            if uiModel.isExpanded {
+                                Text("Edit Total")
+                            }
+                            else {HStack(spacing: 6) {
                                 Image(systemName: "chevron.left")
                                 Text("Back")
+                            }
                             }
                         } else {
                             Image(systemName: "trash")
                         }
                     }
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
                     .foregroundStyle(
@@ -492,28 +533,20 @@ struct ConfirmationView: View {
                 .buttonStyle(.plain)
                 .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
 
-                // 2) Add Tip
-                Button(action: onAddTip) {
-                    Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
+                // 2) Split
+                let splitProgress = (dragIntent == .down) ? downProgress : 0
+
+                Button(action: {onRequestExpand()
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    selectMode(mode)
+                    confirmed = false}) {
+                    Text("Split:\n\(splitType)")
+                        .multilineTextAlignment(.center)
                         .font(.system(size: 17, weight: .semibold))
                         .frame(maxWidth: .infinity)
+                        .frame(minWidth: 100)
                         .padding(.vertical, 12)
-                        .background(buttonBase)
-                        .cornerRadius(18)
-                }
-                .buttonStyle(.plain)
-                .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
-                .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
-                .opacity(buttonsOpacity)
-
-                // 3) Split
-                let splitProgress = (dragIntent == .right) ? rightProgress : 0
-
-                Button(action: { animateSplitThenAct() }) {
-                    Text("Split")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, 1.5)
                         .background(
                             RoundedRectangle(cornerRadius: 18)
                                 .fill(buttonBase)
@@ -525,11 +558,38 @@ struct ConfirmationView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .opacity(dragIntent == .down ? 1 : buttonsOpacity)
+                
+                // 3) Add Tip
+                let tipProgress = (dragIntent == .right) ? rightProgress : 0
+
+                Button(action: {onAddTip()
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()}) {
+                    Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .cornerRadius(18)
+                        .background(
+                            RoundedRectangle(cornerRadius: 18)
+                                .fill(buttonBase)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 18)
+                                        .fill(.blue)
+                                        .opacity(Double(tipProgress))
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
+                .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
                 .opacity(dragIntent == .right ? 1 : buttonsOpacity)
+
             }
             .padding(.horizontal, 40)
             .padding(.top, 16)
             .padding(.bottom, 20)
+            
         }
     }
 
@@ -611,7 +671,8 @@ struct ConfirmationView: View {
 
                 Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
                 Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
-                Color(hex: "#D5C67A").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+                Color(hex: "#5f8bc9").opacity(dragIntent == .right ? Double(rightProgress) : 0)
+                Color(hex: "#D5C67A").opacity(dragIntent == .down ? Double(downProgress) : 0)
             }
         }
         .ignoresSafeArea()
