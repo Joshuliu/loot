@@ -18,6 +18,10 @@ enum TabBalanceTests {
         testReceiptSplitCustom()
         testSettlement()
         testMultipleReceiptsAndSettlement()
+        testDebtSimplify2Person()
+        testDebtSimplify3PersonCycle()
+        testDebtSimplifyAllZero()
+        testDebtSimplifyMultiWay()
         print("[TabBalanceTests] All tests passed")
     }
 
@@ -206,6 +210,62 @@ enum TabBalanceTests {
     private static func assertBalancesSumToZero(_ tab: LootTab) {
         let sum = tab.members.reduce(0) { $0 + $1.balanceCents }
         assert(sum == 0, "Sum of balances should be 0, got \(sum)")
+    }
+
+    // MARK: - Debt Simplification Tests
+
+    private static func testDebtSimplify2Person() {
+        // Alice owes Bob $20
+        let balances = ["alice": -2000, "bob": 2000]
+        let txns = DebtSimplifier.simplify(balances: balances)
+
+        assert(txns.count == 1, "Expected 1 transaction, got \(txns.count)")
+        assert(txns[0].from == "alice")
+        assert(txns[0].to == "bob")
+        assert(txns[0].amountCents == 2000)
+        print("  [PASS] testDebtSimplify2Person")
+    }
+
+    private static func testDebtSimplify3PersonCycle() {
+        // A owes $10, B owed $20, C owes $10
+        // Net: A = -1000, B = +2000, C = -1000
+        let balances = ["A": -1000, "B": 2000, "C": -1000]
+        let txns = DebtSimplifier.simplify(balances: balances)
+
+        assert(txns.count == 2, "Expected 2 transactions, got \(txns.count)")
+        let totalPaid = txns.reduce(0) { $0 + $1.amountCents }
+        assert(totalPaid == 2000, "Total paid should be 2000, got \(totalPaid)")
+        // All transactions should go to B
+        for t in txns {
+            assert(t.to == "B", "All payments should go to B, got \(t.to)")
+        }
+        print("  [PASS] testDebtSimplify3PersonCycle")
+    }
+
+    private static func testDebtSimplifyAllZero() {
+        let balances = ["A": 0, "B": 0, "C": 0]
+        let txns = DebtSimplifier.simplify(balances: balances)
+        assert(txns.isEmpty, "Expected 0 transactions, got \(txns.count)")
+        print("  [PASS] testDebtSimplifyAllZero")
+    }
+
+    private static func testDebtSimplifyMultiWay() {
+        // 4 people: A=-3000, B=+1000, C=+500, D=+1500
+        let balances = ["A": -3000, "B": 1000, "C": 500, "D": 1500]
+        let txns = DebtSimplifier.simplify(balances: balances)
+
+        // Should produce at most 3 transactions (N-1)
+        assert(txns.count <= 3, "Expected <= 3 transactions, got \(txns.count)")
+
+        // Verify net flow is correct
+        var netFlow: [String: Int] = [:]
+        for t in txns {
+            netFlow[t.from, default: 0] -= t.amountCents
+            netFlow[t.to, default: 0] += t.amountCents
+        }
+        assert(netFlow["A"] == -3000, "A net should be -3000, got \(netFlow["A"] ?? 0)")
+        assert((netFlow["B"] ?? 0) + (netFlow["C"] ?? 0) + (netFlow["D"] ?? 0) == 3000)
+        print("  [PASS] testDebtSimplifyMultiWay")
     }
 }
 #endif

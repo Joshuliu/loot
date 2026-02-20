@@ -19,7 +19,7 @@ struct MessageReceiptViewer: View {
     private var captureImage: UIImage? {
         uiModel.scanImageCropped ?? uiModel.scanImageOriginal
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             // Top bar
@@ -63,9 +63,7 @@ struct MessageReceiptViewer: View {
             .padding(.bottom, 60)
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-            //            .clipShape(RoundedCorner(radius: (captureImage != nil ? 0: 22), corners: [.topLeft, .topRight]))
             .shadow(color: Color.black.opacity(0.20), radius: 18, x: 0, y: 2)
-//            .shadow(color: Color.black.opacity(captureImage == nil ? 1 : 0), radius: 18, x: 0, y: -2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

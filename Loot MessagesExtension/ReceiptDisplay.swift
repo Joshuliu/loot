@@ -127,6 +127,8 @@ final class LootUIModel: ObservableObject {
 
     // MARK: - Loot Tabs state
     @Published var activeTab: LootTab? = nil
+    /// Tab that belongs to the currently-opened receipt (may differ from activeTab).
+    @Published var receiptTab: LootTab? = nil
     @Published var userTabs: [LootTab] = []
     @Published var localParticipantId: String? = nil
     @Published var conversationKey: String? = nil
@@ -134,6 +136,10 @@ final class LootUIModel: ObservableObject {
 
     /// Opens a URL in Safari app (via extensionContext). Set by MessagesViewController.
     var openInSafari: ((URL) -> Void)?
+
+    /// Sends a styled settlement card into the active iMessage conversation.
+    /// Args: (fromName, toName, amountCents, methodName, tabColorHex)
+    var sendSettlementCard: ((String, String, Int, String, String?) -> Void)?
 
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
@@ -147,6 +153,7 @@ final class LootUIModel: ObservableObject {
         currentSplitDraft = nil
         openedMessagePayload = nil
         openedMessageDocId = nil
+        receiptTab = nil
         messageLoadingState = .idle
         itemsLoadingState = .idle
     }

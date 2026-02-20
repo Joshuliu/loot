@@ -1808,6 +1808,31 @@ struct RootContainerView: View {
                                     uiModel.currentScreen = .account
                                 }
                             },
+                            onTabUpdated: { updatedTab in
+                                uiModel.activeTab = updatedTab
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(updatedTab, for: convKey)
+                                }
+                            },
+                            onTabLeft: {
+                                let leavingId = uiModel.activeTab?.id
+                                uiModel.userTabs.removeAll { $0.id == leavingId }
+                                uiModel.activeTab = nil
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(nil, for: convKey)
+                                }
+                            },
+                            onTabDeleted: {
+                                let deletedId = uiModel.activeTab?.id
+                                uiModel.userTabs.removeAll { $0.id == deletedId }
+                                uiModel.activeTab = nil
+                                if let convKey = uiModel.conversationKey {
+                                    TabService.shared.cacheTab(nil, for: convKey)
+                                    Task { try? await TabService.shared.removeConversationMapping(conversationKey: convKey) }
+                                }
+                            },
+                            onSendSettlementCard: uiModel.sendSettlementCard,
+                            openInSafari: uiModel.openInSafari,
                             onRequestCollapse: onCollapse
                         )
                         .transition(.opacity)
@@ -2289,6 +2314,19 @@ struct RootContainerView: View {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             uiModel.currentScreen = .messageViewer
                         }
+                    }
+                    // Resolve the tab that belongs to this receipt.
+                    if let tid = newValue?.tid, !tid.isEmpty {
+                        // Check in-memory list first; fall back to a Firestore fetch.
+                        if let cached = uiModel.userTabs.first(where: { $0.id == tid }) {
+                            uiModel.receiptTab = cached
+                        } else {
+                            Task {
+                                uiModel.receiptTab = try? await TabService.shared.fetchTab(id: tid)
+                            }
+                        }
+                    } else {
+                        uiModel.receiptTab = nil
                     }
                 }
                 .fullScreenCover(isPresented: Binding(

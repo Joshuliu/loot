@@ -19,12 +19,22 @@ final class MessagesViewController: MSMessagesAppViewController {
         super.viewDidLoad()
         SharedReceiptService.configureFirebaseIfNeeded()
 
+        // Establish anonymous auth immediately so Firestore's WebSocket stream
+        // is authenticated before the first write fires.
+        Task { try? await SharedReceiptService.shared.ensureAnonymousAuth() }
+
         uiModel.openInSafari = { url in
             // Dynamically access UIApplication.shared to open in Safari
             // (UIApplication is unavailable at compile time in extensions)
             guard let appClass = NSClassFromString("UIApplication"),
                   let app = appClass.value(forKey: "sharedApplication") as? NSObject else { return }
             app.perform(NSSelectorFromString("openURL:"), with: url)
+        }
+
+        uiModel.sendSettlementCard = { [weak self] fromName, toName, amountCents, methodName, tabColorHex in
+            self?.sendSettlementMessage(fromName: fromName, toName: toName,
+                                        amountCents: amountCents, methodName: methodName,
+                                        tabColorHex: tabColorHex)
         }
 
         view.isOpaque = true
@@ -86,6 +96,11 @@ extension MessagesViewController {
             uiModel.messageLoadingState = .loading
             uiModel.openedMessageDocId = docId
             uiModel.currentScreen = .messageViewer
+
+            // Extract inline fallback payload embedded at send time.
+            // Present on every card sent with the current app version.
+            let inlinePayload = LootMessageCodec.payload(from: url)
+
             Task { @MainActor in
                 do {
                     let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
@@ -97,7 +112,26 @@ extension MessagesViewController {
                     uiModel.messageLoadingState = .loaded(payload)
                 } catch {
                     print("[applyMessage] Firestore fetch failed: \(error)")
-                    uiModel.messageLoadingState = .failed(error)
+                    if let inline = inlinePayload {
+                        // Use the baked-in payload so the receipt opens immediately,
+                        // even without a network connection.
+                        print("[applyMessage] Falling back to inline payload for \(docId)")
+                        uiModel.openedMessagePayload = inline
+                        uiModel.currentReceipt = inline.toReceiptDisplay()
+                        uiModel.messageLoadingState = .loaded(inline)
+                        // Heal: upload the inline payload to Firestore so future
+                        // recipients (and slot-claim updates) can use the doc.
+                        Task {
+                            do {
+                                try await SharedReceiptService.shared.upload(inline, docId: docId)
+                                print("[applyMessage] Healed Firestore doc: \(docId)")
+                            } catch {
+                                print("[applyMessage] Heal upload failed (will retry next open): \(error)")
+                            }
+                        }
+                    } else {
+                        uiModel.messageLoadingState = .failed(error)
+                    }
                 }
             }
             return
@@ -147,12 +181,31 @@ extension MessagesViewController {
                 // of a join flow — otherwise this would overwrite the tab the user
                 // is about to join / just joined.
                 if uiModel.currentScreen != .joinTab {
+                    let myId = KeychainHelper.getOrCreateUserId()
                     let tab = try? await TabService.shared.getTabForConversation(conversationKey: convKey)
-                    uiModel.activeTab = tab
-                    // Keep local cache in sync with server
-                    TabService.shared.cacheTab(tab, for: convKey)
+                    // Only set as active if this user is still an active member
+                    // (guards against tabs the user has left).
+                    if let t = tab, t.memberIds.contains(myId) {
+                        uiModel.activeTab = t
+                        TabService.shared.cacheTab(t, for: convKey)
+                    } else {
+                        uiModel.activeTab = nil
+                        TabService.shared.cacheTab(nil, for: convKey)
+                    }
                 }
-                uiModel.userTabs = (try? await TabService.shared.fetchUserTabs()) ?? []
+                do {
+                    uiModel.userTabs = try await TabService.shared.fetchUserTabs()
+                } catch {
+                    print("[setupRootView] fetchUserTabs failed: \(error)")
+                    uiModel.userTabs = []
+                }
+
+                // If user closed Loot to retrieve their Zelle QR code, route them back
+                // to Payment Methods as soon as the app reopens.
+                if UserDefaults.standard.bool(forKey: DefaultsKeys.pendingReturnToPaymentMethods) {
+                    UserDefaults.standard.removeObject(forKey: DefaultsKeys.pendingReturnToPaymentMethods)
+                    uiModel.currentScreen = .paymentMethods
+                }
 
                 // Ensure user doc exists and display name stays in sync
                 let displayName = myDisplayNameFromDefaults()
@@ -192,6 +245,43 @@ extension MessagesViewController {
         )
     }
     
+    func sendSettlementMessage(fromName: String, toName: String,
+                              amountCents: Int, methodName: String,
+                              tabColorHex: String?) {
+        guard let conversation = activeConversation else { return }
+
+        let card = SettlementCardView(fromName: fromName, toName: toName,
+                                     amountCents: amountCents, methodName: methodName,
+                                     tabColorHex: tabColorHex)
+        let hosting = UIHostingController(rootView: card)
+        hosting.view.backgroundColor = .clear
+        hosting.safeAreaRegions = []
+        let size = CGSize(width: 260, height: 120)
+        hosting.view.frame = CGRect(origin: .zero, size: size)
+        hosting.view.setNeedsLayout()
+        hosting.view.layoutIfNeeded()
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let cardImage = renderer.image { _ in
+            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
+        }
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "plsloot.me"
+        components.path = "/loot"
+
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
+
+        let message = MSMessage(session: MSSession())
+        message.layout = layout
+        message.url = components.url
+
+        conversation.send(message) { error in
+            if let error { print("[MessagesViewController] sendSettlementMessage error: \(error)") }
+        }
+    }
+
     func renderCardImage(receiptName: String,
                          displayAmount: String,
                          participantCount: Int,
@@ -289,6 +379,9 @@ extension MessagesViewController {
         components.host = "plsloot.me"
         components.path = "/loot"
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
+        // Embed the full payload inline (compressed) so the card is readable
+        // even if the Firestore upload never completes (e.g. no internet at send time).
+        LootMessageCodec.writePayload(into: &components, payload: payload)
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -303,11 +396,33 @@ extension MessagesViewController {
 
         requestPresentationStyle(.compact)
 
-        // Upload to Firestore in the background
+        // Upload to Firestore in the background, then add to tab if applicable
         Task {
             do {
                 try await SharedReceiptService.shared.upload(payload, captureImage: captureImage, docId: docId)
                 print("[sendBillMessage] Uploaded to Firestore: \(docId)")
+
+                // If this receipt belongs to a tab, create a TabReceipt and update balances
+                if let tabId = payload.tid, let activeTab = uiModel.activeTab {
+                    let tabReceipt = TabReceipt.from(payload: payload, messagePayloadId: docId, tab: activeTab)
+                    let trid = try await TabService.shared.addReceipt(tabReceipt, toTab: tabId)
+
+                    // Update the shared receipt with trid
+                    var updated = payload
+                    updated.trid = trid
+                    try await SharedReceiptService.shared.updatePayload(updated, docId: docId)
+
+                    // Refresh cached tab
+                    if let refreshed = try await TabService.shared.fetchTab(id: tabId) {
+                        await MainActor.run {
+                            self.uiModel.activeTab = refreshed
+                        }
+                        if let ck = self.uiModel.conversationKey {
+                            TabService.shared.cacheTab(refreshed, for: ck)
+                        }
+                    }
+                    print("[sendBillMessage] TabReceipt added: \(trid)")
+                }
             } catch {
                 print("[sendBillMessage] Firestore upload failed: \(error)")
             }

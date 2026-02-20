@@ -63,7 +63,7 @@ final class TabService {
         let myName = myDisplayNameFromDefaults()
         let me = TabMember(
             memberId: myId,
-            userId: nil,
+            userId: myId,
             displayName: myName.isEmpty ? "Me" : myName,
             balanceCents: 0,
             isActive: true
@@ -123,7 +123,7 @@ final class TabService {
         let myName = myDisplayNameFromDefaults()
         let me = TabMember(
             memberId: myId,
-            userId: nil,
+            userId: myId,
             displayName: myName.isEmpty ? "Me" : myName,
             balanceCents: 0,
             isActive: true
@@ -144,9 +144,11 @@ final class TabService {
     }
 
     func fetchUserTabs() async throws -> [LootTab] {
+        print("[TabService] fetchUserTabs: starting auth...")
         try await SharedReceiptService.shared.ensureAnonymousAuth()
 
         let myId = KeychainHelper.getOrCreateUserId()
+        print("[TabService] fetchUserTabs: querying for userId=\(myId)")
         let snapshot = try await db.collection("tabs")
             .whereField("memberIds", arrayContains: myId)
             .getDocuments()
@@ -267,6 +269,66 @@ final class TabService {
         "\(DefaultsKeys.conversationTabMap)_\(conversationKey)"
     }
 
+    // MARK: - Tab Update
+
+    /// Updates tab name, color, members, and memberIds in Firestore.
+    func updateTab(_ tab: LootTab) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+        guard let tabId = tab.id else { return }
+
+        let encodedMembers = try tab.members.map { try Firestore.Encoder().encode($0) }
+        try await db.collection("tabs").document(tabId).updateData([
+            "name": tab.name,
+            "colorHex": tab.colorHex as Any,
+            "members": encodedMembers,
+            "memberIds": tab.memberIds,
+            "updatedAt": FieldValue.serverTimestamp()
+        ])
+        print("[TabService] updateTab: \(tabId)")
+    }
+
+    // MARK: - Leave Tab
+
+    /// Marks the current user as inactive and removes them from memberIds.
+    /// Their historical receipt/settlement data is preserved via the members array.
+    func leaveTab(tabId: String) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+        let myId = KeychainHelper.getOrCreateUserId()
+
+        let docRef = db.collection("tabs").document(tabId)
+        let snapshot = try await docRef.getDocument()
+        guard snapshot.exists else {
+            throw NSError(domain: "TabService", code: 404,
+                          userInfo: [NSLocalizedDescriptionKey: "Tab not found"])
+        }
+        var tab = try snapshot.data(as: LootTab.self)
+
+        // Mark inactive (preserves balance history and name lookups)
+        if let idx = tab.members.firstIndex(where: { $0.memberId == myId }) {
+            tab.members[idx].isActive = false
+        }
+        // Remove from memberIds so Firestore queries exclude this user
+        tab.memberIds.removeAll { $0 == myId }
+
+        let encodedMembers = try tab.members.map { try Firestore.Encoder().encode($0) }
+        try await docRef.updateData([
+            "members": encodedMembers,
+            "memberIds": tab.memberIds,
+            "updatedAt": FieldValue.serverTimestamp()
+        ])
+        print("[TabService] leaveTab: \(tabId)")
+    }
+
+    // MARK: - Delete Tab
+
+    /// Deletes the tab document entirely (use only when you are the sole active member).
+    /// Subcollections become orphaned but are preserved for records.
+    func deleteTab(tabId: String) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+        try await db.collection("tabs").document(tabId).delete()
+        print("[TabService] deleteTab: \(tabId)")
+    }
+
     // MARK: - Payment Methods
 
     func updatePaymentMethods(userId: String, methods: [PaymentMethod]) async throws {
@@ -295,8 +357,189 @@ final class TabService {
             let identifier = dict["identifier"] as? String ?? ""
             let bankName = dict["bankName"] as? String
             let bankURL = dict["bankURL"] as? String
-            return PaymentMethod(type: type, identifier: identifier, bankName: bankName, bankURL: bankURL)
+            let zelleData = dict["zelleData"] as? String
+            return PaymentMethod(type: type, identifier: identifier, bankName: bankName, bankURL: bankURL, zelleData: zelleData)
         }
+    }
+
+    // MARK: - Tab Receipts
+
+    /// Adds a receipt to a tab, updating member balances atomically.
+    /// Returns the generated receipt document ID.
+    func addReceipt(_ receipt: TabReceipt, toTab tabId: String) async throws -> String {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let tabRef = db.collection("tabs").document(tabId)
+        let receiptRef = tabRef.collection("receipts").document()
+
+        try await db.runTransaction { transaction, errorPointer in
+            let tabSnapshot: DocumentSnapshot
+            do {
+                tabSnapshot = try transaction.getDocument(tabRef)
+            } catch let fetchError as NSError {
+                errorPointer?.pointee = fetchError
+                return nil
+            }
+
+            guard var tab = try? tabSnapshot.data(as: LootTab.self) else {
+                let err = NSError(domain: "TabService", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "Tab not found"])
+                errorPointer?.pointee = err
+                return nil
+            }
+
+            tab.applyReceipt(receipt)
+
+            do {
+                let tabData = try Firestore.Encoder().encode(tab)
+                transaction.setData(tabData, forDocument: tabRef)
+
+                let receiptData = try Firestore.Encoder().encode(receipt)
+                transaction.setData(receiptData, forDocument: receiptRef)
+            } catch let encodeError as NSError {
+                errorPointer?.pointee = encodeError
+                return nil
+            }
+
+            return nil
+        }
+
+        print("[TabService] addReceipt to tab \(tabId): \(receiptRef.documentID)")
+        return receiptRef.documentID
+    }
+
+    /// Records a settlement, updating member balances atomically.
+    func recordSettlement(_ settlement: Settlement, forTab tabId: String) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let tabRef = db.collection("tabs").document(tabId)
+        let settlementRef = tabRef.collection("settlements").document()
+
+        try await db.runTransaction { transaction, errorPointer in
+            let tabSnapshot: DocumentSnapshot
+            do {
+                tabSnapshot = try transaction.getDocument(tabRef)
+            } catch let fetchError as NSError {
+                errorPointer?.pointee = fetchError
+                return nil
+            }
+
+            guard var tab = try? tabSnapshot.data(as: LootTab.self) else {
+                let err = NSError(domain: "TabService", code: 2,
+                                  userInfo: [NSLocalizedDescriptionKey: "Tab not found"])
+                errorPointer?.pointee = err
+                return nil
+            }
+
+            tab.applySettlement(settlement)
+
+            do {
+                let tabData = try Firestore.Encoder().encode(tab)
+                transaction.setData(tabData, forDocument: tabRef)
+
+                let settlementData = try Firestore.Encoder().encode(settlement)
+                transaction.setData(settlementData, forDocument: settlementRef)
+            } catch let encodeError as NSError {
+                errorPointer?.pointee = encodeError
+                return nil
+            }
+
+            return nil
+        }
+
+        print("[TabService] recordSettlement for tab \(tabId)")
+    }
+
+    /// Computes net balances for all tab members by querying sharedReceipts + settlements.
+    /// This is authoritative even for receipts sent before addReceipt was wired up.
+    func computeTabBalances(tabId: String, members: [TabMember]) async throws -> [String: Int] {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        // Start with zero for each known member
+        var balances: [String: Int] = Dictionary(uniqueKeysWithValues:
+            members.map { ($0.memberId, 0) })
+
+        // Fetch every sharedReceipt that belongs to this tab
+        let snapshot = try await db.collection("sharedReceipts")
+            .whereField("tid", isEqualTo: tabId)
+            .getDocuments()
+
+        for doc in snapshot.documents {
+            let dict = doc.data()
+
+            // Extract split data directly from the Firestore dict to avoid the
+            // JSON round-trip (Firestore returns numbers as Double/Int64, which
+            // causes JSONDecoder to fail on Int fields in LootMessagePayload).
+            guard let splitDict = dict["s"] as? [String: Any],
+                  let guestsArray = splitDict["g"] as? [[String: Any]],
+                  let owedAny = splitDict["o"] as? [Any]
+            else {
+                print("[TabService] computeTabBalances: skipping doc \(doc.documentID) — missing s/g/o fields")
+                continue
+            }
+
+            func toInt(_ v: Any?) -> Int {
+                if let i = v as? Int { return i }
+                if let d = v as? Double { return Int(d) }
+                return 0
+            }
+
+            let payerIndex = toInt(splitDict["pi"])
+            let total = toInt(splitDict["tot"])
+            let owed = owedAny.map { toInt($0) }
+
+            // Each included guest owes their share
+            for (i, guestDict) in guestsArray.enumerated() {
+                let inc = guestDict["inc"] as? Bool ?? false
+                guard inc,
+                      let uid = guestDict["uid"] as? String, !uid.isEmpty,
+                      owed.indices.contains(i)
+                else { continue }
+                balances[uid, default: 0] -= owed[i]
+            }
+
+            // Payer gets the full total back
+            if guestsArray.indices.contains(payerIndex),
+               let payerUid = guestsArray[payerIndex]["uid"] as? String, !payerUid.isEmpty {
+                balances[payerUid, default: 0] += total
+            }
+        }
+
+        // Apply any recorded settlements
+        if let settlementDocs = try? await db.collection("tabs").document(tabId)
+            .collection("settlements").getDocuments() {
+            for doc in settlementDocs.documents {
+                guard let settlement = try? doc.data(as: Settlement.self) else { continue }
+                balances[settlement.fromMemberId, default: 0] += settlement.amountCents
+                balances[settlement.toMemberId, default: 0] -= settlement.amountCents
+            }
+        }
+
+        return balances
+    }
+
+    /// Fetches all receipts for a tab, ordered by creation date descending.
+    func fetchReceipts(forTab tabId: String) async throws -> [TabReceipt] {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let snapshot = try await db.collection("tabs").document(tabId)
+            .collection("receipts")
+            .order(by: "createdAt", descending: true)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { try? $0.data(as: TabReceipt.self) }
+    }
+
+    /// Fetches all settlements for a tab, ordered by creation date descending.
+    func fetchSettlements(forTab tabId: String) async throws -> [Settlement] {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let snapshot = try await db.collection("tabs").document(tabId)
+            .collection("settlements")
+            .order(by: "createdAt", descending: true)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { try? $0.data(as: Settlement.self) }
     }
 
     func removeConversationMapping(conversationKey: String) async throws {

@@ -38,22 +38,22 @@ struct BillCardView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Split method")
+                        Text(tabName == nil ? "Split method" : "Loot Tab")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(secondaryFg)
 
-                        Text(splitLabel)
+                        Text(tabName ?? splitLabel)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(primaryFg)
                             .lineLimit(1)
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(tabName == nil ? "Paid by" : "Loot Tab")
+                        Text("Paid by")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(secondaryFg)
 
-                        Text(tabName ?? displayName)
+                        Text(displayName)
                             .font(.system(size: 12, weight: .semibold))
                             .foregroundColor(primaryFg)
                             .lineLimit(1)
@@ -93,6 +93,51 @@ struct BillCardView: View {
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
 
+    }
+}
+
+// MARK: - Settlement Card (compact, ~1/3 height of BillCardView)
+
+struct SettlementCardView: View {
+    let fromName: String
+    let toName: String
+    let amountCents: Int
+    let methodName: String
+    var tabColorHex: String? = nil
+
+    private var bgColor: Color {
+        if let hex = tabColorHex { return Color(hex: hex) }
+        return Color(.secondarySystemBackground)
+    }
+    private var fg: Color  { tabColorHex != nil ? .white : .primary }
+    private var sub: Color { tabColorHex != nil ? .white.opacity(0.7) : .secondary }
+
+    var body: some View {
+        VStack(alignment: .center, spacing: 4) {
+            Text("Sent")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(sub)
+                .textCase(.uppercase)
+
+            Text(ReceiptDisplay.money(amountCents))
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(fg)
+
+            Text("via \(methodName) to")
+                .font(.system(size: 11))
+                .foregroundColor(sub)
+
+            Text(toName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(fg)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(width: 260, height: 120, alignment: .topLeading)
+        .background(bgColor)
+        .cornerRadius(13)
+        .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
     }
 }
 
@@ -193,3 +238,4 @@ private struct SplitRingView: View {
         }
     }
 }
+

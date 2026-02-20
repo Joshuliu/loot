@@ -9,6 +9,9 @@ struct BankEntry: Identifiable {
     let id: String
     let name: String
     let url: String
+    /// True when the bank uses the override_8471 modal — meaning the Zelle QR
+    /// can only be obtained by opening the bank's native app directly.
+    let isOverride: Bool
 }
 
 struct BankPickerView: View {
@@ -35,8 +38,52 @@ struct BankPickerView: View {
 
     private var filteredBanks: [BankEntry] {
         guard !searchText.isEmpty else { return [] }
-        let query = searchText.lowercased()
-        return banks.filter { $0.name.lowercased().contains(query) }
+        let query = searchText.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return [] }
+        return banks.filter { bank in
+            let name = bank.name.lowercased()
+            return name.contains(query) || matchesWordPrefix(query, in: bank.name)
+        }
+    }
+
+    /// Matches a query against a bank name using word-prefix subsequence logic.
+    /// Each character of the query must either extend the current word's prefix match
+    /// or start matching at the beginning of the next word (words can be skipped).
+    ///
+    /// Examples:
+    ///   "bo"     → Bank of America  (b=Bank, o=of)
+    ///   "bofa"   → Bank of America  (b=Bank, of=of, a=America)
+    ///   "bfsfcu" → Bank-Fund Staff FCU  (b=Bank, f=Fund, s=Staff, fcu=FCU)
+    ///   "bsf"    → Bank-Fund Staff FCU  (b=Bank, [skip Fund], s=Staff, f=FCU)
+    private func matchesWordPrefix(_ query: String, in bankName: String) -> Bool {
+        let q = Array(query.lowercased())
+        let words = bankName.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+
+        guard !q.isEmpty, !words.isEmpty else { return false }
+
+        var qi = 0   // position in query
+        var wi = 0   // current word index
+        var wci = 0  // position within current word
+
+        while qi < q.count {
+            guard wi < words.count else { return false }
+            let word = Array(words[wi])
+
+            if wci < word.count && word[wci] == q[qi] {
+                // Extend the match inside the current word
+                qi += 1
+                wci += 1
+            } else {
+                // Can't continue in this word — jump to the start of the next word
+                wi += 1
+                wci = 0
+                // Don't advance qi: retry the same character against the new word's start
+            }
+        }
+
+        return true
     }
 
     var body: some View {
@@ -100,7 +147,8 @@ struct BankPickerView: View {
 
         banks = dict.compactMap { name, info in
             guard let bankURL = info["data-bankurl"], !bankURL.isEmpty else { return nil }
-            return BankEntry(id: name, name: name, url: bankURL)
+            let isOverride = info["data-modaloverride"] == "override_8471"
+            return BankEntry(id: name, name: name, url: bankURL, isOverride: isOverride)
         }
     }
 }

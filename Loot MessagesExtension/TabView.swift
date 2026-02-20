@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import FirebaseFirestore
 
 struct LootTabView: View {
     @Binding var tabName: String
@@ -24,12 +25,21 @@ struct LootTabView: View {
     var onClearTab: (() -> Void)? = nil
     var onInviteMembers: (() -> Void)? = nil
     var onAccountTapped: (() -> Void)? = nil
+    var onTabUpdated: ((LootTab) -> Void)? = nil
+    var onTabLeft: (() -> Void)? = nil
+    var onTabDeleted: (() -> Void)? = nil
+    var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
+    var openInSafari: ((URL) -> Void)? = nil
     let onRequestCollapse: () -> Void
     
     @AppStorage(DefaultsKeys.myDisplayName) private var myDisplayName: String = ""
     @State private var showingTabSwitcher: Bool = false
     @State private var showingAddReceiptPanel: Bool = false
+    @State private var showingTabSettings: Bool = false
     @State private var selectedSegment: Int = 0
+    @State private var receipts: [TabReceipt] = []
+    @State private var settlements: [Settlement] = []
+    @State private var paymentsLoading: Bool = false
 
     private var resolvedHeaderColor: Color {
         Color(hex: activeTab?.colorHex ?? TabColorOptions.defaultHex)
@@ -78,23 +88,48 @@ struct LootTabView: View {
 
             // Bottom section: expanded content slides up from below
             if isExpanded && !showingAddReceiptPanel {
-                VStack(spacing: 16) {
+                ScrollView {
                     VStack(alignment: .leading, spacing: 12) {
                         expandedTabContent
                     }
                     .padding(.horizontal, 16)
-
-                    Spacer()
+                    .padding(.top, 12)
+                    .padding(.bottom, 24)
                 }
-                .padding(.top, 12)
                 .transition(.move(edge: .bottom))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(UIColor.systemBackground))
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isExpanded)
+        .animation(.spring(response: 0.4, dampingFraction: 0.85))
+        .overlay(alignment: .topTrailing) {
+            Button(action: { onAccountTapped?() }) {
+                Text(initials)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(activeTab != nil ? resolvedHeaderColor : .white)
+                    .frame(width: 38, height: 38)
+                    .background(activeTab != nil ? Color.white : Color.black)
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
+            .padding(.trailing, 16)
+        }
+        .sheet(isPresented: $showingTabSettings) {
+            if let tab = activeTab {
+                TabSettingsView(
+                    tab: tab,
+                    onSave: { updatedTab in onTabUpdated?(updatedTab) },
+                    onLeft: { onTabLeft?() },
+                    onDeleted: { onTabDeleted?() }
+                )
+            }
+        }
         .onChange(of: isExpanded) { _, newValue in
             if !newValue { showingAddReceiptPanel = false }
+        }
+        .task(id: activeTab?.id) {
+            await loadPayments()
         }
     }
 
@@ -102,10 +137,13 @@ struct LootTabView: View {
 
     private var compactInnerContent: some View {
         VStack(spacing: 20) {
-            Text(activeTab != nil ? "Add Receipt to Tab" : "Split New Receipt")
-                .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(isColoredCompact ? .white : .primary)
-                .padding(.horizontal, 16)
+            HStack {
+                Text(activeTab != nil ? "Add Receipt to Tab" : "Split New Receipt")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundColor(isColoredCompact ? .white : .primary)
+                    .padding(.horizontal, 24)
+                Spacer()
+            }
 
             VStack(spacing: 6) {
                 HStack(spacing: 0) {
@@ -214,18 +252,22 @@ struct LootTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity,
                    alignment: isExpanded ? .bottomLeading : .leading)
 
-            // Account circle
-            Button(action: { onAccountTapped?() }) {
-                Text(initials)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundColor(activeTab != nil ? resolvedHeaderColor : .white)
-                    .frame(width: 38, height: 38)
-                    .background(activeTab != nil ? Color.white : Color.black)
-                    .clipShape(Circle())
+            // Tab settings button (only when a tab is active)
+            if activeTab != nil {
+                Button(action: { showingTabSettings = true }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.white.opacity(0.9))
+                        .frame(width: 38, height: 38)
+                        .background(Color.white.opacity(0.15))
+                        .clipShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity,
+                       alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
+                .padding(.horizontal, activeTab == nil || showingAddReceiptPanel || !isExpanded ? 0 : 48)
+                .padding(.vertical, 1)
             }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, maxHeight: .infinity,
-                   alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -244,11 +286,19 @@ struct LootTabView: View {
     private var expandedTabContent: some View {
         if let tab = activeTab, !showingTabSwitcher {
             addNewReceiptButton
-        
-            balanceSummaryCard(for: tab)
+            
+            if let tab = activeTab {
+                TabSettleUpCard(
+                    tabId: tab.id ?? "",
+                    colorHex: tab.colorHex,
+                    tabName: tab.name,
+                    onSendSettlementCard: onSendSettlementCard,
+                    openInSafari: openInSafari
+                )
+            }
             segmentedPicker
             if selectedSegment == 0 {
-                paymentsEmptyState
+                paymentsSection
             } else {
                 membersList(for: tab)
                 inviteMembersButton
@@ -367,37 +417,6 @@ struct LootTabView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Balance Summary Card
-
-    private func balanceSummaryCard(for tab: LootTab) -> some View {
-        let currentUserId = KeychainHelper.getOrCreateUserId()
-        let balanceCents = tab.members.first(where: { $0.memberId == currentUserId })?.balanceCents ?? 0
-
-        let balanceText: String
-        let balanceColor: Color
-
-        if balanceCents > 0 {
-            balanceText = "You're owed $\(String(format: "%.2f", Double(balanceCents) / 100.0))"
-            balanceColor = .green
-        } else if balanceCents < 0 {
-            balanceText = "You owe $\(String(format: "%.2f", Double(abs(balanceCents)) / 100.0))"
-            balanceColor = .red
-        } else {
-            balanceText = "$0.00"
-            balanceColor = .secondary
-        }
-
-        return VStack(spacing: 4) {
-            Text(balanceText)
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(balanceColor)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(14)
-    }
-
     // MARK: - Segmented Picker
 
     private var segmentedPicker: some View {
@@ -420,25 +439,182 @@ struct LootTabView: View {
         .cornerRadius(14)
     }
 
-    // MARK: - Payments Empty State
+    // MARK: - Payments Section
 
-    private var paymentsEmptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 32))
-                .foregroundColor(.secondary)
-            Text("No receipts yet")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-            Text("Upload or scan a receipt to add it to this tab")
-                .font(.system(size: 14))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+    private enum TabEvent: Identifiable {
+        case receipt(TabReceipt)
+        case settlement(Settlement)
+
+        var id: String {
+            switch self {
+            case .receipt(let r): return "r-\(r.id ?? UUID().uuidString)"
+            case .settlement(let s): return "s-\(s.id ?? UUID().uuidString)"
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(14)
+        var date: Date? {
+            switch self {
+            case .receipt(let r): return r.createdAt?.dateValue()
+            case .settlement(let s): return s.createdAt?.dateValue()
+            }
+        }
+    }
+
+    private var sortedEvents: [TabEvent] {
+        let r = receipts.map { TabEvent.receipt($0) }
+        let s = settlements.map { TabEvent.settlement($0) }
+        return (r + s).sorted { ($0.date ?? .distantPast) > ($1.date ?? .distantPast) }
+    }
+
+    private func memberName(_ memberId: String) -> String {
+        let myId = KeychainHelper.getOrCreateUserId()
+        if memberId == myId { return "You" }
+        return activeTab?.members.first(where: { $0.memberId == memberId })?.displayName ?? memberId
+    }
+
+    private func formatEventDate(_ date: Date?) -> String {
+        guard let date = date else { return "" }
+        let cal = Calendar.current
+        if cal.isDateInToday(date) {
+            let f = DateFormatter(); f.dateFormat = "h:mm a"
+            return f.string(from: date)
+        } else if cal.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let f = DateFormatter(); f.dateFormat = "MMM d"
+            return f.string(from: date)
+        }
+    }
+
+    @ViewBuilder
+    private var paymentsSection: some View {
+
+        if paymentsLoading {
+            HStack { Spacer(); ProgressView(); Spacer() }
+                .padding(.vertical, 24)
+        } else if sortedEvents.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 32))
+                    .foregroundColor(.secondary)
+                Text("No activity yet")
+                    .font(.system(size: 16))
+                    .foregroundStyle(.secondary)
+                Text("Upload or scan a receipt to add it to this tab")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 24)
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(14)
+        } else {
+            VStack(spacing: 0) {
+                ForEach(Array(sortedEvents.enumerated()), id: \.element.id) { idx, event in
+                    switch event {
+                    case .receipt(let r): receiptEventRow(r)
+                    case .settlement(let s): settlementEventRow(s)
+                    }
+                    if idx < sortedEvents.count - 1 {
+                        Divider().padding(.horizontal, 14)
+                    }
+                }
+            }
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(14)
+        }
+    }
+
+    @ViewBuilder
+    private func receiptEventRow(_ receipt: TabReceipt) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 17))
+                .foregroundColor(.secondary)
+                .frame(width: 22)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(receipt.title.isEmpty ? "Receipt" : receipt.title)
+                    .font(.system(size: 15, weight: .medium))
+                    .lineLimit(1)
+                Text("Paid by \(memberName(receipt.payerMemberId))")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(ReceiptDisplay.money(receipt.totalCents))
+                    .font(.system(size: 15, weight: .semibold))
+                Text(formatEventDate(receipt.createdAt?.dateValue()))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 14)
+    }
+
+    @ViewBuilder
+    private func settlementEventRow(_ settlement: Settlement) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 17))
+                .foregroundColor(.green)
+                .frame(width: 22)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(memberName(settlement.fromMemberId))
+                        .font(.system(size: 15, weight: .medium))
+                        .lineLimit(1)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.secondary)
+                    Text(memberName(settlement.toMemberId))
+                        .font(.system(size: 15, weight: .medium))
+                        .lineLimit(1)
+                }
+                if let note = settlement.note {
+                    Text(note)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(ReceiptDisplay.money(settlement.amountCents))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.green)
+                Text(formatEventDate(settlement.createdAt?.dateValue()))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 14)
+    }
+
+    private func loadPayments() async {
+        guard let tabId = activeTab?.id else {
+            receipts = []; settlements = []
+            return
+        }
+        paymentsLoading = true
+        do {
+            async let r = TabService.shared.fetchReceipts(forTab: tabId)
+            async let s = TabService.shared.fetchSettlements(forTab: tabId)
+            receipts = try await r
+            settlements = try await s
+        } catch {
+            print("[LootTabView] loadPayments failed: \(error)")
+        }
+        paymentsLoading = false
     }
 
     // MARK: - Members List

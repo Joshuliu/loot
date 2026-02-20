@@ -13,6 +13,9 @@ enum DefaultsKeys {
     static let localParticipantId = "local_participant_id"
     static let conversationTabMap = "conversation_tab_map"
     static let paymentMethods = "payment_methods"
+    /// Set to true when the user closes Loot to retrieve their Zelle QR code.
+    /// Cleared on reopen; causes the app to navigate directly to Payment Methods.
+    static let pendingReturnToPaymentMethods = "loot.pendingReturnToPaymentMethods"
 }
 
 func myDisplayNameFromDefaults() -> String {

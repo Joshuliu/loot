@@ -14,6 +14,8 @@ struct SplitsSummaryView: View {
     @State private var split: SplitPayload
     let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
 
+    private var isTabReceipt: Bool { uiModel.openedMessagePayload?.tid != nil }
+
     @State private var selectedIndex: Int = 0
 
     private enum MyBillState { case choosing, joined, notInBill }
@@ -421,19 +423,19 @@ struct SplitsSummaryView: View {
                                 }
                                 let colorIdx = lastActiveIndex(idx: i)
                                 let colorGi = included.indices.contains(colorIdx) ? included[colorIdx] : colorIdx
-                                if i == 0 || selectedIndex != i {
-                                    let ang = -(.pi / 1.975) + (start * 2 * .pi)
-                                    let hx = center.x + handleRadius * cos(ang)
-                                    let hy = center.y + handleRadius * sin(ang)
-                                    Circle()
-                                        .fill(BadgeColors.color(for: colorGi))
-                                        .overlay(
-                                            Circle().stroke(BadgeColors.color(for: selectedIndex == 0 ? i : colorGi), lineWidth: 0.05)
-                                        )
-                                        .colorMultiply(colorIdx != selectedIndex ? dimmer : .white)
-                                        .frame(width: lineW, height: lineW)
-                                        .position(x: hx, y: hy)
-                                }
+//                                if i == 0 || selectedIndex != i {
+//                                    let ang = -(.pi / 1.975) + (start * 2 * .pi)
+//                                    let hx = center.x + handleRadius * cos(ang)
+//                                    let hy = center.y + handleRadius * sin(ang)
+//                                    Circle()
+//                                        .fill(BadgeColors.color(for: colorGi))
+//                                        .overlay(
+//                                            Circle().stroke(BadgeColors.color(for: selectedIndex == 0 ? i : colorGi), lineWidth: 0.05)
+//                                        )
+//                                        .colorMultiply(colorIdx != selectedIndex ? dimmer : .white)
+//                                        .frame(width: lineW, height: lineW)
+//                                        .position(x: hx, y: hy)
+//                                }
                             }
                         }
 
@@ -467,14 +469,14 @@ struct SplitsSummaryView: View {
                         if let myIdx = myIncludedIndex {
                             let myGi = included[myIdx]
 
-                            // Your card with transactions
+                            // Your card — no transaction arrows for tab receipts
                             Button {
                                 selectedIndex = myIdx
                             } label: {
                                 guestRow(
                                     includedIdx: myIdx,
                                     guestIdx: myGi,
-                                    showTransactions: true,
+                                    showTransactions: !isTabReceipt,
                                     included: included
                                 )
                                 .padding(.horizontal, 14)
@@ -485,36 +487,57 @@ struct SplitsSummaryView: View {
                             }
                             .buttonStyle(.plain)
 
-                            // Payment method buttons (only if I owe the payer)
-                            if myGi != split.pi,
-                               !isPaid(guestIndex: myGi),
-                               let methods = payerPaymentMethods, !methods.isEmpty {
-                                paymentMethodButtons(
-                                    methods: methods,
-                                    amountCents: owed(for: myGi)
+                            if isTabReceipt {
+                                let displayTab = uiModel.receiptTab ?? uiModel.activeTab
+                                TabSettleUpCard(
+                                    tabId: uiModel.openedMessagePayload?.tid ?? "",
+                                    colorHex: displayTab?.colorHex,
+                                    tabName: displayTab?.name,
+                                    showViewTabButton: true,
+                                    onViewTab: {
+                                        // Make sure activeTab matches this receipt's tab before navigating.
+                                        if let rt = uiModel.receiptTab {
+                                            uiModel.activeTab = rt
+                                        }
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                            uiModel.currentScreen = .tabview
+                                        }
+                                    },
+                                    onSendSettlementCard: uiModel.sendSettlementCard,
+                                    openInSafari: uiModel.openInSafari
                                 )
-                            }
-
-                            // Leave button
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    unclaimSlot()
-                                    billState = .choosing
+                            } else {
+                                // Single receipt: payment method buttons
+                                if myGi != split.pi,
+                                   !isPaid(guestIndex: myGi),
+                                   let methods = payerPaymentMethods, !methods.isEmpty {
+                                    paymentMethodButtons(
+                                        methods: methods,
+                                        amountCents: owed(for: myGi)
+                                    )
                                 }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("Leave this bill")
-                                        .font(.system(size: 13, weight: .medium))
+                                
+                                // Leave button
+                                Button {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                        unclaimSlot()
+                                        billState = .choosing
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                                            .font(.system(size: 12, weight: .semibold))
+                                        Text("Leave this bill")
+                                            .font(.system(size: 13, weight: .medium))
+                                    }
+                                    .foregroundStyle(.red)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 10)
+                                    .background(Color.red.opacity(0.08))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
                                 }
-                                .foregroundStyle(.red)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.red.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
 
                     case .choosing:
@@ -680,10 +703,12 @@ struct SplitsSummaryView: View {
                 }
             }
 
-            // Fetch payer's payment methods (only if I'm not the payer)
-            if let payerUid = split.g[split.pi].uid, payerUid != myUid {
+            // Fetch payer's payment methods (only if I'm not the payer, and not a tab receipt)
+            if !isTabReceipt, let payerUid = split.g[split.pi].uid, payerUid != myUid {
                 payerPaymentMethods = try? await TabService.shared.fetchPaymentMethods(userId: payerUid)
             }
+
         }
     }
 }
+

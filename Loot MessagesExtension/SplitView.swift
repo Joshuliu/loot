@@ -1343,8 +1343,9 @@ extension ConfirmationView {
             } else if let tab = uiModel.activeTab {
                 let myUid = KeychainHelper.getOrCreateUserId()
                 let seeded = tab.members.filter { $0.isActive }.map { member in
-                    SplitGuest(name: member.displayName, isIncluded: true,
-                               isMe: member.userId == myUid, uid: member.userId)
+                    let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
+                    return SplitGuest(name: member.displayName, isIncluded: true,
+                                      isMe: uid == myUid, uid: uid)
                 }
                 guests = seeded
                 payerGuestId = seeded.first(where: { $0.isMe })?.id ?? seeded.first?.id ?? UUID()

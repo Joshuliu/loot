@@ -13,8 +13,9 @@ struct PaymentMethodView: View {
 
     @State private var methods: [PaymentMethod] = []
     @State private var isSaving: Bool = false
-    @State private var showBankPicker: Bool = false
-    @State private var bankPickerIndex: Int? = nil
+    @State private var zelleSheetItem: ZelleSheetItem? = nil
+
+    private struct ZelleSheetItem: Identifiable { let id: Int }
 
     private var availableTypes: [PaymentMethodType] {
         let added = Set(methods.map(\.type))
@@ -24,7 +25,10 @@ struct PaymentMethodView: View {
     private var canSave: Bool {
         guard !methods.isEmpty else { return false }
         return methods.allSatisfy { method in
-            !method.type.requiresIdentifier || !method.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if method.type == .zelle {
+                return !(method.zelleData ?? "").isEmpty && !(method.bankURL ?? "").isEmpty
+            }
+            return !method.type.requiresIdentifier || !method.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
     }
 
@@ -47,11 +51,9 @@ struct PaymentMethodView: View {
             Text(isPostSendPrompt ? "Set Up Payment Methods" : "Payment Methods")
                 .font(.system(size: 24, weight: .bold))
 
-            if isPostSendPrompt {
-                Text("Let people know how to pay you")
-                    .font(.system(size: 16))
-                    .foregroundStyle(.secondary)
-            }
+            Text("Let others know how to pay you! Guests using the same payment methods can pay you in your preferred methods.")
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
@@ -144,11 +146,14 @@ struct PaymentMethodView: View {
         .task {
             onRequestExpand()
         }
-        .sheet(isPresented: $showBankPicker) {
-            BankPickerView { bankName, bankURL in
-                if let idx = bankPickerIndex, methods.indices.contains(idx) {
-                    methods[idx].bankName = bankName
-                    methods[idx].bankURL = bankURL
+        .sheet(item: $zelleSheetItem) { item in
+            let idx = item.id
+            if methods.indices.contains(idx) {
+                ZelleSetupSheet(existing: methods[idx]) { bName, bURL, identifier, data in
+                    methods[idx].bankName = bName
+                    methods[idx].bankURL = bURL
+                    methods[idx].identifier = identifier
+                    methods[idx].zelleData = data
                 }
             }
         }
@@ -168,11 +173,15 @@ struct PaymentMethodView: View {
             Image(systemName: method.type.iconName)
                 .font(.system(size: 18))
                 .frame(width: 24)
+            
+            // Name
+            Text(method.type.displayName)
+                .font(.system(size: 15, weight: .medium))
+            
+            Spacer()
 
-            // Name + identifier
-            VStack(alignment: .leading, spacing: 4) {
-                Text(method.type.displayName)
-                    .font(.system(size: 15, weight: .medium))
+            // Identifier
+            VStack(alignment: .trailing, spacing: 4) {
 
                 if method.type.requiresIdentifier {
                     TextField(method.type.identifierPlaceholder, text: Binding(
@@ -186,28 +195,30 @@ struct PaymentMethodView: View {
                     .font(.system(size: 14))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled(true)
+                    .multilineTextAlignment(.trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
 
                 if method.type == .zelle {
                     Button {
-                        bankPickerIndex = index
-                        showBankPicker = true
+                        zelleSheetItem = ZelleSheetItem(id: index)
                     } label: {
-                        if let bankName = method.bankName, !bankName.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: "building.columns")
-                                    .font(.system(size: 11))
-                                Text(bankName)
+                        if let data = method.zelleData, !data.isEmpty {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(method.identifier)
                                     .font(.system(size: 13, weight: .medium))
-                                Image(systemName: "chevron.right")
-                                    .font(.system(size: 10))
+                                    .foregroundStyle(.blue)
+                                if let bName = method.bankName {
+                                    Text(bName)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                            .foregroundStyle(.blue)
                         } else {
                             HStack(spacing: 4) {
-                                Image(systemName: "building.columns")
-                                    .font(.system(size: 11))
-                                Text("Select Bank")
+                                Image(systemName: "qrcode.viewfinder")
+                                    .font(.system(size: 13))
+                                Text("Set Up")
                                     .font(.system(size: 13, weight: .medium))
                             }
                             .foregroundStyle(.blue)
@@ -216,36 +227,7 @@ struct PaymentMethodView: View {
                     .buttonStyle(.plain)
                 }
             }
-
-            Spacer()
-
-            // Move up/down buttons
-            VStack(spacing: 2) {
-                if index > 0 {
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            methods.swapAt(index, index - 1)
-                        }
-                    } label: {
-                        Image(systemName: "chevron.up")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                if index < methods.count - 1 {
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            methods.swapAt(index, index + 1)
-                        }
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
 
             // Remove button
             Button {
