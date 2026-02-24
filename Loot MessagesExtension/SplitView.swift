@@ -807,7 +807,6 @@ extension ConfirmationView {
                 }
                 .padding(.top, 4)
             }
-        
             HStack{
                 Spacer()
                 Button(action: {
@@ -817,17 +816,18 @@ extension ConfirmationView {
                     onGuestsChanged(guests, payerGuestId)
                     confirmed = true
                 }) {
-                    Text("Next")
-                        .font(.system(size: 15, weight: .semibold))
+                    Text("Confirm")
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.primary)
                         .padding(.vertical, 10)
-                        .frame(width: 60)
+                        .frame(width: 100)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 10)
             }
+            .padding(.top, 10)
         }
     }
 
@@ -953,18 +953,18 @@ extension ConfirmationView {
                     onGuestsChanged(guests, payerGuestId)
                     confirmed = true
                 }) {
-                    Text("Next")
-                        .font(.system(size: 15, weight: .semibold))
+                    Text("Confirm")
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.primary)
                         .padding(.vertical, 10)
-                        .frame(width: 60)
+                        .frame(width: 100)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 10)
             }
-
+            .padding(.top, 10)
         }
     }
 
