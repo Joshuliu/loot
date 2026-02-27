@@ -807,25 +807,87 @@ extension ConfirmationView {
                 }
                 .padding(.top, 4)
             }
-            HStack{
-                Button(action: {
-                    let draft = buildSplitDraft()
-                    uiModel.currentSplitDraft = draft
-                    onSelectMode(mode)
-                    onGuestsChanged(guests, payerGuestId)
-                    confirmed = true
-                }) {
-                    Text("Confirm")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            
+            VStack(alignment: .center, spacing: 7) {
+                Text("Split Method:")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 10)
+                    .padding(.bottom, 7)
+                HStack(spacing: 12) {
+                    // Equally
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
+                        selectMode(.equally)
+                        onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text("Equally")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == .equally ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .equally ? .blue: buttonBase))
+                    }
+                    .buttonStyle(.plain)
+                
+                    // by Items
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
+                        selectMode(.byItems)
+                    onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text("by Items")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == .byItems ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .byItems ? .blue: buttonBase))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Custom
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
+                        selectMode(.custom)
+                        onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text("Custom")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == .custom ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .custom ? .blue: buttonBase))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
+                
+                }
+                .padding(.top, 7)
+                .padding(.horizontal, 30)
+            
+            Button(action: {
+                let draft = buildSplitDraft()
+                uiModel.currentSplitDraft = draft
+                onSelectMode(mode)
+                onGuestsChanged(guests, payerGuestId)
+                confirmed = true
+            }) {
+                Text("Confirm")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
             .padding(.top, 20)
         }
     }
@@ -943,26 +1005,87 @@ extension ConfirmationView {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
             }
-            HStack{
-                Button(action: {
-                    let draft = buildSplitDraft()
-                    uiModel.currentSplitDraft = draft
-                    onSelectMode(mode)
-                    onGuestsChanged(guests, payerGuestId)
-                    confirmed = true
-                }) {
-                    Text("Confirm")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .center, spacing: 7) {
+                Text("Split Method:")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 10)
+                    .padding(.bottom, 7)
+                HStack(spacing: 12) {
+                    // Equally
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
+                        selectMode(.equally)
+                        onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text("Equally")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == .equally ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .equally ? .blue: buttonBase))
+                    }
+                    .buttonStyle(.plain)
+                
+                    // by Items
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
+                        selectMode(.byItems)
+                    onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text("by Items")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == .byItems ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .byItems ? .blue: buttonBase))
+                    }
+                    .buttonStyle(.plain)
+                    
+                    // Custom
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
+                        selectMode(.custom)
+                        onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text("Custom")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == .custom ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .custom ? .blue: buttonBase))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
+                
+                }
+                .padding(.top, 7)
+                .padding(.horizontal, 30)
+            
+            Button(action: {
+                let draft = buildSplitDraft()
+                uiModel.currentSplitDraft = draft
+                onSelectMode(mode)
+                onGuestsChanged(guests, payerGuestId)
+                confirmed = true
+            }) {
+                Text("Confirm")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .padding(.top, 10)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.top, 20)
         }
     }
 

@@ -95,7 +95,7 @@ struct ConfirmationView: View {
         dragIntent == .down ? clamp01((cardOffset.height) / 180) : 0
     }
 
-    private var buttonBase: Color { Color(.secondarySystemBackground) }
+    var buttonBase: Color { Color(.secondarySystemBackground) }
     private var gold: Color { Color(hex: "#DAA806") }
 
     private var buttonsOpacity: Double {
@@ -704,9 +704,12 @@ struct ConfirmationView: View {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                                 splitModesExpanded = true
                                 onRequestExpand()
+                                selectMode(mode)
+                                confirmed = false
                             }
                         }) {
-                            Text("Split:\n\(splitType)")
+//                            Text("Split: \(splitType)")
+                            Text("Edit Split")
                                 .multilineTextAlignment(.center)
                                 .font(.system(size: 17, weight: .semibold))
                                 .frame(maxWidth: .infinity)
@@ -801,7 +804,7 @@ struct ConfirmationView: View {
                                 .padding(.top,15)
                         }
                     }
-
+                    
                     // Expanded content below the ZStack
                     if uiModel.isExpanded {
 
