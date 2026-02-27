@@ -808,7 +808,6 @@ extension ConfirmationView {
                 .padding(.top, 4)
             }
             HStack{
-                Spacer()
                 Button(action: {
                     let draft = buildSplitDraft()
                     uiModel.currentSplitDraft = draft
@@ -820,14 +819,14 @@ extension ConfirmationView {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.primary)
                         .padding(.vertical, 10)
-                        .frame(width: 100)
+                        .frame(maxWidth: .infinity)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 10)
             }
-            .padding(.top, 10)
+            .padding(.top, 20)
         }
     }
 
@@ -945,7 +944,6 @@ extension ConfirmationView {
                 }
             }
             HStack{
-                Spacer()
                 Button(action: {
                     let draft = buildSplitDraft()
                     uiModel.currentSplitDraft = draft
@@ -957,7 +955,7 @@ extension ConfirmationView {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.primary)
                         .padding(.vertical, 10)
-                        .frame(width: 100)
+                        .frame(maxWidth: .infinity)
                         .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
@@ -971,7 +969,7 @@ extension ConfirmationView {
     // MARK: - Inline guest management
 
     func addGuestInline() {
-        let new = SplitGuest(name: "", isIncluded: true, isMe: false)
+        let new = SplitGuest(name: "", isIncluded: true, isMe: false)t
 
         // Snapshot old amounts by guest ID
         let oldActive = activeGuests
@@ -1107,7 +1105,6 @@ extension ConfirmationView {
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 4)
-            .padding(.top, 7)
 
             // Guest rows
             ForEach(0..<activeCount, id: \.self) { i in
