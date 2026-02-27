@@ -969,7 +969,7 @@ extension ConfirmationView {
     // MARK: - Inline guest management
 
     func addGuestInline() {
-        let new = SplitGuest(name: "", isIncluded: true, isMe: false)t
+        let new = SplitGuest(name: "", isIncluded: true, isMe: false)
 
         // Snapshot old amounts by guest ID
         let oldActive = activeGuests
