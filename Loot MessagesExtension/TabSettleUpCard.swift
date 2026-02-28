@@ -19,6 +19,7 @@ struct TabSettleUpCard: View {
     var showViewTabButton: Bool = false
     var onViewTab: (() -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
+    var onSendRequestCard: ((String, String, Int, String?) -> Void)? = nil
     /// Use UIApplication.openURL for Zelle web links when available.
     var openInSafari: ((URL) -> Void)? = nil
 
@@ -189,6 +190,20 @@ struct TabSettleUpCard: View {
                     paymentSheetTxn = txn
                 } label: {
                     Label("Pay Now", systemImage: "arrow.up.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(colorHex.map { Color(hex: $0) } ?? .blue)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            } else if !iOwe {
+                Button {
+                    // creditorName = me (toName), debtorName = them (fromName)
+                    onSendRequestCard?(toName, fromName, txn.amountCents, colorHex)
+                } label: {
+                    Label("Request", systemImage: "bell.fill")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(colorHex.map { Color(hex: $0) } ?? .blue)
                         .frame(maxWidth: .infinity)

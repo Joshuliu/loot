@@ -17,6 +17,13 @@ struct LootMessagePayload: Codable, Equatable {
     var s: SplitPayload    // shortened from "split"
     var tid: String?       // tabId (links message to a tab)
     var trid: String?      // tabReceiptId (links to receipt within tab)
+    var tab: TabPayload?   // inline tab info for offline/fast restoration
+}
+
+struct TabPayload: Codable, Equatable {
+    var id: String
+    var n: String   // name
+    var c: String?  // colorHex
 }
 
 struct ReceiptPayload: Codable, Equatable {

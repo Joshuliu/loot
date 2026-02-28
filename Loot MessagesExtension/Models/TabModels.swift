@@ -307,6 +307,25 @@ extension TabReceipt {
     }
 }
 
+// MARK: - Minimal Tab Construction
+
+extension LootTab {
+    /// Builds a lightweight LootTab from inline payload data (no Firestore fetch needed).
+    static func minimal(id: String, name: String, colorHex: String?) -> LootTab {
+        var tab = LootTab(
+            name: name,
+            colorHex: colorHex,
+            createdBy: "",
+            status: .active,
+            members: [],
+            memberIds: [],
+            receiptCount: 0
+        )
+        tab.id = id
+        return tab
+    }
+}
+
 // MARK: - Balance Helpers
 
 extension LootTab {

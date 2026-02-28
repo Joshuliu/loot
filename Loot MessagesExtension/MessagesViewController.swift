@@ -37,6 +37,11 @@ final class MessagesViewController: MSMessagesAppViewController {
                                         tabColorHex: tabColorHex)
         }
 
+        uiModel.sendRequestCard = { [weak self] creditorName, debtorName, amountCents, tabColorHex in
+            self?.sendRequestMessage(creditorName: creditorName, debtorName: debtorName,
+                                     amountCents: amountCents, tabColorHex: tabColorHex)
+        }
+
         view.isOpaque = true
         view.backgroundColor = .systemBackground
         addChild(hostingController)
@@ -110,6 +115,11 @@ extension MessagesViewController {
                         uiModel.scanImageCropped = captureImage
                     }
                     uiModel.messageLoadingState = .loaded(payload)
+                    if let tabData = payload.tab {
+                        let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
+                        uiModel.receiptTab = minimal
+                        if uiModel.activeTab == nil { uiModel.activeTab = minimal }
+                    }
                 } catch {
                     print("[applyMessage] Firestore fetch failed: \(error)")
                     if let inline = inlinePayload {
@@ -119,6 +129,11 @@ extension MessagesViewController {
                         uiModel.openedMessagePayload = inline
                         uiModel.currentReceipt = inline.toReceiptDisplay()
                         uiModel.messageLoadingState = .loaded(inline)
+                        if let tabData = inline.tab {
+                            let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
+                            uiModel.receiptTab = minimal
+                            if uiModel.activeTab == nil { uiModel.activeTab = minimal }
+                        }
                         // Heal: upload the inline payload to Firestore so future
                         // recipients (and slot-claim updates) can use the doc.
                         Task {
@@ -148,11 +163,37 @@ extension MessagesViewController {
             return
         }
 
+        // Settlement card path: ?tabId=<tabId>
+        if let tabId = comps?.queryItems?.first(where: { $0.name == "tabId" })?.value,
+           !tabId.isEmpty {
+            // Build minimal tab immediately from inline URL params (no Firestore needed)
+            let tabName = comps?.queryItems?.first(where: { $0.name == "tn" })?.value
+            let colorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
+            if let tabName {
+                uiModel.activeTab = LootTab.minimal(id: tabId, name: tabName,
+                                                    colorHex: colorHex?.isEmpty == true ? nil : colorHex)
+            }
+            // Try to upgrade with full tab data in background
+            Task { @MainActor in
+                if let cached = uiModel.userTabs.first(where: { $0.id == tabId }) {
+                    uiModel.activeTab = cached
+                } else if let full = try? await TabService.shared.fetchTab(id: tabId) {
+                    uiModel.activeTab = full
+                }
+            }
+            return
+        }
+
         // Legacy path: inline payload
         if let payload = LootMessageCodec.payload(from: url) {
             uiModel.openedMessagePayload = payload
             uiModel.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
+            if let tabData = payload.tab {
+                let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
+                uiModel.receiptTab = minimal
+                if uiModel.activeTab == nil { uiModel.activeTab = minimal }
+            }
         }
     }
 
@@ -183,6 +224,11 @@ extension MessagesViewController {
                 if uiModel.currentScreen != .joinTab {
                     let myId = KeychainHelper.getOrCreateUserId()
                     let tab = try? await TabService.shared.getTabForConversation(conversationKey: convKey)
+                    // Store conversation member IDs for tab relevance sorting,
+                    // regardless of whether the current user is still a member.
+                    if let t = tab {
+                        uiModel.conversationMemberIds = Set(t.memberIds)
+                    }
                     // Only set as active if this user is still an active member
                     // (guards against tabs the user has left).
                     if let t = tab, t.memberIds.contains(myId) {
@@ -256,7 +302,7 @@ extension MessagesViewController {
         let hosting = UIHostingController(rootView: card)
         hosting.view.backgroundColor = .clear
         hosting.safeAreaRegions = []
-        let size = CGSize(width: 260, height: 120)
+        let size = CGSize(width: 260, height: 60)
         hosting.view.frame = CGRect(origin: .zero, size: size)
         hosting.view.setNeedsLayout()
         hosting.view.layoutIfNeeded()
@@ -269,6 +315,14 @@ extension MessagesViewController {
         components.scheme = "https"
         components.host = "plsloot.me"
         components.path = "/loot"
+        // receiptTab is set when paying from a receipt viewer; activeTab is set otherwise.
+        let settlementTab = uiModel.receiptTab ?? uiModel.activeTab
+        if let tabId = settlementTab?.id {
+            var items: [URLQueryItem] = [URLQueryItem(name: "tabId", value: tabId)]
+            if let name = settlementTab?.name { items.append(URLQueryItem(name: "tn", value: name)) }
+            if let hex = settlementTab?.colorHex, !hex.isEmpty { items.append(URLQueryItem(name: "tc", value: hex)) }
+            components.queryItems = items
+        }
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -280,6 +334,50 @@ extension MessagesViewController {
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendSettlementMessage error: \(error)") }
         }
+    }
+
+    func sendRequestMessage(creditorName: String, debtorName: String,
+                            amountCents: Int, tabColorHex: String?) {
+        guard let conversation = activeConversation else { return }
+
+        let card = SettlementCardView(fromName: creditorName, toName: debtorName,
+                                     amountCents: amountCents, methodName: "",
+                                     tabColorHex: tabColorHex, isRequest: true)
+        let hosting = UIHostingController(rootView: card)
+        hosting.view.backgroundColor = .clear
+        hosting.safeAreaRegions = []
+        let size = CGSize(width: 260, height: 60)
+        hosting.view.frame = CGRect(origin: .zero, size: size)
+        hosting.view.setNeedsLayout()
+        hosting.view.layoutIfNeeded()
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let cardImage = renderer.image { _ in
+            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
+        }
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "plsloot.me"
+        components.path = "/loot"
+        let requestTab = uiModel.receiptTab ?? uiModel.activeTab
+        if let tabId = requestTab?.id {
+            var items: [URLQueryItem] = [URLQueryItem(name: "tabId", value: tabId)]
+            if let name = requestTab?.name { items.append(URLQueryItem(name: "tn", value: name)) }
+            if let hex = requestTab?.colorHex, !hex.isEmpty { items.append(URLQueryItem(name: "tc", value: hex)) }
+            components.queryItems = items
+        }
+
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
+
+        let message = MSMessage(session: MSSession())
+        message.layout = layout
+        message.url = components.url
+
+        conversation.insert(message) { error in
+            if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
+        }
+        requestPresentationStyle(.compact)
     }
 
     func renderCardImage(receiptName: String,
@@ -356,7 +454,10 @@ extension MessagesViewController {
 
         let receiptPayload = ReceiptPayload.from(receipt: receiptDisplay, split: splitPayload)
 
-        let payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: uiModel.activeTab?.id)
+        var payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: uiModel.activeTab?.id)
+        if let activeTab = uiModel.activeTab, let tabId = activeTab.id {
+            payload.tab = TabPayload(id: tabId, n: activeTab.name, c: activeTab.colorHex)
+        }
 
         // Capture scan image before async block (will be nil for manual receipts)
         let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal

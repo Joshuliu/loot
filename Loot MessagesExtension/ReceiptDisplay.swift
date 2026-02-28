@@ -125,6 +125,9 @@ final class LootUIModel: ObservableObject {
     @Published var itemsLoadingState: LoadingState<Phase2Result> = .idle
     var phase2Task: Task<Void, Never>? = nil
 
+    // True while phase 1 LLM is running (shows BillCardLoadingView on confirmation screen)
+    @Published var isLoadingReceipt: Bool = false
+
     // MARK: - Loot Tabs state
     @Published var activeTab: LootTab? = nil
     /// Tab that belongs to the currently-opened receipt (may differ from activeTab).
@@ -133,6 +136,9 @@ final class LootUIModel: ObservableObject {
     @Published var localParticipantId: String? = nil
     @Published var conversationKey: String? = nil
     @Published var pendingTabInviteId: String? = nil
+    /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
+    /// Used to sort userTabs by relevance — most overlapping members shown first.
+    @Published var conversationMemberIds: Set<String> = []
 
     /// Opens a URL in Safari app (via extensionContext). Set by MessagesViewController.
     var openInSafari: ((URL) -> Void)?
@@ -140,6 +146,10 @@ final class LootUIModel: ObservableObject {
     /// Sends a styled settlement card into the active iMessage conversation.
     /// Args: (fromName, toName, amountCents, methodName, tabColorHex)
     var sendSettlementCard: ((String, String, Int, String, String?) -> Void)?
+
+    /// Inserts a payment-request card into the iMessage draft box (user presses Send).
+    /// Args: (creditorName, debtorName, amountCents, tabColorHex)
+    var sendRequestCard: ((String, String, Int, String?) -> Void)?
 
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
@@ -156,6 +166,7 @@ final class LootUIModel: ObservableObject {
         receiptTab = nil
         messageLoadingState = .idle
         itemsLoadingState = .idle
+        isLoadingReceipt = false
     }
 }
 

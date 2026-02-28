@@ -66,7 +66,6 @@ struct RootContainerView: View {
     @State private var showPhotoLibrary: Bool = false
     @State private var photoLibraryImage: UIImage? = nil
     
-    @State private var isAnalyzing: Bool = false
     @State private var analyzeError: String?
 
     // Backend user restore state
@@ -171,7 +170,6 @@ struct RootContainerView: View {
 
     /// DEBUG: Run VisionKit OCR only and output structured JSON
     private func debugOCROnly(image: UIImage) {
-        isAnalyzing = true
         analyzeError = nil
 
         Task {
@@ -247,14 +245,12 @@ struct RootContainerView: View {
 //                print("========================")
 
                 await MainActor.run {
-                    isAnalyzing = false
                     debugOCRResult = processedResult
                     debugOriginalImage = workingImage  // Use final processed image for debug view
                 }
             } catch {
                 print("[DEBUG OCR] Failed: \(error)")
                 await MainActor.run {
-                    isAnalyzing = false
                     analyzeError = "OCR failed: \(error.localizedDescription)"
                 }
             }
@@ -1513,7 +1509,6 @@ struct RootContainerView: View {
     /// Phase 1: Quick merchant + total extraction → Navigate immediately
     /// Phase 2: Full items + breakdown (runs in background)
     private func analyzeCapturedTwoPhase(image: UIImage) {
-        isAnalyzing = true
         analyzeError = nil
 
         Task {
@@ -1552,13 +1547,8 @@ struct RootContainerView: View {
                     )
 
                     uiModel.itemsLoadingState = .loading
-                    confirmationCameFromManual = false
-
-                    // Navigate immediately after phase 1!
-                    isAnalyzing = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .confirmation
-                    }
+                    // Phase 1 complete — clear loading state (navigation already happened)
+                    uiModel.isLoadingReceipt = false
                 }
 
                 // PHASE 2: Background item extraction (reuses same file URI)
@@ -1637,7 +1627,7 @@ struct RootContainerView: View {
             } catch {
                 print("[Scan] analyzeReceipt failed: \(error)")
                 await MainActor.run {
-                    isAnalyzing = false
+                    uiModel.isLoadingReceipt = false
                     analyzeError = "Scan failed: \(error.localizedDescription)"
                 }
             }
@@ -1754,6 +1744,7 @@ struct RootContainerView: View {
                             },
                             activeTab: uiModel.activeTab,
                             userTabs: uiModel.userTabs,
+                            conversationMemberIds: uiModel.conversationMemberIds,
                             isExpanded: uiModel.isExpanded,
                             onStartTab: {
                                 pendingTabName = ""
@@ -1832,6 +1823,7 @@ struct RootContainerView: View {
                                 }
                             },
                             onSendSettlementCard: uiModel.sendSettlementCard,
+                            onSendRequestCard: uiModel.sendRequestCard,
                             openInSafari: uiModel.openInSafari,
                             onRequestCollapse: onCollapse
                         )
@@ -2263,17 +2255,24 @@ struct RootContainerView: View {
                         .transition(.opacity)
                     }
                 }
-                .sheet(
-                    isPresented: $showCamera,
-                    onDismiss: {
-                        guard let img = capturedImage else { return }
-                        ReceiptCrop.run(img) { cropped in
-                            uiModel.scanImageOriginal = img
-                            uiModel.scanImageCropped = cropped
-                            analyzeCaptured(image: cropped)
+                .fullScreenCover(isPresented: $showCamera) {
+                    CustomCameraView(capturedImage: $capturedImage, onCancel: { showCamera = false })
+                        .ignoresSafeArea()
+                        .onChange(of: capturedImage) { _, img in
+                            guard let img else { return }
+                            showCamera = false
+                            ReceiptCrop.run(img) { cropped in
+                                uiModel.scanImageOriginal = img
+                                uiModel.scanImageCropped = cropped
+                                uiModel.isLoadingReceipt = true
+                                confirmationCameFromManual = false
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    uiModel.currentScreen = .confirmation
+                                }
+                                analyzeCapturedTwoPhase(image: cropped)
+                            }
                         }
-                    }
-                ) { CameraPicker(image: $capturedImage).ignoresSafeArea() }
+                }
                 .sheet(
                     isPresented: $showPhotoLibrary,
                     onDismiss: {
@@ -2287,17 +2286,6 @@ struct RootContainerView: View {
                 ) { PhotoLibraryPicker(image: $photoLibraryImage).ignoresSafeArea() }
                 // SplitView sheet removed — split panels now integrated into ConfirmationView extension
                 // TODO: Wire up showSplitViewSheet to inline split editing in Phase 5
-                .overlay {
-                    if isAnalyzing {
-                        ZStack {
-                            Color.black.opacity(0.25).ignoresSafeArea()
-                            ProgressView("Analyzing receipt…")
-                                .padding()
-                                .background(Color(.systemBackground))
-                                .cornerRadius(12)
-                        }
-                    }
-                }
                 .alert("Scan failed", isPresented: Binding(
                     get: { analyzeError != nil },
                     set: { _ in analyzeError = nil }

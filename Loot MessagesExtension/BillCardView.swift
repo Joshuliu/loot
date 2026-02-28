@@ -104,6 +104,7 @@ struct SettlementCardView: View {
     let amountCents: Int
     let methodName: String
     var tabColorHex: String? = nil
+    var isRequest: Bool = false
 
     private var bgColor: Color {
         if let hex = tabColorHex { return Color(hex: hex) }
@@ -113,28 +114,45 @@ struct SettlementCardView: View {
     private var sub: Color { tabColorHex != nil ? .white.opacity(0.7) : .secondary }
 
     var body: some View {
-        VStack(alignment: .center, spacing: 4) {
-            Text("Sent")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(sub)
-                .textCase(.uppercase)
+        HStack(alignment: .center, spacing: 0) {
+            // Left col: SENT/REQUESTED + amount
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isRequest ? "REQUESTED" : "SENT")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(sub)
+                Text(ReceiptDisplay.money(amountCents))
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(fg)
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(ReceiptDisplay.money(amountCents))
-                .font(.system(size: 24, weight: .bold))
-                .foregroundColor(fg)
+            // Divider
+            Rectangle()
+                .fill(fg.opacity(0.2))
+                .frame(width: 1, height: 36)
+                .padding(.horizontal, 12)
 
-            Text("via \(methodName) to")
-                .font(.system(size: 11))
-                .foregroundColor(sub)
-
-            Text(toName)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(fg)
-                .lineLimit(1)
+            // Right col: via/from _ / to ___
+            VStack(alignment: .leading, spacing: 2) {
+                Text(isRequest ? "from \(fromName)" : "via \(methodName)")
+                    .font(.system(size: 11))
+                    .foregroundColor(sub)
+                    .lineLimit(1)
+                if !isRequest {
+                    Text(toName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(fg)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .frame(width: 260, height: 120, alignment: .topLeading)
+        .padding(.leading, 52)
+        .padding(.trailing, 16)
+        .padding(.vertical, 12)
+        .frame(width: 260, height: 60)
         .background(bgColor)
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)

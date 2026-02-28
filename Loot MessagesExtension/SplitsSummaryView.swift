@@ -21,13 +21,24 @@ struct SplitsSummaryView: View {
     private enum MyBillState { case choosing, joined, notInBill }
     @State private var billState: MyBillState = .choosing
 
+    private enum TabMembershipState { case loading, member, notMember }
+    @State private var tabMembershipState: TabMembershipState = .loading
+
     /// Cache of uid → display name fetched from Firestore.
     @State private var uidDisplayNames: [String: String] = [:]
 
     /// Payer's payment methods fetched from Firestore.
     @State private var payerPaymentMethods: [PaymentMethod]? = nil
-    /// Brief "Copied!" feedback for Zelle copy action.
-    @State private var copiedMethodId: String? = nil
+
+    private struct PaySheetInfo: Identifiable {
+        let id = UUID()
+        let toName: String    // payer (being paid)
+        let fromName: String  // me (paying)
+        let amountCents: Int
+        let guestIndex: Int
+        let methods: [PaymentMethod]
+    }
+    @State private var paySheetInfo: PaySheetInfo? = nil
 
     @Environment(\.openURL) private var openURL
 
@@ -147,107 +158,75 @@ struct SplitsSummaryView: View {
     // MARK: - Transaction row
 
     @ViewBuilder
-    private func transactionRow(from: String, to: String, amount: Int, color: Color, guestIndex: Int) -> some View {
+    private func transactionRow(from: String, to: String, amount: Int, color: Color, guestIndex: Int, showPayButton: Bool = false) -> some View {
         let paid = isPaid(guestIndex: guestIndex)
         let editable = canTogglePaid(guestIndex: guestIndex)
+        let canPay = showPayButton && !paid && !(payerPaymentMethods?.isEmpty ?? true)
 
-        HStack(spacing: 8) {
-            Text(from)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(paid ? .secondary : .primary)
-                .strikethrough(paid)
-                .lineLimit(1)
-
-            Image(systemName: "arrow.right")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(paid ? color.opacity(0.4) : color)
-
-            Text(to)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(paid ? .secondary : .primary)
-                .strikethrough(paid)
-                .lineLimit(1)
-
-            Spacer()
-
-            Text(ReceiptDisplay.money(amount))
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(paid ? .secondary : .primary)
-                .strikethrough(paid)
-
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    togglePaid(guestIndex: guestIndex)
-                }
-            } label: {
-                Image(systemName: paid ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 18))
-                    .foregroundStyle(paid ? .green : Color(.tertiaryLabel))
-            }
-            .buttonStyle(.plain)
-            .disabled(!editable)
-            .opacity(editable ? 1 : 0.4)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(paid ? Color.green.opacity(0.06) : color.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    // MARK: - Payment method buttons
-
-    @ViewBuilder
-    private func paymentMethodButtons(methods: [PaymentMethod], amountCents: Int) -> some View {
-        let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
-        let payerName = displayName(for: split.pi)
-
-        ScrollView(.horizontal, showsIndicators: false) {
+        VStack(spacing: 6) {
             HStack(spacing: 8) {
-                ForEach(methods) { method in
-                    let deepLink = method.type.deepLinkURL(
-                        identifier: method.identifier,
-                        amountCents: amountCents,
-                        note: note,
-                        bankURL: method.bankURL,
-                        payeeName: payerName
-                    )
+                Text(from)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(paid ? .secondary : .primary)
+                    .strikethrough(paid)
+                    .lineLimit(1)
 
-                    Button {
-                        if let url = deepLink {
-                            if method.type == .zelle {
-                                uiModel.openInSafari?(url)
-                            } else {
-                                openURL(url)
-                            }
-                        } else if method.type == .zelle {
-                            UIPasteboard.general.string = method.identifier
-                            copiedMethodId = method.id
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                                if copiedMethodId == method.id { copiedMethodId = nil }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: method.type.iconName)
-                                .font(.system(size: 13, weight: .semibold))
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(paid ? color.opacity(0.4) : color)
 
-                            if copiedMethodId == method.id {
-                                Text("Copied!")
-                                    .font(.system(size: 13, weight: .medium))
-                            } else {
-                                Text(method.type.displayName)
-                                    .font(.system(size: 13, weight: .medium))
-                            }
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color(.tertiarySystemFill))
-                        .clipShape(Capsule())
+                Text(to)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(paid ? .secondary : .primary)
+                    .strikethrough(paid)
+                    .lineLimit(1)
+
+                Spacer()
+
+                Text(ReceiptDisplay.money(amount))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(paid ? .secondary : .primary)
+                    .strikethrough(paid)
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        togglePaid(guestIndex: guestIndex)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(deepLink == nil && method.type != .zelle)
-                    .opacity(deepLink == nil && method.type != .zelle ? 0.4 : 1)
+                } label: {
+                    Image(systemName: paid ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 18))
+                        .foregroundStyle(paid ? .green : Color(.tertiaryLabel))
                 }
+                .buttonStyle(.plain)
+                .disabled(!editable)
+                .opacity(editable ? 1 : 0.4)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(paid ? Color.green.opacity(0.06) : color.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            if canPay {
+                Button {
+                    if let methods = payerPaymentMethods {
+                        paySheetInfo = PaySheetInfo(
+                            toName: to,
+                            fromName: from,
+                            amountCents: amount,
+                            guestIndex: guestIndex,
+                            methods: methods
+                        )
+                    }
+                } label: {
+                    Label("Pay Now", systemImage: "arrow.up.circle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.blue)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -333,7 +312,8 @@ struct SplitsSummaryView: View {
                             to: displayName(for: split.pi),
                             amount: owed(for: gi),
                             color: colorForSlot(split.pi),
-                            guestIndex: gi
+                            guestIndex: gi,
+                            showPayButton: !isTabReceipt
                         )
                     }
                 }
@@ -383,14 +363,37 @@ struct SplitsSummaryView: View {
     }
 
     var body: some View {
-        let included = includedIndices
-        let count = included.count
-        let selectedIncludedSlot = max(0, min(selectedIndex, max(0, count - 1)))
-        let selectedGuestIndex = count > 0 ? included[selectedIncludedSlot] : 0
-        let selectedCents = owed(for: selectedGuestIndex)
+        Group {
+            if isTabReceipt && tabMembershipState == .notMember {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    VStack(spacing: 6) {
+                        Text("You are not a part of this tab.")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Request an invite to join.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+            } else if isTabReceipt && tabMembershipState == .loading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                let included = includedIndices
+                let count = included.count
+                let selectedIncludedSlot = max(0, min(selectedIndex, max(0, count - 1)))
+                let selectedGuestIndex = count > 0 ? included[selectedIncludedSlot] : 0
+                let selectedCents = owed(for: selectedGuestIndex)
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
 
                 // Donut chart
                 GeometryReader { geo in
@@ -504,19 +507,10 @@ struct SplitsSummaryView: View {
                                         }
                                     },
                                     onSendSettlementCard: uiModel.sendSettlementCard,
+                                    onSendRequestCard: uiModel.sendRequestCard,
                                     openInSafari: uiModel.openInSafari
                                 )
                             } else {
-                                // Single receipt: payment method buttons
-                                if myGi != split.pi,
-                                   !isPaid(guestIndex: myGi),
-                                   let methods = payerPaymentMethods, !methods.isEmpty {
-                                    paymentMethodButtons(
-                                        methods: methods,
-                                        amountCents: owed(for: myGi)
-                                    )
-                                }
-                                
                                 // Leave button
                                 Button {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -664,6 +658,8 @@ struct SplitsSummaryView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
         }
+        } // else
+        } // Group
         .onAppear {
             let myUid = KeychainHelper.getOrCreateUserId()
             let alreadyClaimed = split.g.contains { $0.uid == myUid }
@@ -690,8 +686,21 @@ struct SplitsSummaryView: View {
             }
         }
         .task {
-            // Fetch display names for all uids in the guest list (except self)
             let myUid = KeychainHelper.getOrCreateUserId()
+
+            // Check tab membership — non-members see a locked view
+            if isTabReceipt, let tabId = uiModel.openedMessagePayload?.tid {
+                if uiModel.userTabs.contains(where: { $0.id == tabId }) {
+                    tabMembershipState = .member
+                } else {
+                    let tab = try? await TabService.shared.fetchTab(id: tabId)
+                    tabMembershipState = tab?.memberIds.contains(myUid) == true ? .member : .notMember
+                }
+            } else {
+                tabMembershipState = .member
+            }
+
+            // Fetch display names for all uids in the guest list (except self)
             let otherUids = Set(split.g.compactMap(\.uid)).filter { $0 != myUid && !$0.isEmpty }
             for uid in otherUids {
                 do {
@@ -708,6 +717,48 @@ struct SplitsSummaryView: View {
                 payerPaymentMethods = try? await TabService.shared.fetchPaymentMethods(userId: payerUid)
             }
 
+        }
+        .sheet(item: $paySheetInfo) { info in
+            let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
+            let openInSafari = uiModel.openInSafari   // capture as local so inner closure holds it directly
+            let sendSettlement = uiModel.sendSettlementCard
+            TabPayNowSheet(
+                toName: info.toName,
+                amountCents: info.amountCents,
+                methods: info.methods,
+                tabColorHex: nil,
+                onSelectMethod: { method in
+                    let effectiveBankURL: String?
+                    if method.type == .zelle {
+                        effectiveBankURL = savedPaymentMethods()
+                            .first(where: { $0.type == .zelle })?.bankURL ?? method.bankURL
+                    } else {
+                        effectiveBankURL = method.bankURL
+                    }
+                    let deepLink = method.type.deepLinkURL(
+                        identifier: method.identifier,
+                        amountCents: info.amountCents,
+                        note: note,
+                        bankURL: effectiveBankURL,
+                        payeeName: info.toName,
+                        zelleData: method.zelleData
+                    )
+                    sendSettlement?(info.fromName, info.toName,
+                                    info.amountCents, method.type.displayName, nil)
+                    if let url = deepLink {
+                        if method.type == .zelle, let openInSafari {
+                            openInSafari(url)
+                        } else {
+                            openURL(url)
+                        }
+                    } else if method.type == .zelle {
+                        UIPasteboard.general.string = method.identifier
+                    }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        togglePaid(guestIndex: info.guestIndex)
+                    }
+                }
+            )
         }
     }
 }

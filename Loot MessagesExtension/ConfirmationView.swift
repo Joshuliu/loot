@@ -73,6 +73,7 @@ struct ConfirmationView: View {
     @State var didInitByItem: Bool = false
     @State var showEditReceipt: Bool = false
     @State var confirmed: Bool = true
+    @State private var introAnimationDone: Bool = false
     @State private var splitModesExpanded: Bool = false
 
 
@@ -189,11 +190,15 @@ struct ConfirmationView: View {
                 return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
             }
 
+            // Prefer the live `total` from the `amount` prop when the draft total is stale
+            // (draft is created on first appear before phase 1 returns the real total).
+            let effectiveTotal = (draft.totalCents > 0) ? draft.totalCents : total
+
             let allOwed = SplitMath.computeOwedCents(
                 mode: mode,
                 guests: guests,
                 payerIndex: payerIndex,
-                totalCents: draft.totalCents,
+                totalCents: effectiveTotal,
                 perGuestActive: draft.perGuestCents,
                 items: items,
                 feesCents: draft.feesCents,
@@ -212,11 +217,10 @@ struct ConfirmationView: View {
     }
     
     var totalCents: Int {
-        if let draft = splitDraft {
+        if let draft = splitDraft, draft.totalCents > 0 {
             return draft.totalCents
-        } else {
-            return amountToCents(amount)
         }
+        return amountToCents(amount)
     }
     
     // Helper to compute equal split
@@ -565,22 +569,38 @@ struct ConfirmationView: View {
 
             Color.clear.frame(height: 18)
 
-            // Card with split ring
-            BillCardView(
-                receiptName: receiptName,
-                displayAmount: displayAmount,
-                displayName: myDisplayNameFromDefaults(),
-                splitLabel: splitLabel,
-                owedAmounts: owedAmounts,
-                totalCents: totalCents,
-                tabName: uiModel.activeTab?.name,
-                tabColorHex: uiModel.activeTab?.colorHex
-            )
+            // Card with split ring (crossfades between loading and real card)
+            ZStack {
+                if uiModel.isLoadingReceipt || !introAnimationDone {
+                    BillCardLoadingView(
+                        participantCount: participantCount,
+                        displayName: myDisplayNameFromDefaults(),
+                        tabColorHex: uiModel.activeTab?.colorHex,
+                        onAnimationComplete: {
+                            introAnimationDone = true
+                        }
+                    )
+                    .transition(.opacity)
+                } else {
+                    BillCardView(
+                        receiptName: receiptName,
+                        displayAmount: displayAmount,
+                        displayName: myDisplayNameFromDefaults(),
+                        splitLabel: splitLabel,
+                        owedAmounts: owedAmounts,
+                        totalCents: totalCents,
+                        tabName: uiModel.activeTab?.name,
+                        tabColorHex: uiModel.activeTab?.colorHex
+                    )
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
             .cardPhysics(isDragging: cardOffset != .zero)
             .offset(cardOffset)
             .rotationEffect(.degrees(cardRotation), anchor: .bottom)
             .gesture(swipeCardGesture)
-            .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems {showEditReceipt = true} })
+            .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
             .contentShape(Rectangle())
             .padding(.horizontal, 24)
 
@@ -858,6 +878,14 @@ struct ConfirmationView: View {
             cardRotation = 0
             hasSent = false
             showSuccess = false
+
+            // Reset loading animation state each time screen appears.
+            // For manual entry, skip loading card immediately.
+            if cameFromManual || !uiModel.isLoadingReceipt {
+                introAnimationDone = true
+            } else {
+                introAnimationDone = false
+            }
 
             if !hasTipInitialized {
                 hasTipInitialized = true

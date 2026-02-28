@@ -18,6 +18,7 @@ struct LootTabView: View {
     // Tab-related props
     var activeTab: LootTab? = nil
     var userTabs: [LootTab] = []
+    var conversationMemberIds: Set<String> = []
     var isExpanded: Bool = false
     var onStartTab: (() -> Void)? = nil
     var onSelectTab: ((LootTab) -> Void)? = nil
@@ -29,6 +30,7 @@ struct LootTabView: View {
     var onTabLeft: (() -> Void)? = nil
     var onTabDeleted: (() -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
+    var onSendRequestCard: ((String, String, Int, String?) -> Void)? = nil
     var openInSafari: ((URL) -> Void)? = nil
     let onRequestCollapse: () -> Void
     
@@ -40,6 +42,15 @@ struct LootTabView: View {
     @State private var receipts: [TabReceipt] = []
     @State private var settlements: [Settlement] = []
     @State private var paymentsLoading: Bool = false
+
+    private var sortedUserTabs: [LootTab] {
+        guard !conversationMemberIds.isEmpty else { return userTabs }
+        return userTabs.sorted { a, b in
+            let aScore = a.memberIds.filter { conversationMemberIds.contains($0) }.count
+            let bScore = b.memberIds.filter { conversationMemberIds.contains($0) }.count
+            return aScore > bScore
+        }
+    }
 
     private var resolvedHeaderColor: Color {
         Color(hex: activeTab?.colorHex ?? TabColorOptions.defaultHex)
@@ -266,7 +277,7 @@ struct LootTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
                        alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
                 .padding(.horizontal, activeTab == nil || showingAddReceiptPanel || !isExpanded ? 0 : 48)
-                .padding(.vertical, 1)
+//                .padding(.vertical, 1)
             }
         }
         .padding(.horizontal, 16)
@@ -293,6 +304,7 @@ struct LootTabView: View {
                     colorHex: tab.colorHex,
                     tabName: tab.name,
                     onSendSettlementCard: onSendSettlementCard,
+                    onSendRequestCard: onSendRequestCard,
                     openInSafari: openInSafari
                 )
             }
@@ -324,7 +336,7 @@ struct LootTabView: View {
                 startNewTabButton
                 ScrollView {
                     VStack(spacing: 8) {
-                        ForEach(userTabs) { tab in
+                        ForEach(sortedUserTabs) { tab in
                             Button(action: {
                                 onSelectTab?(tab)
                                 showingTabSwitcher = false
