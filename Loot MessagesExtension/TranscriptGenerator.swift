@@ -30,7 +30,7 @@ enum TranscriptGenerator {
     static func generate(from image: UIImage) async throws -> String {
         // Step 1: Straighten text so downstream OCR operates on a
         // horizontally aligned image.
-        let correctedImage = DocumentRealignment.correctTextAngle(in: image)
+        let correctedImage = await straightenImage(in: image)
 
         // Step 2: Detect all recognized text observations on the
         // full corrected image.
@@ -47,6 +47,81 @@ enum TranscriptGenerator {
             .joined(separator: "\n")
 
         return joined
+    }
+
+    // MARK: - Image straightening
+
+    /// Detects text skew via `VNDetectTextRectanglesRequest` (which returns corner
+    /// points) and rotates the image to compensate. Returns the original image if
+    /// no significant tilt is found.
+    private static func straightenImage(in image: UIImage) async -> UIImage {
+        let upright = image.rasterizedUpright()
+        guard let cgImage = upright.cgImage else { return image }
+
+        return await withCheckedContinuation { continuation in
+            let request = VNDetectTextRectanglesRequest { req, error in
+                guard error == nil,
+                      let results = req.results as? [VNTextObservation],
+                      !results.isEmpty else {
+                    continuation.resume(returning: image)
+                    return
+                }
+
+                // Collect per-character angles from corner points.
+                // Vision uses bottom-left origin so dy > 0 means the baseline
+                // rises to the right (counter-clockwise tilt).
+                var angles: [Double] = []
+                for obs in results {
+                    guard let boxes = obs.characterBoxes else { continue }
+                    for box in boxes {
+                        let dx = Double(box.topRight.x - box.topLeft.x)
+                        let dy = Double(box.topRight.y - box.topLeft.y)
+                        let angle = atan2(dy, dx) * 180.0 / .pi
+                        if abs(angle) < 45 { angles.append(angle) }
+                    }
+                }
+
+                guard !angles.isEmpty else {
+                    continuation.resume(returning: image)
+                    return
+                }
+
+                let sorted = angles.sorted()
+                let median = sorted[sorted.count / 2]
+
+                guard abs(median) > 0.5 else {
+                    continuation.resume(returning: image)
+                    return
+                }
+
+                let radians = CGFloat(median * .pi / 180.0)
+                let originalSize = upright.size
+                let rotatedRect = CGRect(origin: .zero, size: originalSize)
+                    .applying(CGAffineTransform(rotationAngle: radians))
+                let newSize = CGSize(width: abs(rotatedRect.width), height: abs(rotatedRect.height))
+
+                let renderer = UIGraphicsImageRenderer(size: newSize)
+                let rotated = renderer.image { ctx in
+                    let cg = ctx.cgContext
+                    cg.translateBy(x: newSize.width / 2, y: newSize.height / 2)
+                    cg.rotate(by: radians)
+                    cg.translateBy(x: -originalSize.width / 2, y: -originalSize.height / 2)
+                    upright.draw(at: .zero)
+                }
+
+                continuation.resume(returning: rotated)
+            }
+            request.reportCharacterBoxes = true
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                let handler = VNImageRequestHandler(
+                    cgImage: cgImage,
+                    orientation: image.imageOrientation.cgImagePropertyOrientation,
+                    options: [:]
+                )
+                try? handler.perform([request])
+            }
+        }
     }
 
     // MARK: - Line metadata

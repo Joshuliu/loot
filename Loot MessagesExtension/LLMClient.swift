@@ -396,11 +396,6 @@ final class LLMClient {
         let developerMessage = """
         You are parsing for a bill splitting app so users can easily split up receipts by items.
         The total is \(knownTotalCents) cents, and sum of all item cents, taxes, fees, and discounts should sum up exactly to the total.
-        
-        To match items to amounts, follow these three steps:
-        1. Remove extra subitems, ensuring the # of items on left match # of amounts on right.
-        2. Match item names to amounts using logic. EXAMPLE: Sodas shouldn't cost $10. It could be a subitem.
-        3. Verify the sum of item amounts add up to the subtotal. Remove extraneous subitems as needed.
 
         Output ONLY using this exact line-based format. No markdown, no code fences, no extra text.
 
@@ -418,9 +413,10 @@ final class LLMClient {
 
         Rules:
         - Include ONLY items that are actually charged.
-        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
-        - Do not include sub-items as a separate item.
-        - CHECK: SUBTOTAL_CENTS + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
+        - Exclude ALL discounts unless it helps add up to the total.
+        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
+        - Item cents should be final amount after quantity multiplication.
+        - CHECK: Sum of all ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
         """
 
         let userMessage = "Extract all items and breakdown from this receipt that add up to \(knownTotalCents) cents."
@@ -464,6 +460,118 @@ final class LLMClient {
         }
 
         print("[LLM] Phase2 decode failed. Raw text:\n\(text)")
+        throw LLMError.decodeFailed
+    }
+
+    // MARK: - Transcript-based Phase 1
+
+    func analyzeReceiptPhase1(transcript: String) async throws -> Phase1Result {
+        let developerMessage = """
+        Return ONLY minified JSON: {"merchant":string|null,"total_cents":int}
+        No extra keys. No markdown. No text.
+        """
+
+        let userMessage = "Extract merchant and total from this receipt transcript:\n\n\(transcript)"
+
+        let systemInstruction = Content(
+            role: "system",
+            parts: [Part(text: developerMessage, inlineData: nil, fileData: nil)]
+        )
+        let userContent = Content(
+            role: "user",
+            parts: [Part(text: userMessage, inlineData: nil, fileData: nil)]
+        )
+        let req = GenerateContentRequest(
+            contents: [userContent],
+            systemInstruction: systemInstruction,
+            generationConfig: .init(
+                maxOutputTokens: 128,
+                responseMimeType: "application/json",
+                temperature: 0.1,
+                thinkingConfig: .init(thinkingBudget: 0)
+            )
+        )
+
+        let (text, _, _, _) = try await send(req)
+
+        guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
+            throw LLMError.emptyText
+        }
+
+        let repaired = repairJSON(text)
+        do {
+            return try JSONDecoder().decode(Phase1Result.self, from: Data(repaired.utf8))
+        } catch {
+            print("[LLM] Phase1 transcript decode error: \(error)")
+            print("[LLM] Text: \(repaired)")
+            throw LLMError.decodeFailed
+        }
+    }
+
+    // MARK: - Transcript-based Phase 2
+
+    func analyzeReceiptPhase2(transcript: String, knownTotalCents: Int) async throws -> Phase2Result {
+        let developerMessage = """
+        You are parsing for a bill splitting app so users can easily split up receipts by items.
+        The total is \(knownTotalCents) cents, and sum of all item cents, taxes, fees, and discounts should sum up exactly to the total.
+
+        To match items to amounts, follow these two steps:
+        1. Remove extra subitems, ensuring the # of items on left match # of amounts on right.
+        2. Match item names to amounts using logic. EXAMPLE: Sodas shouldn't cost $10. It could be a subitem.
+
+        Output ONLY using this exact line-based format. No markdown, no code fences, no extra text.
+
+        BEGIN_RECEIPT_V2
+        SUBTOTAL_CENTS|<int or empty>
+        TAX_CENTS|<int or empty>
+        TIP_CENTS|<int or empty>
+        FEES_CENTS|<int or empty>
+        DISCOUNT_CENTS|<int or empty>
+
+        ITEM|<qty int>|<label string>|<cents int or empty>
+        (repeat ITEM lines as needed)
+
+        END_RECEIPT_V2
+
+        Rules:
+        - Include ONLY items that are actually charged.
+        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
+        - Do not include sub-items as a separate item.
+        - CHECK: Sum of all ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
+        """
+
+        let userMessage = "Extract all items and breakdown from this receipt transcript that add up to \(knownTotalCents) cents:\n\n\(transcript)"
+
+        let systemInstruction = Content(
+            role: "system",
+            parts: [Part(text: developerMessage, inlineData: nil, fileData: nil)]
+        )
+        let userContent = Content(
+            role: "user",
+            parts: [Part(text: userMessage, inlineData: nil, fileData: nil)]
+        )
+        let req = GenerateContentRequest(
+            contents: [userContent],
+            systemInstruction: systemInstruction,
+            generationConfig: .init(
+                maxOutputTokens: maxTokensPrimary,
+                responseMimeType: nil,
+                temperature: 0.15,
+                thinkingConfig: .init(thinkingBudget: -1)
+            )
+        )
+
+        let (text, _, _, _) = try await send(req)
+
+        guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
+            throw LLMError.emptyText
+        }
+
+        if let parsed = tryDecodePhase2(from: text) {
+            return parsed
+        }
+
+        print("[LLM] Phase2 transcript decode failed. Raw text:\n\(text)")
         throw LLMError.decodeFailed
     }
 

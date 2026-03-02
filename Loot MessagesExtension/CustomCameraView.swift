@@ -13,6 +13,7 @@ import UIKit
 struct CustomCameraView: View {
     @Binding var capturedImage: UIImage?
     let onCancel: () -> Void
+    var onReviewImage: ((UIImage) -> Void)? = nil
 
     @State private var reviewImage: UIImage? = nil
 
@@ -26,7 +27,11 @@ struct CustomCameraView: View {
             .ignoresSafeArea()
         } else {
             CameraPickerView(
-                onCapture: { raw in reviewImage = cropTopAndLeft(raw) },
+                onCapture: { raw in
+                    let img = cropTopAndLeft(raw)
+                    reviewImage = img
+                    onReviewImage?(img)
+                },
                 onCancel: onCancel
             )
             .ignoresSafeArea()

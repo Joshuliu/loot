@@ -67,6 +67,7 @@ struct RootContainerView: View {
     @State private var photoLibraryImage: UIImage? = nil
     
     @State private var analyzeError: String?
+    @State private var pendingTranscriptTask: Task<String, Error>? = nil
 
     // Backend user restore state
     @State private var isCheckingBackendUser: Bool = true
@@ -1510,16 +1511,24 @@ struct RootContainerView: View {
     /// Phase 2: Full items + breakdown (runs in background)
     private func analyzeCapturedTwoPhase(image: UIImage) {
         analyzeError = nil
+        let capturedTranscriptTask = pendingTranscriptTask
 
         Task {
             do {
-                // UPLOAD: Upload image once, get file URI for reuse
-                print("[Scan] Uploading image...")
-                let fileUri = try await LLMClient.shared.uploadImage(image)
+                // TRANSCRIPT: Await transcript from background task (started during camera review)
+                // or generate it now if no pre-started task is available.
+                print("[Scan] Awaiting transcript...")
+                let transcript: String
+                if let task = capturedTranscriptTask {
+                    transcript = try await task.value
+                } else {
+                    transcript = try await TranscriptGenerator.generate(from: image)
+                }
+                print("[Scan] Transcript ready (\(transcript.count) chars)")
 
                 // PHASE 1: Quick merchant + total extraction
                 print("[Scan] Phase 1: Extracting merchant and total...")
-                let phase1 = try await LLMClient.shared.analyzeReceiptPhase1(fileUri: fileUri)
+                let phase1 = try await LLMClient.shared.analyzeReceiptPhase1(transcript: transcript)
                 print("[Scan] Phase 1 complete: merchant=\(phase1.merchant ?? "nil"), total=\(phase1.total_cents ?? 0)")
 
                 let total = max(0, phase1.total_cents ?? 0)
@@ -1551,13 +1560,13 @@ struct RootContainerView: View {
                     uiModel.isLoadingReceipt = false
                 }
 
-                // PHASE 2: Background item extraction (reuses same file URI)
+                // PHASE 2: Background item extraction (reuses transcript)
                 let knownTotal = total
                 uiModel.phase2Task = Task { @MainActor in
                     do {
                         print("[Scan] Phase 2: Extracting items and breakdown...")
                         let phase2 = try await LLMClient.shared.analyzeReceiptPhase2(
-                            fileUri: fileUri,
+                            transcript: transcript,
                             knownTotalCents: knownTotal
                         )
                         print("[Scan] Phase 2 complete: \(phase2.items.count) items")
@@ -1948,6 +1957,8 @@ struct RootContainerView: View {
                             },
                             onDeleteToLanding: {
                                 uiModel.resetForNewReceipt()
+                                pendingTranscriptTask?.cancel()
+                                pendingTranscriptTask = nil
                                 receiptName = ""
                                 amountString = "0"
                                 tipAmount = ""
@@ -1955,9 +1966,7 @@ struct RootContainerView: View {
                                 capturedImage = nil
                                 photoLibraryImage = nil
                                 analyzeError = nil
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    uiModel.currentScreen = .tabview
-                                }
+                                uiModel.currentScreen = .tabview
                             },
                             onGoToSplit: {
                                 showSplitViewSheet = true
@@ -2267,28 +2276,41 @@ struct RootContainerView: View {
                     }
                 }
                 .fullScreenCover(isPresented: $showCamera) {
-                    CustomCameraView(capturedImage: $capturedImage, onCancel: { showCamera = false })
-                        .ignoresSafeArea()
-                        .onChange(of: capturedImage) { _, img in
-                            guard let img else { return }
+                    CustomCameraView(
+                        capturedImage: $capturedImage,
+                        onCancel: {
+                            pendingTranscriptTask?.cancel()
+                            pendingTranscriptTask = nil
                             showCamera = false
-                            ReceiptCrop.run(img) { cropped in
-                                uiModel.scanImageOriginal = img
-                                uiModel.scanImageCropped = cropped
-                                uiModel.isLoadingReceipt = true
-                                confirmationCameFromManual = false
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    uiModel.currentScreen = .confirmation
-                                }
-                                analyzeCapturedTwoPhase(image: cropped)
-                            }
+                        },
+                        onReviewImage: { img in
+                            pendingTranscriptTask?.cancel()
+                            pendingTranscriptTask = Task { try await TranscriptGenerator.generate(from: img) }
                         }
+                    )
+                    .ignoresSafeArea()
+                    .onChange(of: capturedImage) { _, img in
+                        guard let img else { return }
+                        showCamera = false
+                        ReceiptCrop.run(img) { cropped in
+                            uiModel.scanImageOriginal = img
+                            uiModel.scanImageCropped = cropped
+                            uiModel.isLoadingReceipt = true
+                            confirmationCameFromManual = false
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                uiModel.currentScreen = .confirmation
+                            }
+                            analyzeCapturedTwoPhase(image: cropped)
+                        }
+                    }
                 }
                 .sheet(
                     isPresented: $showPhotoLibrary,
                     onDismiss: {
                         guard let img = photoLibraryImage else { return }
                         ReceiptCrop.run(img) { cropped in
+                            pendingTranscriptTask?.cancel()
+                            pendingTranscriptTask = Task { try await TranscriptGenerator.generate(from: cropped) }
                             uiModel.scanImageOriginal = img
                             uiModel.scanImageCropped = cropped
                             uiModel.isLoadingReceipt = true
