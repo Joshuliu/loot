@@ -1517,19 +1517,16 @@ extension ConfirmationView {
                 }
 
                 HStack(alignment: .center, spacing: 2) {
-                    Spacer()
                     Text("$")
                         .font(.system(size: 32, weight: .bold))
                     TextField("0", text: $amountInputText)
                         .font(.system(size: 32, weight: .bold))
                         .keyboardType(.decimalPad)
                         .focused($isAmountFieldFocused)
-                        .multilineTextAlignment(.leading)
-                        .frame(width: 120)
+                        .multilineTextAlignment(.leading)                        .fixedSize()
                         .onChange(of: amountInputText) { _, newValue in
                             updateAmountLive(newValue)
                         }
-                    Spacer()
                 }
 
                 let maxAmount = remainingExcluding(guestIndex)

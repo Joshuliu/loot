@@ -41,6 +41,11 @@ struct ConfirmationView: View {
     @State private var isBottomHeaderExpanded: Bool = false
     @State private var showTipPanel: Bool = false
 
+    private enum TipEditField: Hashable { case tip, total }
+    @State private var tipEditingField: TipEditField? = nil
+    @State private var tipManualInput: String = ""
+    @FocusState private var tipInputFocused: TipEditField?
+
     // Guest drawer state
     @State var showGuestEditor: Bool = false
     @State var guestEditorMode: GuestEditorMode? = nil
@@ -137,13 +142,11 @@ struct ConfirmationView: View {
         !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
     }
 
-    // Pre-tip total for tip percentage calculations
+    // Pre-tip total for tip percentage calculations.
+    // Always derived from the live `amount`/`tipAmount` props — the split draft's totalCents
+    // can be stale (e.g. user edited the subtotal in ManualInputView without resaving the draft).
     private var preTipTotalCents: Int {
-        if let draft = splitDraft {
-            return draft.totalCents - draft.tipCents
-        } else {
-            return amountToCents(amount)
-        }
+        amountToCents(amount) - amountToCents(tipAmount)
     }
 
     // Tip cents based on current slider percentage
@@ -382,25 +385,22 @@ struct ConfirmationView: View {
                 
                 // ✅ Down swipe = expand
                 if isMostlyVertical, dy > verticalTrigger {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        cardOffset = CGSize(width: 0, height: 500)
-                        cardRotation = 6
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        splitModesExpanded = true
-                        onRequestExpand()
-                        captureSnapshot()
-                        selectMode(mode)
-                        confirmed = false
-
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            cardOffset = .zero
-                            cardRotation = 0
+                            cardOffset = CGSize(width: 0, height: 500)
+                            cardRotation = 6
                         }
-                    }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            splitModesExpanded = true
+                            onRequestExpand()
+                            captureSnapshot()
+                            selectMode(mode)
+                            confirmed = false
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                cardOffset = .zero
+                                cardRotation = 0
+                            }
+                        }
                     dragIntent = .none
                     return
                 }
@@ -466,6 +466,7 @@ struct ConfirmationView: View {
                 VStack(spacing: 12) {
                     Spacer()
                     VStack(spacing: 0) {
+                        // Pre-tip total row (static)
                         HStack {
                             Text("Pre-tip total")
                                 .font(.system(size: 14, weight: .regular))
@@ -476,13 +477,35 @@ struct ConfirmationView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
 
+                        // Tip row — tap to enter manually
                         HStack {
                             Text("Tip (\(String(format: "%.0f", tipPercent))%)")
                                 .font(.system(size: 14, weight: .regular))
                             Spacer()
-                            Text(formatMoney(sliderTipCents))
-                                .font(.system(size: 14, weight: .regular))
-                                .foregroundColor(.blue)
+                            if tipEditingField == .tip {
+                                TextField("0.00", text: $tipManualInput)
+                                    .font(.system(size: 14, weight: .regular))
+                                    .foregroundColor(.blue)
+                                    .keyboardType(.decimalPad)
+                                    .focused($tipInputFocused, equals: .tip)
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize()
+                                    .onChange(of: tipManualInput) { _, newValue in
+                                        let cents = amountToCents(newValue)
+                                        if preTipTotalCents > 0 {
+                                            tipPercent = min(100, max(0, (Double(cents) / Double(preTipTotalCents)) * 100.0))
+                                        }
+                                    }
+                            } else {
+                                Text(formatMoney(sliderTipCents))
+                                    .font(.system(size: 14, weight: .regular))
+                                    .foregroundColor(.blue)
+                                    .onTapGesture {
+                                        tipManualInput = String(format: "%.2f", Double(sliderTipCents) / 100.0)
+                                        tipEditingField = .tip
+                                        tipInputFocused = .tip
+                                    }
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
@@ -490,12 +513,34 @@ struct ConfirmationView: View {
                         Divider()
                             .padding(.horizontal, 16)
 
+                        // Total row — tap to enter manually; offset from pre-tip total becomes the tip
                         HStack {
                             Text("Total")
                                 .font(.system(size: 15, weight: .semibold))
                             Spacer()
-                            Text(formatMoney(totalWithTipCents))
-                                .font(.system(size: 15, weight: .semibold))
+                            if tipEditingField == .total {
+                                TextField("0.00", text: $tipManualInput)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .keyboardType(.decimalPad)
+                                    .focused($tipInputFocused, equals: .total)
+                                    .multilineTextAlignment(.trailing)
+                                    .fixedSize()
+                                    .onChange(of: tipManualInput) { _, newValue in
+                                        let enteredTotal = amountToCents(newValue)
+                                        let impliedTip = enteredTotal - preTipTotalCents
+                                        if preTipTotalCents > 0 && impliedTip >= 0 {
+                                            tipPercent = min(100, (Double(impliedTip) / Double(preTipTotalCents)) * 100.0)
+                                        }
+                                    }
+                            } else {
+                                Text(formatMoney(totalWithTipCents))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .onTapGesture {
+                                        tipManualInput = String(format: "%.2f", Double(totalWithTipCents) / 100.0)
+                                        tipEditingField = .total
+                                        tipInputFocused = .total
+                                    }
+                            }
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
@@ -512,9 +557,10 @@ struct ConfirmationView: View {
                         )
                         .frame(height: 60)
                         .padding(.horizontal, 24)
-                        
+                        .onTapGesture { tipEditingField = nil }
+
                         if uiModel.isExpanded {
-                            Text("Scroll to adjust • Tap a % to jump")
+                            Text(tipEditingField == nil ? "Scroll to adjust • Tap a % to jump" : "Tap amount again to edit")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(.secondary)
                         }
@@ -524,9 +570,15 @@ struct ConfirmationView: View {
                 }
             }
             .padding(.top, uiModel.isExpanded ? 10 : 0)
+//            .onChange(of: tipInputFocused) { _, newFocus in
+//                if newFocus == nil {
+//                    tipEditingField = nil
+//                }
+//            }
 
             HStack(spacing: 12) {
                 Button(action: {
+                    tipEditingField = nil
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                         showTipPanel = false
                     }
@@ -541,6 +593,7 @@ struct ConfirmationView: View {
                 .buttonStyle(.plain)
 
                 Button(action: {
+                    tipEditingField = nil
                     let tipStr = formatMoney(sliderTipCents).replacingOccurrences(of: "$", with: "")
                     let totalStr = formatMoney(totalWithTipCents).replacingOccurrences(of: "$", with: "")
                     onTipChanged(tipStr, totalStr)
