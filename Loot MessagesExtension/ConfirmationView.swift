@@ -73,8 +73,10 @@ struct ConfirmationView: View {
     @State var didInitByItem: Bool = false
     @State var showEditReceipt: Bool = false
     @State var confirmed: Bool = true
-    @State private var introAnimationDone: Bool = false
-    @State private var splitModesExpanded: Bool = false
+    @State var introAnimationDone: Bool = false
+    @State var splitModesExpanded: Bool = false
+    @State var splitSnapshot: (mode: SplitDraft.Mode, guests: [SplitGuest], payerGuestId: UUID, guestAmountsCents: [Int])? = nil
+    @State private var keyboardHeight: CGFloat = 0
 
 
     private enum DragIntent { case none, up, left, right, down }
@@ -377,7 +379,7 @@ struct ConfirmationView: View {
                     dragIntent = .none
                     return
                 }
-
+                
                 // ✅ Down swipe = expand
                 if isMostlyVertical, dy > verticalTrigger {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -388,7 +390,11 @@ struct ConfirmationView: View {
                     }
 
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        splitModesExpanded = true
                         onRequestExpand()
+                        captureSnapshot()
+                        selectMode(mode)
+                        confirmed = false
 
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             cardOffset = .zero
@@ -458,40 +464,41 @@ struct ConfirmationView: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 12) {
+                    Spacer()
                     VStack(spacing: 0) {
                         HStack {
                             Text("Pre-tip total")
-                                .font(.system(size: 15, weight: .regular))
+                                .font(.system(size: 14, weight: .regular))
                             Spacer()
                             Text(formatMoney(preTipTotalCents))
-                                .font(.system(size: 15, weight: .regular))
+                                .font(.system(size: 14, weight: .regular))
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 8)
 
                         HStack {
                             Text("Tip (\(String(format: "%.0f", tipPercent))%)")
-                                .font(.system(size: 15, weight: .regular))
+                                .font(.system(size: 14, weight: .regular))
                             Spacer()
                             Text(formatMoney(sliderTipCents))
-                                .font(.system(size: 15, weight: .regular))
+                                .font(.system(size: 14, weight: .regular))
                                 .foregroundColor(.blue)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 8)
 
                         Divider()
                             .padding(.horizontal, 16)
 
                         HStack {
                             Text("Total")
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                             Spacer()
                             Text(formatMoney(totalWithTipCents))
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 8)
                     }
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(16)
@@ -505,13 +512,15 @@ struct ConfirmationView: View {
                         )
                         .frame(height: 60)
                         .padding(.horizontal, 24)
-
-                        Text("Scroll to adjust • Tap a % to jump")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(.secondary)
+                        
+                        if uiModel.isExpanded {
+                            Text("Scroll to adjust • Tap a % to jump")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
                     }
 
-                    Spacer().frame(height: 20)
+                    Spacer()
                 }
             }
             .padding(.top, uiModel.isExpanded ? 10 : 0)
@@ -558,9 +567,16 @@ struct ConfirmationView: View {
 
     // MARK: - Confirmation Panel (card + swipe-to-send + bottom buttons)
     private func confirmationPanel() -> some View {
-        VStack(spacing: 0) {
+        let cardScale: CGFloat = !uiModel.isExpanded ? 0.9 : 1.1
+        let cardH: CGFloat = 160 * cardScale
+
+        return VStack(spacing: 0) {
+            if uiModel.isExpanded {
+                Spacer(minLength: 0)
+                Spacer(minLength: 0)
+            }
             Text(dragIntent == .left ? "Swipe left to delete" :
-                dragIntent == .right ? "Swipe right to edit tip" :
+                dragIntent == .right ? "Swipe right to tip" :
                 dragIntent == .down ? "Swipe down for split options" :
                 isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
             .font(.system(size: 14, weight: .regular))
@@ -574,7 +590,9 @@ struct ConfirmationView: View {
                 if uiModel.isLoadingReceipt || !introAnimationDone {
                     BillCardLoadingView(
                         participantCount: participantCount,
-                        displayName: myDisplayNameFromDefaults(),
+                        displayName: payerDisplayName(),
+                        tabName: uiModel.activeTab?.name,
+                        splitLabel: splitLabel,
                         tabColorHex: uiModel.activeTab?.colorHex,
                         onAnimationComplete: {
                             introAnimationDone = true
@@ -585,7 +603,7 @@ struct ConfirmationView: View {
                     BillCardView(
                         receiptName: receiptName,
                         displayAmount: displayAmount,
-                        displayName: myDisplayNameFromDefaults(),
+                        displayName: payerDisplayName(),
                         splitLabel: splitLabel,
                         owedAmounts: owedAmounts,
                         totalCents: totalCents,
@@ -597,6 +615,8 @@ struct ConfirmationView: View {
             }
             .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
             .cardPhysics(isDragging: cardOffset != .zero)
+            .scaleEffect(cardScale)
+            .frame(width: 260 * cardScale, height: cardH)
             .offset(cardOffset)
             .rotationEffect(.degrees(cardRotation), anchor: .bottom)
             .gesture(swipeCardGesture)
@@ -605,76 +625,19 @@ struct ConfirmationView: View {
             .padding(.horizontal, 24)
 
             VStack(spacing: 6) {
-                Text(isLoadingItems ? "Loading receipt items" : "Tap to edit receipt")
+                Text(isLoadingItems ? "Loading receipt items..." : "Tap to edit receipt")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundColor(.secondary)
             }
             .padding(.top, 12)
             .opacity(buttonsOpacity)
 
+            if uiModel.isExpanded { Spacer(minLength: 0) }
+
             Group {
                 if splitModesExpanded {
-                    VStack(alignment: .center, spacing: 7) {
-                        Text("Split Method:")
-                            .font(.system(size: 14, weight: .regular))
-                            .foregroundColor(.secondary)
-                            .padding(.top, 10)
-                            .padding(.bottom, 7)
-                        HStack(spacing: 12) {
-                            // Equally
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { splitModesExpanded = false }
-                                selectMode(.equally)
-                                onRequestExpand()
-                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                                confirmed = false
-                            } label: {
-                                Text("Equally")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(RoundedRectangle(cornerRadius: 18).fill(buttonBase))
-                            }
-                            .buttonStyle(.plain)
-                            
-                            // by Items
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { splitModesExpanded = false }
-                                selectMode(.byItems)
-                                onRequestExpand()
-                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                                confirmed = false
-                            } label: {
-                                Text("by Items")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(RoundedRectangle(cornerRadius: 18).fill(buttonBase))
-                            }
-                            .buttonStyle(.plain)
-                            
-                            // Custom
-                            Button {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) { splitModesExpanded = false }
-                                selectMode(.custom)
-                                onRequestExpand()
-                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                                confirmed = false
-                            } label: {
-                                Text("Custom")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(RoundedRectangle(cornerRadius: 18).fill(buttonBase))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        
-                    }
-                    .padding(.bottom, 7)
+                    splitModePicker(closesExpanded: true, capturesSnapshot: true)
+                        .padding(.bottom, 7)
                 } else {
                     HStack(spacing: 12) {
                         // 1) Back or Delete
@@ -683,16 +646,10 @@ struct ConfirmationView: View {
                         Button(action: {
                             if cameFromManual { onBack() } else { animateDeleteThenAct() }
                         }) {
-                            Group {
+                            HStack(spacing: 6) {
                                 if cameFromManual {
-                                    if uiModel.isExpanded {
-                                        Text("Edit Total")
-                                    }
-                                    else {HStack(spacing: 6) {
-                                        Image(systemName: "chevron.left")
-                                        Text("Back")
-                                    }
-                                    }
+                                    Image(systemName: "chevron.left")
+                                    Text("Back")
                                 } else {
                                     Image(systemName: "trash")
                                 }
@@ -721,17 +678,25 @@ struct ConfirmationView: View {
 
                         Button(action: {
                             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                cardOffset = CGSize(width: 0, height: 500)
+                                cardRotation = 6
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                 splitModesExpanded = true
                                 onRequestExpand()
+                                captureSnapshot()
                                 selectMode(mode)
                                 confirmed = false
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    cardOffset = .zero
+                                    cardRotation = 0
+                                }
                             }
                         }) {
-//                            Text("Split: \(splitType)")
                             Text("Edit Split")
                                 .multilineTextAlignment(.center)
-                                .font(.system(size: 17, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold))
                                 .frame(maxWidth: .infinity)
                                 .frame(minWidth: 100)
                                 .padding(.vertical, 12)
@@ -753,10 +718,20 @@ struct ConfirmationView: View {
                         let tipProgress = (dragIntent == .right) ? rightProgress : 0
 
                         Button(action: {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                                showTipPanel = true
-                            }
                             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                cardOffset = CGSize(width: 500, height: 0)
+                                cardRotation = 6
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                                    showTipPanel = true
+                                }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    cardOffset = .zero
+                                    cardRotation = 0
+                                }
+                            }
                         }) {
                             Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
                                 .font(.system(size: 16, weight: .semibold))
@@ -774,70 +749,88 @@ struct ConfirmationView: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0")
-                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0") ? 0.4 : 1.0)
+                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0" || uiModel.isLoadingReceipt || isLoadingItems)
+                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0" || uiModel.isLoadingReceipt || isLoadingItems) ? 0.4 : 1.0)
                         .opacity(dragIntent == .right ? 1 : buttonsOpacity)
                     }
                 }
             }
             .padding(.horizontal, 40)
-            .padding(.top, 16)
-            .padding(.bottom, 20)
+            .padding(.vertical, 16)
             .animation(.spring(response: 0.35, dampingFraction: 0.9), value: splitModesExpanded)
-            
+
+        }
+    }
+
+    @ViewBuilder private var panelViews: some View {
+        // Donut panel (equally / custom)
+        if uiModel.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
+            byGuestPanel(
+                interactive: mode == .custom
+            )
+            .padding(.horizontal, 24)
+            .padding(.top, 20)
+        }
+        // Items panel
+        if uiModel.isExpanded && confirmed == false && mode == .byItems {
+            byItemPanel()
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+        }
+        // Tip panel
+        if showTipPanel {
+            tipPanel()
+        }
+        // Confirmation card: always in compact mode, or when confirmed in expanded mode
+        if (confirmed == true || !uiModel.isExpanded) && !showTipPanel {
+            confirmationPanel()
+                .padding(.top, 10)
         }
     }
 
     var body: some View {
+        GeometryReader { geo in
+        let topPad: CGFloat = uiModel.isExpanded ? 20 : 4
+        // Cap the panel height in expanded mode so the guestList below has immediate room.
+        let panelH: CGFloat = min(geo.size.height * 0.65, 500)
         ZStack {
             // Main content
             ScrollView {
                 VStack(spacing: 0) {
-        
-                    // Phase 5 layout: ZStack { byGuestPanel, byItemPanel, confirmationPanel }
-                    ZStack(alignment: .top) {
-                        // Donut panel (equally / custom) — behind card
-                        if uiModel.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
-                            byGuestPanel(
-                                interactive: mode == .custom,
-                                subtitle: mode == .equally ? "Split equally" : "Custom split"
-                            )
-                            .padding(.horizontal, 24)
-                            .padding(.top, 20)
-                        }
 
-                        // Items panel (byItems) — behind card
-                        if uiModel.isExpanded && confirmed == false && mode == .byItems {
-                            byItemPanel()
-                                .padding(.horizontal, 24)
-                                .padding(.top, 20)
-                        }
+                    // Single ZStack keeps view identity so animations survive the
+                    // compact↔expanded transition. In expanded, minHeight==maxHeight==panelH
+                    // pins the frame (Spacer fills, buttons land at a consistent position).
+                    // In compact, min=0/max=∞ lets it size naturally so nothing gets clipped.
+                    ZStack(alignment: .top) { panelViews }
+                        .frame(
+                            minHeight: uiModel.isExpanded ? panelH : 0,
+                            maxHeight: uiModel.isExpanded ? panelH : .infinity
+                        )
 
-                        // Tip panel — shown when user taps "Add Tip"
-                        if showTipPanel {
-                            tipPanel()
-                        }
-
-                        // Card shows if confirmed == true and tip panel is not open
-                        if confirmed == true && !showTipPanel {
-                            confirmationPanel()
-                                .padding(.top,15)
-                        }
-                    }
-                    
                     // Expanded content below the ZStack
                     if uiModel.isExpanded {
-
-                        // Guest list
                         guestList()
                             .padding(.horizontal, 10)
                             .padding(.top, 16)
                             .padding(.bottom, 50)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
-                .padding(.top, 20)
+                .padding(.top, topPad)
             }
             .scrollDismissesKeyboard(.interactively)
+
+            // Amount editing overlay — follows keyboard by offsetting up
+            VStack {
+                Spacer()
+                amountEditingOverlay()
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .animation(.spring(response: 0.35, dampingFraction: 0.9), value: isEditingAmount)
+            }
+            .offset(y: -keyboardHeight)
+            .animation(.easeOut(duration: 0.22), value: keyboardHeight)
+            .ignoresSafeArea(edges: .bottom)
 
             // Success overlay
             if showSuccess {
@@ -870,6 +863,14 @@ struct ConfirmationView: View {
         .ignoresSafeArea(edges: .bottom)
         .animation(.easeInOut(duration: 0.12), value: dragIntent)
         .animation(.easeInOut(duration: 0.12), value: cardOffset)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { notif in
+            if let frame = notif.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                keyboardHeight = frame.height
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardHeight = 0
+        }
         .task {
             onRequestCollapse()
         }
@@ -939,6 +940,36 @@ struct ConfirmationView: View {
                 }
             }
         }
+        .onChange(of: uiModel.isExpanded) { _, isNowExpanded in
+            // When collapsing while mid-edit, commit so the ZStack is never empty
+            if !isNowExpanded && !confirmed {
+                confirmed = true
+                splitModesExpanded = false
+            }
+        }
+        .onChange(of: amount) { _, newAmount in
+            let newTotal = amountToCents(newAmount)
+            // When Phase 1 completes and the total arrives, recalculate amounts if they
+            // were seeded as zeros (because the view appeared before the total was known).
+            guard newTotal > 0, guestAmountsCents.allSatisfy({ $0 == 0 }), !guests.isEmpty else { return }
+            switch mode {
+            case .equally, .custom:
+                guestAmountsCents = equalSplitCents(total: newTotal, count: activeCount)
+            case .byItems:
+                break
+            }
+        }
+        .onChange(of: uiModel.itemsLoadingState.isLoading) { _, isNowLoading in
+            if !isNowLoading {
+                // Phase 2 just finished. Re-seed items immediately if already in byItems mode,
+                // otherwise reset the flag so entering byItems mode later will seed from real data.
+                if mode == .byItems {
+                    seedByItemsFromReceipt()
+                } else {
+                    didInitByItem = false
+                }
+            }
+        }
         .sheet(isPresented: $showEditReceipt) {
             EditReceiptView(
                 uiModel: uiModel,
@@ -951,6 +982,7 @@ struct ConfirmationView: View {
                 }
             )
         }
+        } // GeometryReader
     }
 }
 

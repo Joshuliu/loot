@@ -401,7 +401,14 @@ extension ConfirmationView {
 
     // MARK: - Amount editing
     func startEditingAmount(for guestIndex: Int) {
-        guard mode == .custom else { return }
+        guard mode != .byItems else { return }
+        // Auto-switch from equally → custom, keeping the computed equal amounts intact
+        if mode == .equally {
+            lastMode = mode
+            mode = .custom
+            ensureGuestArrays()
+            // guestAmountsCents already holds the equal split — keep it
+        }
         guestSelectedIndex = guestIndex
         editingGuestIndex = guestIndex
         let currentCents = guestAmountsCents.indices.contains(guestIndex) ? guestAmountsCents[guestIndex] : 0
@@ -421,6 +428,13 @@ extension ConfirmationView {
         editingGuestIndex = nil
         amountInputText = ""
         isAmountFieldFocused = false
+
+        // If the confirmation panel was showing, switch to custom split by guest
+        if confirmed {
+            captureSnapshot()
+            confirmed = false
+            splitModesExpanded = false
+        }
     }
 
     func updateAmountLive(_ input: String) {
@@ -601,7 +615,7 @@ extension ConfirmationView {
     }
 
     // MARK: - Guest donut view (used for equally + custom)
-    func byGuestPanel(interactive: Bool, subtitle: String) -> some View {
+    func byGuestPanel(interactive: Bool) -> some View {
         let selectedCents = guestAmountsCents.indices.contains(guestSelectedIndex)
         ? guestAmountsCents[guestSelectedIndex]
         : 0
@@ -609,11 +623,10 @@ extension ConfirmationView {
         let parts = moneyParts(selectedCents)
 
         return VStack(alignment: .leading, spacing: 18) {
-            Text(subtitle)
-                .font(.system(size: 13))
-                .foregroundColor(.secondary)
-                .padding(.bottom, 5)
-
+            splitPanelToolbar()
+            
+            Spacer(minLength: 0)
+            
             GeometryReader { geo in
                 let size = min(geo.size.width, 210)
                 let lineW: CGFloat = 30
@@ -764,9 +777,7 @@ extension ConfirmationView {
                         .opacity(isEditingAmount && editingGuestIndex == guestSelectedIndex ? 0 : 1)
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            if interactive {
-                                startEditingAmount(for: guestSelectedIndex)
-                            }
+                            startEditingAmount(for: guestSelectedIndex)
                         }
 
                         Text(percentText(selectedCents))
@@ -778,123 +789,49 @@ extension ConfirmationView {
             }
             .frame(height: 220)
 
-            // Fine tuner slider (custom mode only)
-            if interactive {
-                VStack(spacing: 4) {
-                    CentSlider(
-                        cents: Binding(
-                            get: {
-                                guestAmountsCents.indices.contains(guestSelectedIndex)
-                                    ? guestAmountsCents[guestSelectedIndex]
-                                    : 0
-                            },
-                            set: { newValue in
-                                if guestAmountsCents.indices.contains(guestSelectedIndex) {
-                                    guestAmountsCents[guestSelectedIndex] = newValue
-                                }
-                            }
-                        ),
-                        maxCents: remainingExcluding(guestSelectedIndex),
-                        color: colorForActiveIdx(guestSelectedIndex),
-                        isDraggingDonut: donutDrag != nil,
-                        scrollTarget: $fineTunerScrollTarget
-                    )
-                    .padding(.horizontal, 8)
-
-                    Text("Slide to fine-tune amount")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.top, 4)
-            }
+//            // Fine tuner slider (custom mode only)
+//            if interactive {
+//                VStack(spacing: 4) {
+//                    CentSlider(
+//                        cents: Binding(
+//                            get: {
+//                                guestAmountsCents.indices.contains(guestSelectedIndex)
+//                                    ? guestAmountsCents[guestSelectedIndex]
+//                                    : 0
+//                            },
+//                            set: { newValue in
+//                                if guestAmountsCents.indices.contains(guestSelectedIndex) {
+//                                    guestAmountsCents[guestSelectedIndex] = newValue
+//                                }
+//                            }
+//                        ),
+//                        maxCents: remainingExcluding(guestSelectedIndex),
+//                        color: colorForActiveIdx(guestSelectedIndex),
+//                        isDraggingDonut: donutDrag != nil,
+//                        scrollTarget: $fineTunerScrollTarget
+//                    )
+//                    .padding(.horizontal, 8)
+//
+//                    Text("Slide to fine-tune amount")
+//                        .font(.system(size: 11))
+//                        .foregroundColor(.secondary)
+//                }
+//                .padding(.top, 4)
+//            }
             
-            VStack(alignment: .center, spacing: 7) {
-                Text("Split Method:")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 10)
-                    .padding(.bottom, 7)
-                HStack(spacing: 12) {
-                    // Equally
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
-                        selectMode(.equally)
-                        onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmed = false
-                    } label: {
-                        Text("Equally")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(mode == .equally ? .white : .primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .equally ? .blue: buttonBase))
-                    }
-                    .buttonStyle(.plain)
-                
-                    // by Items
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
-                        selectMode(.byItems)
-                    onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmed = false
-                    } label: {
-                        Text("by Items")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(mode == .byItems ? .white : .primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .byItems ? .blue: buttonBase))
-                    }
-                    .buttonStyle(.plain)
-                    
-                    // Custom
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
-                        selectMode(.custom)
-                        onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmed = false
-                    } label: {
-                        Text("Custom")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(mode == .custom ? .white : .primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .custom ? .blue: buttonBase))
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                }
+            Spacer(minLength: 0)
+
+            splitModePicker()
                 .padding(.top, 7)
                 .padding(.horizontal, 30)
-            
-            Button(action: {
-                let draft = buildSplitDraft()
-                uiModel.currentSplitDraft = draft
-                onSelectMode(mode)
-                onGuestsChanged(guests, payerGuestId)
-                confirmed = true
-            }) {
-                Text("Confirm")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 10)
-            .padding(.top, 20)
         }
     }
 
     // MARK: - By items panel (seeded)
     func byItemPanel() -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            splitPanelToolbar()
+
             HStack {
                 Text("Select a guest, then tap an item to assign/unassign them.")
                     .font(.system(size: 13))
@@ -958,45 +895,47 @@ extension ConfirmationView {
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(16)
                 } else {
-                    VStack(spacing: 0) {
-                        ForEach(byItemItems.indices, id: \.self) { idx in
-                            let item = byItemItems[idx]
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(byItemItems.indices, id: \.self) { idx in
+                                let item = byItemItems[idx]
 
-                            if item.isComplete {
-                                let isLast = idx == byItemItems.filter({ $0.isComplete }).count - 1
+                                if item.isComplete {
+                                    let isLast = idx == byItemItems.filter({ $0.isComplete }).count - 1
 
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.label)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .lineLimit(1)
-                                        Text(ReceiptDisplay.money(moneyToCents(item.price)))
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(.secondary)
-                                    }
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(item.label)
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .lineLimit(1)
+                                            Text(ReceiptDisplay.money(moneyToCents(item.price)))
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(.secondary)
+                                        }
 
-                                    Spacer()
+                                        Spacer()
 
-                                    HStack(spacing: 6) {
-                                        ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
-                                            let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
-                                            let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
-                                            ColoredCircleBadge(
-                                                text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                                color: colorForGuestId(gid)
-                                            )
+                                        HStack(spacing: 6) {
+                                            ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
+                                                let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
+                                                let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
+                                                ColoredCircleBadge(
+                                                    text: BadgeColors.initials(from: name, fallback: fallbackIndex),
+                                                    color: colorForGuestId(gid)
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    toggleAssignment(itemId: item.id)
-                                }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        toggleAssignment(itemId: item.id)
+                                    }
 
-                                if !isLast {
-                                    Divider().padding(.leading, 14)
+                                    if !isLast {
+                                        Divider().padding(.leading, 14)
+                                    }
                                 }
                             }
                         }
@@ -1005,87 +944,107 @@ extension ConfirmationView {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
             }
-            VStack(alignment: .center, spacing: 7) {
-                Text("Split Method:")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 10)
-                    .padding(.bottom, 7)
-                HStack(spacing: 12) {
-                    // Equally
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
-                        selectMode(.equally)
-                        onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmed = false
-                    } label: {
-                        Text("Equally")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(mode == .equally ? .white : .primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .equally ? .blue: buttonBase))
-                    }
-                    .buttonStyle(.plain)
-                
-                    // by Items
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
-                        selectMode(.byItems)
-                    onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmed = false
-                    } label: {
-                        Text("by Items")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(mode == .byItems ? .white : .primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .byItems ? .blue: buttonBase))
-                    }
-                    .buttonStyle(.plain)
-                    
-                    // Custom
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {}
-                        selectMode(.custom)
-                        onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        confirmed = false
-                    } label: {
-                        Text("Custom")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(mode == .custom ? .white : .primary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == .custom ? .blue: buttonBase))
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                }
+            .layoutPriority(1)
+            Spacer(minLength: 0)
+
+            splitModePicker()
                 .padding(.top, 7)
                 .padding(.horizontal, 30)
-            
+        }
+    }
+
+    // MARK: - Split panel snapshot (for Back button discard)
+    func captureSnapshot() {
+        splitSnapshot = (mode: mode, guests: guests, payerGuestId: payerGuestId, guestAmountsCents: guestAmountsCents)
+    }
+
+    func restoreSnapshot() {
+        guard let snap = splitSnapshot else { return }
+        mode = snap.mode
+        guests = snap.guests
+        payerGuestId = snap.payerGuestId
+        guestAmountsCents = snap.guestAmountsCents
+        splitSnapshot = nil
+    }
+
+    // MARK: - Split panel toolbar (Back / Save)
+    func splitPanelToolbar() -> some View {
+        HStack {
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                restoreSnapshot()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    confirmed = true
+                }
+            }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                    Text("Back")
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.primary)
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
             Button(action: {
                 let draft = buildSplitDraft()
                 uiModel.currentSplitDraft = draft
                 onSelectMode(mode)
                 onGuestsChanged(guests, payerGuestId)
-                confirmed = true
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    confirmed = true
+                }
             }) {
-                Text("Confirm")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                Text("Save")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.blue)
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 10)
-            .padding(.top, 20)
+        }
+        .padding(.bottom, 8)
+    }
+
+    // MARK: - Split mode picker (shared)
+    func splitModePicker(closesExpanded: Bool = false, capturesSnapshot: Bool = false) -> some View {
+        let modes: [(SplitDraft.Mode, String)] = [
+            (.byItems, "By Items"),
+            (.equally, "Equally"),
+            (.custom,  "Custom")
+        ]
+        return VStack(alignment: .center, spacing: 7) {
+            Text("Split Method")
+                .font(.system(size: 14, weight: .regular))
+                .foregroundColor(.secondary)
+                .padding(.top, 10)
+                .padding(.bottom, 7)
+            HStack(spacing: 12) {
+                ForEach(modes, id: \.1) { (m, label) in
+                    Button {
+                        if capturesSnapshot { captureSnapshot() }
+                        if closesExpanded {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                                splitModesExpanded = false
+                            }
+                        }
+                        selectMode(m)
+                        onRequestExpand()
+                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                        confirmed = false
+                    } label: {
+                        Text(label)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(mode == m ? .white : .primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(RoundedRectangle(cornerRadius: 18).fill(mode == m ? .blue : buttonBase))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.bottom, 18)
         }
     }
 
@@ -1276,9 +1235,10 @@ extension ConfirmationView {
                             editingGuestNameId = nil
                         }
                     } else {
+                        let isUnnamed = guest.trimmedName.isEmpty && !guest.isMe
                         Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)))
                             .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(isUnnamed ? .secondary : .primary)
                             .onTapGesture {
                                 if !guest.isMe && !isTabMember {
                                     editingGuestNameId = gid
@@ -1302,11 +1262,11 @@ extension ConfirmationView {
                             .font(.system(size: 15, weight: .semibold))
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(mode == .custom ? Color(.tertiarySystemFill) : Color.clear)
+                            .background(mode != .byItems ? Color(.tertiarySystemFill) : Color.clear)
                             .clipShape(RoundedRectangle(cornerRadius: 6))
                             .contentShape(Rectangle())
                             .onTapGesture {
-                                if mode == .custom {
+                                if mode != .byItems {
                                     startEditingAmount(for: i)
                                 }
                             }
@@ -1334,7 +1294,7 @@ extension ConfirmationView {
                         guestNameFocusedId = nil
                     }
                     if mode == .byItems { byItemSelectedGuestId = gid }
-                    else if mode == .custom { guestSelectedIndex = i }
+                    else { guestSelectedIndex = i }
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
@@ -1557,6 +1517,7 @@ extension ConfirmationView {
                 }
 
                 HStack(alignment: .center, spacing: 2) {
+                    Spacer()
                     Text("$")
                         .font(.system(size: 32, weight: .bold))
                     TextField("0", text: $amountInputText)
@@ -1568,6 +1529,7 @@ extension ConfirmationView {
                         .onChange(of: amountInputText) { _, newValue in
                             updateAmountLive(newValue)
                         }
+                    Spacer()
                 }
 
                 let maxAmount = remainingExcluding(guestIndex)
@@ -1575,16 +1537,31 @@ extension ConfirmationView {
                     .font(.system(size: 12))
                     .foregroundColor(.secondary)
 
-                Button {
-                    isAmountFieldFocused = false
-                } label: {
-                    Text("Done")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color.blue)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                HStack(spacing: 12) {
+                    Button {
+                        selectMode(.equally)
+                        cancelAmountEdit()
+                    } label: {
+                        Text("Equal")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    Button {
+                        cancelAmountEdit()
+                    } label: {
+                        Text("Done")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
                 }
                 .padding(.top, 4)
             }

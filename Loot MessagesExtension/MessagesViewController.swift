@@ -66,7 +66,9 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func didTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
         super.didTransition(to: presentationStyle)
-        uiModel.isExpanded = (presentationStyle == .expanded)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            uiModel.isExpanded = (presentationStyle == .expanded)
+        }
 
         // Force layout so the hosting controller picks up the new container size
         // (fixes content offset after collapse → re-open)

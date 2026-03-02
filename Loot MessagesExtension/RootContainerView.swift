@@ -1836,6 +1836,9 @@ struct RootContainerView: View {
                             amountString: $amountString,
                             tipAmount: $tipAmount,
                             onBack: {
+                                receiptName = ""
+                                amountString = "0"
+                                tipAmount = ""
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .tabview
                                 }
@@ -1850,7 +1853,8 @@ struct RootContainerView: View {
                                 }
                             },
                             onAddTip: {
-                                // Go to tip view (amountString is already the subtotal)
+                                // Mark as coming from manual so TipView's Back/Next return to .fill
+                                confirmationCameFromManual = true
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .tipview
                                 }
@@ -1944,6 +1948,13 @@ struct RootContainerView: View {
                             },
                             onDeleteToLanding: {
                                 uiModel.resetForNewReceipt()
+                                receiptName = ""
+                                amountString = "0"
+                                tipAmount = ""
+                                splitDraft = nil
+                                capturedImage = nil
+                                photoLibraryImage = nil
+                                analyzeError = nil
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     uiModel.currentScreen = .tabview
                                 }
@@ -2280,7 +2291,12 @@ struct RootContainerView: View {
                         ReceiptCrop.run(img) { cropped in
                             uiModel.scanImageOriginal = img
                             uiModel.scanImageCropped = cropped
-                            analyzeCaptured(image: cropped)
+                            uiModel.isLoadingReceipt = true
+                            confirmationCameFromManual = false
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                uiModel.currentScreen = .confirmation
+                            }
+                            analyzeCapturedTwoPhase(image: cropped)
                         }
                     }
                 ) { PhotoLibraryPicker(image: $photoLibraryImage).ignoresSafeArea() }
