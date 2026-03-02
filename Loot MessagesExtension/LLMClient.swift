@@ -415,7 +415,7 @@ final class LLMClient {
         - Include ONLY items that are actually charged.
         - Exclude ALL discounts unless it helps add up to the total.
         - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
-        - Item cents should be final amount after quantity multiplication.
+        - Items should only show bigger quantities than 1 if the actual receipt combines them.
         - CHECK: Sum of all ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
         """
 
