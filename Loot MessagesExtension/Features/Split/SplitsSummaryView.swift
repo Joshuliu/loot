@@ -400,8 +400,6 @@ struct SplitsSummaryView: View {
                     let size = min(geo.size.width, 230)
                     let lineW: CGFloat = 30
                     let radius = size / 2 - lineW / 2
-                    let center = CGPoint(x: geo.size.width / 2, y: geo.size.height / 2)
-                    let handleRadius = radius + lineW / 2
                     let dimmer = Color(white: 0.55)
 
                     ZStack {
@@ -424,8 +422,6 @@ struct SplitsSummaryView: View {
                                         .rotationEffect(.degrees(-90))
                                         .frame(width: size, height: size)
                                 }
-                                let colorIdx = lastActiveIndex(idx: i)
-                                let colorGi = included.indices.contains(colorIdx) ? included[colorIdx] : colorIdx
 //                                if i == 0 || selectedIndex != i {
 //                                    let ang = -(.pi / 1.975) + (start * 2 * .pi)
 //                                    let hx = center.x + handleRadius * cos(ang)

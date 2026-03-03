@@ -372,7 +372,7 @@ final class TabService {
         let tabRef = db.collection("tabs").document(tabId)
         let receiptRef = tabRef.collection("receipts").document()
 
-        try await db.runTransaction { transaction, errorPointer in
+        _ = try await db.runTransaction { transaction, errorPointer in
             let tabSnapshot: DocumentSnapshot
             do {
                 tabSnapshot = try transaction.getDocument(tabRef)
@@ -415,7 +415,7 @@ final class TabService {
         let tabRef = db.collection("tabs").document(tabId)
         let settlementRef = tabRef.collection("settlements").document()
 
-        try await db.runTransaction { transaction, errorPointer in
+        _ = try await db.runTransaction { transaction, errorPointer in
             let tabSnapshot: DocumentSnapshot
             do {
                 tabSnapshot = try transaction.getDocument(tabRef)

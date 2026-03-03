@@ -15,8 +15,8 @@ struct EditReceiptView: View {
     // Editable state
     @State private var receiptName: String
     @State private var items: [EditableItem]
-    @State private var taxesAndFees: [EditableFee]
-    @State private var discounts: [EditableDiscount]
+    @State private var taxesAndFees: [EditableLineItem]
+    @State private var discounts: [EditableLineItem]
     @State private var tipString: String  // Separate tip field (below discounts)
     @State private var preTipTotalOverride: String  // Single override for pre-tip total
 
@@ -63,22 +63,11 @@ struct EditReceiptView: View {
         }
     }
     
-    struct EditableFee: Identifiable, Equatable {
+    struct EditableLineItem: Identifiable, Equatable {
         let id: UUID
         var label: String
         var amount: String
-        
-        var isComplete: Bool {
-            !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-    }
-    
-    struct EditableDiscount: Identifiable, Equatable {
-        let id: UUID
-        var label: String
-        var amount: String
-        
+
         var isComplete: Bool {
             !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
             !amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -110,32 +99,32 @@ struct EditReceiptView: View {
             EditableItem(
                 id: UUID(uuidString: item.id) ?? UUID(),
                 label: item.label,
-                price: Self.formatCentsStatic(item.priceCents)
+                price: centsToDecimalString(item.priceCents)
             )
         }
         _items = State(initialValue: editableItems)
 
         // Convert taxes & fees (no empty row - use Add button instead)
-        var fees: [EditableFee] = []
+        var fees: [EditableLineItem] = []
         if receipt.taxCents > 0 {
-            fees.append(EditableFee(id: UUID(), label: "Tax", amount: Self.formatCentsStatic(receipt.taxCents)))
+            fees.append(EditableLineItem(id: UUID(), label: "Tax", amount: centsToDecimalString(receipt.taxCents)))
         }
         if receipt.feesCents > 0 {
-            fees.append(EditableFee(id: UUID(), label: "Fees", amount: Self.formatCentsStatic(receipt.feesCents)))
+            fees.append(EditableLineItem(id: UUID(), label: "Fees", amount: centsToDecimalString(receipt.feesCents)))
         }
         _taxesAndFees = State(initialValue: fees)
 
         // Initialize tip separately
         if receipt.tipCents > 0 {
-            _tipString = State(initialValue: Self.formatCentsStatic(receipt.tipCents))
+            _tipString = State(initialValue: centsToDecimalString(receipt.tipCents))
         } else {
             _tipString = State(initialValue: "")
         }
 
         // Convert discounts (no empty row - use Add button instead)
-        var discountsList: [EditableDiscount] = []
+        var discountsList: [EditableLineItem] = []
         if receipt.discountCents > 0 {
-            discountsList.append(EditableDiscount(id: UUID(), label: "Discount", amount: Self.formatCentsStatic(receipt.discountCents)))
+            discountsList.append(EditableLineItem(id: UUID(), label: "Discount", amount: centsToDecimalString(receipt.discountCents)))
         }
         _discounts = State(initialValue: discountsList)
 
@@ -145,45 +134,10 @@ struct EditReceiptView: View {
         let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents
 
         if !hasItems && calculatedPreTip > 0 {
-            _preTipTotalOverride = State(initialValue: Self.formatCentsStatic(calculatedPreTip))
+            _preTipTotalOverride = State(initialValue: centsToDecimalString(calculatedPreTip))
         } else {
             _preTipTotalOverride = State(initialValue: "")
         }
-    }
-    
-    // MARK: - Money helpers
-    
-    private static func formatCentsStatic(_ cents: Int) -> String {
-        let dollars = cents / 100
-        let centsRemainder = cents % 100
-        return "\(dollars).\(String(format: "%02d", centsRemainder))"
-    }
-    
-    private func formatCents(_ cents: Int) -> String {
-        Self.formatCentsStatic(cents)
-    }
-    
-    private func moneyToCents(_ raw: String) -> Int {
-        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-        guard !s.isEmpty else { return 0 }
-        
-        if s.contains(".") {
-            let parts = s.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-            let dollars = Int(parts.first ?? "0") ?? 0
-            let centsRaw = parts.count > 1 ? String(parts[1]) : ""
-            let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
-            let cents = Int(String(cents2.prefix(2))) ?? 0
-            return max(0, dollars * 100 + cents)
-        }
-        return max(0, (Int(s) ?? 0) * 100)
-    }
-    
-    private func formatMoney(_ cents: Int) -> String {
-        let dollars = cents / 100
-        let centsRemainder = cents % 100
-        return "$\(dollars).\(String(format: "%02d", centsRemainder))"
     }
     
     // MARK: - Computed values
@@ -193,23 +147,23 @@ struct EditReceiptView: View {
     }
 
     private var calculatedSubtotalCents: Int {
-        completedItems.reduce(0) { $0 + moneyToCents($1.price) }
+        completedItems.reduce(0) { $0 + stringToCents($1.price) }
     }
 
-    private var completedFees: [EditableFee] {
+    private var completedFees: [EditableLineItem] {
         taxesAndFees.filter { $0.isComplete }
     }
 
     private var taxesAndFeesCents: Int {
-        completedFees.reduce(0) { $0 + moneyToCents($1.amount) }
+        completedFees.reduce(0) { $0 + stringToCents($1.amount) }
     }
 
-    private var completedDiscounts: [EditableDiscount] {
+    private var completedDiscounts: [EditableLineItem] {
         discounts.filter { $0.isComplete }
     }
 
     private var discountsCents: Int {
-        completedDiscounts.reduce(0) { $0 + moneyToCents($1.amount) }
+        completedDiscounts.reduce(0) { $0 + stringToCents($1.amount) }
     }
 
     // Calculated pre-tip total from items + taxes + fees - discounts
@@ -220,20 +174,20 @@ struct EditReceiptView: View {
     // Pre-tip total: use override if set, otherwise use calculated
     private var preTipTotalCents: Int {
         if !preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return moneyToCents(preTipTotalOverride)
+            return stringToCents(preTipTotalOverride)
         }
         return calculatedPreTipTotalCents
     }
 
     private var hasPreTipWarning: Bool {
         !preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        moneyToCents(preTipTotalOverride) != calculatedPreTipTotalCents &&
+        stringToCents(preTipTotalOverride) != calculatedPreTipTotalCents &&
         calculatedPreTipTotalCents > 0  // Only warn if there's something to compare against
     }
 
     // Tip is separate from taxes & fees (applied after pre-tip total)
     private var tipCents: Int {
-        moneyToCents(tipString)
+        stringToCents(tipString)
     }
 
     // Final total: pre-tip total + tip (always calculated, no override)
@@ -247,11 +201,11 @@ struct EditReceiptView: View {
         items.removeAll { $0.id == item.id }
     }
 
-    private func deleteFee(_ fee: EditableFee) {
+    private func deleteFee(_ fee: EditableLineItem) {
         taxesAndFees.removeAll { $0.id == fee.id }
     }
 
-    private func deleteDiscount(_ discount: EditableDiscount) {
+    private func deleteDiscount(_ discount: EditableLineItem) {
         discounts.removeAll { $0.id == discount.id }
     }
 
@@ -317,14 +271,14 @@ struct EditReceiptView: View {
                 taxesAndFees[idx].label = label
                 taxesAndFees[idx].amount = amount
             } else {
-                taxesAndFees.append(EditableFee(id: UUID(), label: label, amount: amount))
+                taxesAndFees.append(EditableLineItem(id: UUID(), label: label, amount: amount))
             }
         case .discount(let id):
             if let id = id, let idx = discounts.firstIndex(where: { $0.id == id }) {
                 discounts[idx].label = label
                 discounts[idx].amount = amount
             } else {
-                discounts.append(EditableDiscount(id: UUID(), label: label, amount: amount))
+                discounts.append(EditableLineItem(id: UUID(), label: label, amount: amount))
             }
         }
         closeEditor()
@@ -362,7 +316,7 @@ struct EditReceiptView: View {
 
         for fee in completedFees {
             let label = fee.label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            let amount = moneyToCents(fee.amount)
+            let amount = stringToCents(fee.amount)
 
             if label.contains("tax") {
                 taxTotal += amount
@@ -396,7 +350,7 @@ struct EditReceiptView: View {
                 ReceiptDisplay.Item(
                     id: item.id.uuidString,
                     label: item.label,
-                    priceCents: moneyToCents(item.price),
+                    priceCents: stringToCents(item.price),
                     responsible: []
                 )
             }
@@ -486,7 +440,7 @@ struct EditReceiptView: View {
                                                         openEditor(mode: .item(item.id), focusField: .label)
                                                     }
                                                 Spacer()
-                                                Text(formatMoney(moneyToCents(item.price)))
+                                                Text(ReceiptDisplay.money(stringToCents(item.price)))
                                                     .font(.system(size: 16, weight: .medium))
                                                     .onTapGesture {
                                                         openEditor(mode: .item(item.id), focusField: .amount)
@@ -536,7 +490,7 @@ struct EditReceiptView: View {
                                 Text("Items subtotal")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                Text(formatMoney(calculatedSubtotalCents))
+                                Text(ReceiptDisplay.money(calculatedSubtotalCents))
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.secondary)
                             }
@@ -562,7 +516,7 @@ struct EditReceiptView: View {
                                                         openEditor(mode: .fee(fee.id), focusField: .label)
                                                     }
                                                 Spacer()
-                                                Text(formatMoney(moneyToCents(fee.amount)))
+                                                Text(ReceiptDisplay.money(stringToCents(fee.amount)))
                                                     .font(.system(size: 16, weight: .medium))
                                                     .onTapGesture {
                                                         openEditor(mode: .fee(fee.id), focusField: .amount)
@@ -612,7 +566,7 @@ struct EditReceiptView: View {
                                 Text("Total taxes & fees")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                Text(formatMoney(taxesAndFeesCents))
+                                Text(ReceiptDisplay.money(taxesAndFeesCents))
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.secondary)
                             }
@@ -638,7 +592,7 @@ struct EditReceiptView: View {
                                                         openEditor(mode: .discount(discount.id), focusField: .label)
                                                     }
                                                 Spacer()
-                                                Text(formatMoney(moneyToCents(discount.amount)))
+                                                Text(ReceiptDisplay.money(stringToCents(discount.amount)))
                                                     .font(.system(size: 16, weight: .medium))
                                                     .onTapGesture {
                                                         openEditor(mode: .discount(discount.id), focusField: .amount)
@@ -688,7 +642,7 @@ struct EditReceiptView: View {
                                 Text("Total discounts")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                Text(formatMoney(discountsCents))
+                                Text(ReceiptDisplay.money(discountsCents))
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.secondary)
                             }
@@ -705,7 +659,7 @@ struct EditReceiptView: View {
                                 Text("Calculated total")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                Text(formatMoney(calculatedPreTipTotalCents))
+                                Text(ReceiptDisplay.money(calculatedPreTipTotalCents))
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundColor(.secondary)
                             }
@@ -765,7 +719,7 @@ struct EditReceiptView: View {
                                 Text("Grand total")
                                     .font(.system(size: 15, weight: .medium))
                                 Spacer()
-                                Text(formatMoney(calculatedTotalCents))
+                                Text(ReceiptDisplay.money(calculatedTotalCents))
                                     .font(.system(size: 17, weight: .bold))
                             }
                             .padding(.top, 4)

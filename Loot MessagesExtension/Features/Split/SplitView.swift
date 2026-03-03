@@ -247,28 +247,6 @@ extension ConfirmationView {
         return displayName(for: guests.first(where: { $0.isMe }) ?? SplitGuest(name: "Me", isIncluded: true, isMe: true))
     }
 
-    // MARK: - Money helpers
-    func cleanMoney(_ raw: String) -> String {
-        raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-    }
-
-    func moneyToCents(_ raw: String) -> Int {
-        let s = cleanMoney(raw)
-        guard !s.isEmpty else { return 0 }
-
-        if s.contains(".") {
-            let parts = s.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-            let dollars = Int(parts.first ?? "0") ?? 0
-            let centsRaw = parts.count > 1 ? String(parts[1]) : ""
-            let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
-            let cents = Int(String(cents2.prefix(2))) ?? 0
-            return max(0, dollars * 100 + cents)
-        }
-        return max(0, (Int(s) ?? 0) * 100)
-    }
-
     // MARK: - Equal split generator (exact cents)
     func equalSplitCents(total: Int, count: Int) -> [Int] {
         guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
@@ -533,7 +511,7 @@ extension ConfirmationView {
                 SplitDraft.Item(
                     id: it.id,
                     label: it.label,
-                    priceCents: moneyToCents(it.price),
+                    priceCents: stringToCents(it.price),
                     assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
                 )
             }
@@ -545,10 +523,10 @@ extension ConfirmationView {
             totalCents: totalCents,
             perGuestCents: guestAmountsCents,
             items: items,
-            feesCents: moneyToCents(feesString),
-            taxCents: moneyToCents(taxString),
-            tipCents: moneyToCents(tipString),
-            discountCents: moneyToCents(discountString)
+            feesCents: stringToCents(feesString),
+            taxCents: stringToCents(taxString),
+            tipCents: stringToCents(tipString),
+            discountCents: stringToCents(discountString)
         )
     }
 
@@ -908,7 +886,7 @@ extension ConfirmationView {
                                             Text(item.label)
                                                 .font(.system(size: 16, weight: .semibold))
                                                 .lineLimit(1)
-                                            Text(ReceiptDisplay.money(moneyToCents(item.price)))
+                                            Text(ReceiptDisplay.money(stringToCents(item.price)))
                                                 .font(.system(size: 13))
                                                 .foregroundStyle(.secondary)
                                         }

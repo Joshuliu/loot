@@ -117,11 +117,7 @@ extension MessagesViewController {
                         uiModel.scanImageCropped = captureImage
                     }
                     uiModel.messageLoadingState = .loaded(payload)
-                    if let tabData = payload.tab {
-                        let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
-                        uiModel.receiptTab = minimal
-                        if uiModel.activeTab == nil { uiModel.activeTab = minimal }
-                    }
+                    if let tabData = payload.tab { applyTabData(tabData) }
                 } catch {
                     print("[applyMessage] Firestore fetch failed: \(error)")
                     if let inline = inlinePayload {
@@ -131,11 +127,7 @@ extension MessagesViewController {
                         uiModel.openedMessagePayload = inline
                         uiModel.currentReceipt = inline.toReceiptDisplay()
                         uiModel.messageLoadingState = .loaded(inline)
-                        if let tabData = inline.tab {
-                            let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
-                            uiModel.receiptTab = minimal
-                            if uiModel.activeTab == nil { uiModel.activeTab = minimal }
-                        }
+                        if let tabData = inline.tab { applyTabData(tabData) }
                         // Heal: upload the inline payload to Firestore so future
                         // recipients (and slot-claim updates) can use the doc.
                         Task {
@@ -191,12 +183,14 @@ extension MessagesViewController {
             uiModel.openedMessagePayload = payload
             uiModel.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
-            if let tabData = payload.tab {
-                let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
-                uiModel.receiptTab = minimal
-                if uiModel.activeTab == nil { uiModel.activeTab = minimal }
-            }
+            if let tabData = payload.tab { applyTabData(tabData) }
         }
+    }
+
+    private func applyTabData(_ tabData: TabPayload) {
+        let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
+        uiModel.receiptTab = minimal
+        if uiModel.activeTab == nil { uiModel.activeTab = minimal }
     }
 
     private func setupRootView(conversation: MSConversation) {
@@ -293,6 +287,37 @@ extension MessagesViewController {
         )
     }
     
+    // MARK: - Shared helpers
+
+    /// Renders any SwiftUI view into a UIImage at the given size.
+    private func renderView<T: View>(_ view: T, size: CGSize) -> UIImage {
+        let hosting = UIHostingController(rootView: view)
+        hosting.view.backgroundColor = .clear
+        hosting.safeAreaRegions = []
+        hosting.view.frame = CGRect(origin: .zero, size: size)
+        hosting.view.setNeedsLayout()
+        hosting.view.layoutIfNeeded()
+        let renderer = UIGraphicsImageRenderer(size: size)
+        return renderer.image { _ in
+            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
+        }
+    }
+
+    /// Builds the base loot URL, optionally appending tab identity params.
+    private func lootURLComponents(tab: LootTab? = nil) -> URLComponents {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "plsloot.me"
+        components.path = "/loot"
+        if let tab, let tabId = tab.id {
+            var items: [URLQueryItem] = [URLQueryItem(name: "tabId", value: tabId)]
+            items.append(URLQueryItem(name: "tn", value: tab.name))
+            if let hex = tab.colorHex, !hex.isEmpty { items.append(URLQueryItem(name: "tc", value: hex)) }
+            components.queryItems = items
+        }
+        return components
+    }
+
     func sendSettlementMessage(fromName: String, toName: String,
                               amountCents: Int, methodName: String,
                               tabColorHex: String?) {
@@ -301,30 +326,10 @@ extension MessagesViewController {
         let card = SettlementCardView(fromName: fromName, toName: toName,
                                      amountCents: amountCents, methodName: methodName,
                                      tabColorHex: tabColorHex)
-        let hosting = UIHostingController(rootView: card)
-        hosting.view.backgroundColor = .clear
-        hosting.safeAreaRegions = []
-        let size = CGSize(width: 260, height: 60)
-        hosting.view.frame = CGRect(origin: .zero, size: size)
-        hosting.view.setNeedsLayout()
-        hosting.view.layoutIfNeeded()
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let cardImage = renderer.image { _ in
-            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
-        }
+        let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
 
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "plsloot.me"
-        components.path = "/loot"
         // receiptTab is set when paying from a receipt viewer; activeTab is set otherwise.
-        let settlementTab = uiModel.receiptTab ?? uiModel.activeTab
-        if let tabId = settlementTab?.id {
-            var items: [URLQueryItem] = [URLQueryItem(name: "tabId", value: tabId)]
-            if let name = settlementTab?.name { items.append(URLQueryItem(name: "tn", value: name)) }
-            if let hex = settlementTab?.colorHex, !hex.isEmpty { items.append(URLQueryItem(name: "tc", value: hex)) }
-            components.queryItems = items
-        }
+        let components = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab)
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -345,29 +350,8 @@ extension MessagesViewController {
         let card = SettlementCardView(fromName: creditorName, toName: debtorName,
                                      amountCents: amountCents, methodName: "",
                                      tabColorHex: tabColorHex, isRequest: true)
-        let hosting = UIHostingController(rootView: card)
-        hosting.view.backgroundColor = .clear
-        hosting.safeAreaRegions = []
-        let size = CGSize(width: 260, height: 60)
-        hosting.view.frame = CGRect(origin: .zero, size: size)
-        hosting.view.setNeedsLayout()
-        hosting.view.layoutIfNeeded()
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let cardImage = renderer.image { _ in
-            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
-        }
-
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "plsloot.me"
-        components.path = "/loot"
-        let requestTab = uiModel.receiptTab ?? uiModel.activeTab
-        if let tabId = requestTab?.id {
-            var items: [URLQueryItem] = [URLQueryItem(name: "tabId", value: tabId)]
-            if let name = requestTab?.name { items.append(URLQueryItem(name: "tn", value: name)) }
-            if let hex = requestTab?.colorHex, !hex.isEmpty { items.append(URLQueryItem(name: "tc", value: hex)) }
-            components.queryItems = items
-        }
+        let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
+        let components = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab)
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -405,20 +389,7 @@ extension MessagesViewController {
             tabColorHex: tabColorHex
         )
 
-        let hosting = UIHostingController(rootView: card)
-        hosting.view.backgroundColor = .clear
-        hosting.safeAreaRegions = []  // Remove safe area insets that cause offset
-
-        let size = CGSize(width: 250, height: 150)
-        hosting.view.frame = CGRect(origin: .zero, size: size)
-        hosting.view.setNeedsLayout()
-        hosting.view.layoutIfNeeded()
-
-        let renderer = UIGraphicsImageRenderer(size: size)
-        return renderer.image { _ in
-            hosting.view.drawHierarchy(in: hosting.view.bounds,
-                                       afterScreenUpdates: true)
-        }
+        return renderView(card, size: CGSize(width: 250, height: 150))
     }
     
     private func splitLabelFromMode(_ mode: SplitPayload.Mode) -> String {
@@ -435,7 +406,7 @@ extension MessagesViewController {
         guard let conversation = activeConversation else { return }
 
         // Build a "portable" receipt + split payload
-        let fallbackTotalCents = centsFromAmountString(amount)
+        let fallbackTotalCents = stringToCents(amount)
         let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
             title: receiptName.isEmpty ? "New Receipt" : receiptName,
@@ -477,10 +448,7 @@ extension MessagesViewController {
         // Pre-generate a Firestore doc ID (local, no network)
         let docId = SharedReceiptService.shared.generateDocId()
 
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "plsloot.me"
-        components.path = "/loot"
+        var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
         // Embed the full payload inline (compressed) so the card is readable
         // even if the Firestore upload never completes (e.g. no internet at send time).
@@ -541,22 +509,9 @@ extension MessagesViewController {
             tabColorHex: tabColorHex,
             creatorName: myDisplayNameFromDefaults()
         )
-        let hosting = UIHostingController(rootView: card)
-        hosting.view.backgroundColor = .clear
-        hosting.safeAreaRegions = []
-        let size = CGSize(width: 250, height: 150)
-        hosting.view.frame = CGRect(origin: .zero, size: size)
-        hosting.view.setNeedsLayout()
-        hosting.view.layoutIfNeeded()
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let cardImage = renderer.image { _ in
-            hosting.view.drawHierarchy(in: hosting.view.bounds, afterScreenUpdates: true)
-        }
+        let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
 
-        var components = URLComponents()
-        components.scheme = "https"
-        components.host = "plsloot.me"
-        components.path = "/loot"
+        var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "tabInvite", value: tabId)]
 
         let layout = MSMessageTemplateLayout()
@@ -573,35 +528,6 @@ extension MessagesViewController {
         requestPresentationStyle(.compact)
     }
 
-    private func formattedDisplayAmount(from raw: String) -> String {
-        let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return "$0.00" }
-
-        if cleaned.contains(".") {
-            let parts = cleaned.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-            let dollars = parts.first ?? "0"
-            let cents = parts.count > 1 ? String(parts[1]) : ""
-            let fixed = cents.padding(toLength: 2, withPad: "0", startingAt: 0)
-            return "$\(dollars).\(String(fixed.prefix(2)))"
-        }
-        return "$\(cleaned).00"
-    }
-}
-
-private func centsFromAmountString(_ raw: String) -> Int {
-    let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        .replacingOccurrences(of: "$", with: "")
-        .replacingOccurrences(of: ",", with: "")
-    guard !s.isEmpty else { return 0 }
-    if s.contains(".") {
-        let parts = s.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        let dollars = Int(parts.first ?? "0") ?? 0
-        let centsRaw = parts.count > 1 ? String(parts[1]) : ""
-        let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
-        let cents = Int(String(cents2.prefix(2))) ?? 0
-        return max(0, dollars * 100 + cents)
-    }
-    return max(0, (Int(s) ?? 0) * 100)
 }
 
 // MARK: - Payload -> ReceiptDisplay (✅ UPDATED for new field names)

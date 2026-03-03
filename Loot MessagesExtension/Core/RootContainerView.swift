@@ -34,8 +34,8 @@ struct RootContainerView: View {
         guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
             return amountString
         }
-        let subtotal = amountToCents(amountString)
-        let tip = amountToCents(tipAmount)
+        let subtotal = stringToCents(amountString)
+        let tip = stringToCents(tipAmount)
         let total = subtotal + tip
         return String(format: "%.2f", Double(total) / 100.0)
     }
@@ -100,38 +100,11 @@ struct RootContainerView: View {
         self.onSendTabInvite = onSendTabInvite
     }
 
-    // MARK: - Helpers
-
-    private func amountToCents(_ str: String) -> Int {
-        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-        if trimmed.isEmpty { return 0 }
-
-        if trimmed.contains(".") {
-            let parts = trimmed.split(separator: ".", maxSplits: 1)
-            let dollars = Int(parts.first ?? "0") ?? 0
-            let centsPart = parts.count > 1 ? String(parts[1]) : ""
-            let cents2: Int
-            if centsPart.isEmpty {
-                cents2 = 0
-            } else if centsPart.count == 1 {
-                cents2 = Int(centsPart + "0") ?? 0
-            } else {
-                cents2 = Int(String(centsPart.prefix(2))) ?? 0
-            }
-            return dollars * 100 + cents2
-        } else {
-            let dollars = Int(trimmed) ?? 0
-            return dollars * 100
-        }
-    }
-
     private func makePreviewReceipt() -> ReceiptDisplay {
         let hasTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
         
-        let subtotalCents = amountToCents(amountString)
-        let tipCents = hasTip ? amountToCents(tipAmount) : 0
+        let subtotalCents = stringToCents(amountString)
+        let tipCents = hasTip ? stringToCents(tipAmount) : 0
         let totalCents = subtotalCents + tipCents
         
         return ReceiptDisplay(
@@ -1601,7 +1574,7 @@ struct RootContainerView: View {
                         // Preserve user's tip if they added one, otherwise use scanned tip
                         let finalTipCents: Int
                         if userAddedTip {
-                            finalTipCents = amountToCents(tipAmount)
+                            finalTipCents = stringToCents(tipAmount)
                         } else if existingUserTip > 0 {
                             finalTipCents = existingUserTip
                         } else {
@@ -1896,7 +1869,7 @@ struct RootContainerView: View {
                                 // Update the receipt with the new tip
                                 if let receipt = uiModel.currentReceipt {
                                     // For scanned receipts, preserve the breakdown and update tip
-                                    let tipCentsValue = amountToCents(tip)
+                                    let tipCentsValue = stringToCents(tip)
                                     uiModel.currentReceipt = ReceiptDisplay(
                                         id: receipt.id,
                                         title: receipt.title,
@@ -1982,7 +1955,7 @@ struct RootContainerView: View {
 
                                 // Update the receipt if it exists
                                 if let receipt = uiModel.currentReceipt {
-                                    let tipCentsValue = amountToCents(tip)
+                                    let tipCentsValue = stringToCents(tip)
                                     uiModel.currentReceipt = ReceiptDisplay(
                                         id: receipt.id,
                                         title: receipt.title,
@@ -2000,7 +1973,7 @@ struct RootContainerView: View {
                                 // Update split draft if it exists
                                 if var draft = uiModel.currentSplitDraft {
                                     let oldTip = draft.tipCents
-                                    let newTip = amountToCents(tip)
+                                    let newTip = stringToCents(tip)
                                     draft.tipCents = newTip
                                     draft.totalCents = draft.totalCents - oldTip + newTip
                                     uiModel.currentSplitDraft = draft
@@ -2028,12 +2001,12 @@ struct RootContainerView: View {
                                         guests: seededGuests,
                                         payerGuestId: seededGuests.first?.id ?? UUID(),
                                         mode: newMode,
-                                        totalCents: amountToCents(totalAmount),
+                                        totalCents: stringToCents(totalAmount),
                                         perGuestCents: [],
                                         items: [],
                                         feesCents: uiModel.currentReceipt?.feesCents ?? 0,
                                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
-                                        tipCents: uiModel.currentReceipt?.tipCents ?? amountToCents(tipAmount),
+                                        tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount),
                                         discountCents: uiModel.currentReceipt?.discountCents ?? 0
                                     )
                                     splitDraft = newDraft
@@ -2053,12 +2026,12 @@ struct RootContainerView: View {
                                         guests: newGuests,
                                         payerGuestId: newPayerId,
                                         mode: .equally,
-                                        totalCents: amountToCents(totalAmount),
+                                        totalCents: stringToCents(totalAmount),
                                         perGuestCents: [],
                                         items: [],
                                         feesCents: uiModel.currentReceipt?.feesCents ?? 0,
                                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
-                                        tipCents: uiModel.currentReceipt?.tipCents ?? amountToCents(tipAmount),
+                                        tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount),
                                         discountCents: uiModel.currentReceipt?.discountCents ?? 0
                                     )
                                     splitDraft = newDraft

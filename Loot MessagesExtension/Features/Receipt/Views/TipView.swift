@@ -79,12 +79,6 @@ struct TipView: View {
         preTipTotalCents + tipCents
     }
     
-    private func formatMoney(_ cents: Int) -> String {
-        let dollars = cents / 100
-        let centsRemainder = cents % 100
-        return "$\(dollars).\(String(format: "%02d", centsRemainder))"
-    }
-    
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -96,7 +90,7 @@ struct TipView: View {
                             Text("Pre-tip total")
                                 .font(.system(size: 15, weight: .regular))
                             Spacer()
-                            Text(formatMoney(preTipTotalCents))
+                            Text(ReceiptDisplay.money(preTipTotalCents))
                                 .font(.system(size: 15, weight: .regular))
                         }
                         .padding(.horizontal, 16)
@@ -107,7 +101,7 @@ struct TipView: View {
                             Text("Tip (\(String(format: "%.0f", tipPercent))%)")
                                 .font(.system(size: 15, weight: .regular))
                             Spacer()
-                            Text(formatMoney(tipCents))
+                            Text(ReceiptDisplay.money(tipCents))
                                 .font(.system(size: 15, weight: .regular))
                                 .foregroundColor(.blue)
                         }
@@ -122,7 +116,7 @@ struct TipView: View {
                             Text("Total")
                                 .font(.system(size: 17, weight: .semibold))
                             Spacer()
-                            Text(formatMoney(totalCents))
+                            Text(ReceiptDisplay.money(totalCents))
                                 .font(.system(size: 17, weight: .semibold))
                         }
                         .padding(.horizontal, 16)
@@ -163,7 +157,7 @@ struct TipView: View {
                 }
                 
                 Button(action: {
-                    onNext(formatMoney(tipCents).replacingOccurrences(of: "$", with: ""), formatMoney(totalCents).replacingOccurrences(of: "$", with: ""))
+                    onNext(ReceiptDisplay.money(tipCents).replacingOccurrences(of: "$", with: ""), ReceiptDisplay.money(totalCents).replacingOccurrences(of: "$", with: ""))
                 }) {
                     Text("Next")
                         .font(.system(size: 17, weight: .semibold))

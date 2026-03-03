@@ -7,7 +7,7 @@
 
 import Foundation
 import UIKit
-import Vision
+@preconcurrency import Vision
 
 /// A standalone, memory-lean tool that accepts a UIImage and returns
 /// the OCR transcript. The pipeline mirrors AnalyzeDocument's downstream

@@ -112,7 +112,7 @@ struct LootTabView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(UIColor.systemBackground))
-        .animation(.spring(response: 0.4, dampingFraction: 0.85))
+        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isExpanded)
         .overlay(alignment: .topTrailing) {
             Button(action: { onAccountTapped?() }) {
                 Text(initials)
@@ -640,7 +640,7 @@ struct LootTabView: View {
                     Text(member.displayName + (member.memberId == currentUserId ? " (You)" : ""))
                         .font(.system(size: 16, weight: .medium))
                     Spacer()
-                    Text(formatCents(member.balanceCents))
+                    Text(ReceiptDisplay.money(member.balanceCents))
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(member.balanceCents > 0 ? .green : member.balanceCents < 0 ? .red : .secondary)
                 }
@@ -655,14 +655,6 @@ struct LootTabView: View {
         }
         .background(Color(UIColor.secondarySystemBackground))
         .cornerRadius(14)
-    }
-
-    // MARK: - Helpers
-
-    private func formatCents(_ cents: Int) -> String {
-        let dollars = Double(abs(cents)) / 100.0
-        let formatted = String(format: "$%.2f", dollars)
-        return cents < 0 ? "-\(formatted)" : formatted
     }
 
     private var orDivider: some View {

@@ -146,7 +146,7 @@ struct ConfirmationView: View {
     // Always derived from the live `amount`/`tipAmount` props — the split draft's totalCents
     // can be stale (e.g. user edited the subtotal in ManualInputView without resaving the draft).
     private var preTipTotalCents: Int {
-        amountToCents(amount) - amountToCents(tipAmount)
+        stringToCents(amount) - stringToCents(tipAmount)
     }
 
     // Tip cents based on current slider percentage
@@ -159,15 +159,9 @@ struct ConfirmationView: View {
         preTipTotalCents + sliderTipCents
     }
 
-    private func formatMoney(_ cents: Int) -> String {
-        let dollars = cents / 100
-        let centsRemainder = cents % 100
-        return "$\(dollars).\(String(format: "%02d", centsRemainder))"
-    }
-
     // Extract owed amounts and total from split draft (or compute default equal split)
     private var owedAmounts: [Int]? {
-        let total = amountToCents(amount)
+        let total = stringToCents(amount)
 
         if let draft = splitDraft {
             let activeGuests = draft.guests.filter { $0.isIncluded }
@@ -225,7 +219,7 @@ struct ConfirmationView: View {
         if let draft = splitDraft, draft.totalCents > 0 {
             return draft.totalCents
         }
-        return amountToCents(amount)
+        return stringToCents(amount)
     }
     
     // Helper to compute equal split
@@ -239,24 +233,6 @@ struct ConfirmationView: View {
         return out
     }
     
-    func amountToCents(_ str: String) -> Int {
-        let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "$", with: "")
-            .replacingOccurrences(of: ",", with: "")
-        if trimmed.isEmpty { return 0 }
-
-        if trimmed.contains(".") {
-            let parts = trimmed.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-            let dollars = Int(parts.first ?? "0") ?? 0
-            let centsRaw = parts.count > 1 ? String(parts[1]) : ""
-            let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
-            let cents = Int(String(cents2.prefix(2))) ?? 0
-            return max(0, dollars * 100 + cents)
-        } else {
-            return max(0, (Int(trimmed) ?? 0) * 100)
-        }
-    }
-
     private func formatAmount(_ str: String) -> String {
         let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "0.00" }
@@ -471,7 +447,7 @@ struct ConfirmationView: View {
                             Text("Pre-tip total")
                                 .font(.system(size: 14, weight: .regular))
                             Spacer()
-                            Text(formatMoney(preTipTotalCents))
+                            Text(ReceiptDisplay.money(preTipTotalCents))
                                 .font(.system(size: 14, weight: .regular))
                         }
                         .padding(.horizontal, 16)
@@ -491,13 +467,13 @@ struct ConfirmationView: View {
                                     .multilineTextAlignment(.trailing)
                                     .fixedSize()
                                     .onChange(of: tipManualInput) { _, newValue in
-                                        let cents = amountToCents(newValue)
+                                        let cents = stringToCents(newValue)
                                         if preTipTotalCents > 0 {
                                             tipPercent = min(100, max(0, (Double(cents) / Double(preTipTotalCents)) * 100.0))
                                         }
                                     }
                             } else {
-                                Text(formatMoney(sliderTipCents))
+                                Text(ReceiptDisplay.money(sliderTipCents))
                                     .font(.system(size: 14, weight: .regular))
                                     .foregroundColor(.blue)
                                     .onTapGesture {
@@ -526,14 +502,14 @@ struct ConfirmationView: View {
                                     .multilineTextAlignment(.trailing)
                                     .fixedSize()
                                     .onChange(of: tipManualInput) { _, newValue in
-                                        let enteredTotal = amountToCents(newValue)
+                                        let enteredTotal = stringToCents(newValue)
                                         let impliedTip = enteredTotal - preTipTotalCents
                                         if preTipTotalCents > 0 && impliedTip >= 0 {
                                             tipPercent = min(100, (Double(impliedTip) / Double(preTipTotalCents)) * 100.0)
                                         }
                                     }
                             } else {
-                                Text(formatMoney(totalWithTipCents))
+                                Text(ReceiptDisplay.money(totalWithTipCents))
                                     .font(.system(size: 15, weight: .semibold))
                                     .onTapGesture {
                                         tipManualInput = String(format: "%.2f", Double(totalWithTipCents) / 100.0)
@@ -594,8 +570,8 @@ struct ConfirmationView: View {
 
                 Button(action: {
                     tipEditingField = nil
-                    let tipStr = formatMoney(sliderTipCents).replacingOccurrences(of: "$", with: "")
-                    let totalStr = formatMoney(totalWithTipCents).replacingOccurrences(of: "$", with: "")
+                    let tipStr = ReceiptDisplay.money(sliderTipCents).replacingOccurrences(of: "$", with: "")
+                    let totalStr = ReceiptDisplay.money(totalWithTipCents).replacingOccurrences(of: "$", with: "")
                     onTipChanged(tipStr, totalStr)
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                         showTipPanel = false
@@ -943,7 +919,7 @@ struct ConfirmationView: View {
 
             if !hasTipInitialized {
                 hasTipInitialized = true
-                let existingTipCents = splitDraft?.tipCents ?? amountToCents(tipAmount)
+                let existingTipCents = splitDraft?.tipCents ?? stringToCents(tipAmount)
                 if existingTipCents > 0 && preTipTotalCents > 0 {
                     tipPercent = (Double(existingTipCents) / Double(preTipTotalCents)) * 100.0
                 } else {
@@ -1001,7 +977,7 @@ struct ConfirmationView: View {
             }
         }
         .onChange(of: amount) { _, newAmount in
-            let newTotal = amountToCents(newAmount)
+            let newTotal = stringToCents(newAmount)
             // When Phase 1 completes and the total arrives, recalculate amounts if they
             // were seeded as zeros (because the view appeared before the total was known).
             guard newTotal > 0, guestAmountsCents.allSatisfy({ $0 == 0 }), !guests.isEmpty else { return }
