@@ -727,18 +727,20 @@ struct RootContainerView: View {
 
     @ViewBuilder
     private var tipContent: some View {
-        TipView(
-            subtotalString: amountString,
-            taxCents: uiModel.currentReceipt?.taxCents ?? 0,
-            feesCents: uiModel.currentReceipt?.feesCents ?? 0,
-            discountCents: uiModel.currentReceipt?.discountCents ?? 0,
+        let preTip = stringToCents(amountString)
+            + (uiModel.currentReceipt?.taxCents ?? 0)
+            + (uiModel.currentReceipt?.feesCents ?? 0)
+            - (uiModel.currentReceipt?.discountCents ?? 0)
+        TipPanelView(
+            preTipTotalCents: preTip,
             existingTipCents: uiModel.currentReceipt?.tipCents ?? 0,
+            isExpanded: uiModel.isExpanded,
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = confirmationCameFromManual ? .fill : .confirmation
                 }
             },
-            onNext: { tip, _ in
+            onApply: { tip, _ in
                 tipAmount = tip
                 if let receipt = uiModel.currentReceipt {
                     let tipCentsValue = stringToCents(tip)
