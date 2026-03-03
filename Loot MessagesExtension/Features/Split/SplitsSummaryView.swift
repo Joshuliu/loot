@@ -16,7 +16,7 @@ struct SplitsSummaryView: View {
 
     private var isTabReceipt: Bool { uiModel.openedMessagePayload?.tid != nil }
 
-    @State private var selectedIndex: Int = 0
+    @State private var selectedIndex: Int? = nil
 
     private enum MyBillState { case choosing, joined, notInBill }
     @State private var billState: MyBillState = .choosing
@@ -235,7 +235,7 @@ struct SplitsSummaryView: View {
 
     @ViewBuilder
     private func guestRow(includedIdx i: Int, guestIdx gi: Int, showTransactions: Bool, included: [Int]) -> some View {
-        let guestItems = itemsForSlot(i)
+        let guestItems = itemsForSlot(gi)
         let count = included.count
 
         VStack(alignment: .leading, spacing: 0) {
@@ -388,18 +388,19 @@ struct SplitsSummaryView: View {
             } else {
                 let included = includedIndices
                 let count = included.count
-                let selectedIncludedSlot = max(0, min(selectedIndex, max(0, count - 1)))
-                let selectedGuestIndex = count > 0 ? included[selectedIncludedSlot] : 0
-                let selectedCents = owed(for: selectedGuestIndex)
+                // nil = no arc selected (show total); non-nil = index into `included`
+                let selectedGuestIndex: Int? = selectedIndex
+                    .map { max(0, min($0, max(0, count - 1))) }
+                    .flatMap { count > 0 ? included[$0] : nil }
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
 
-                // Donut chart
+                // Donut chart — tapping an arc selects it; tapping anywhere else deselects.
+                // The ZStack's DragGesture takes child-priority over this onTapGesture.
                 GeometryReader { geo in
                     let size = min(geo.size.width, 230)
                     let lineW: CGFloat = 30
-                    let radius = size / 2 - lineW / 2
                     let dimmer = Color(white: 0.55)
 
                     ZStack {
@@ -408,7 +409,8 @@ struct SplitsSummaryView: View {
                                     style: .init(lineWidth: lineW, lineCap: .round))
                             .frame(width: size, height: size)
 
-                        ForEach(0..<count, id: \.self) { i in
+                        // Reversed so last arc renders on top at the 12 o'clock seam
+                        ForEach((0..<count).reversed(), id: \.self) { i in
                             if safeTotal > 0 {
                                 let gi = included[i]
                                 let start = Double(sumBeforeIncludedSlot(i)) / Double(safeTotal)
@@ -418,41 +420,76 @@ struct SplitsSummaryView: View {
                                         .trim(from: start, to: end)
                                         .stroke(colorForSlot(gi),
                                                 style: .init(lineWidth: lineW, lineCap: .round))
-                                        .colorMultiply(i == selectedIndex ? .white : dimmer)
+                                        .colorMultiply(selectedIndex == nil || i == selectedIndex ? .white : dimmer)
                                         .rotationEffect(.degrees(-90))
                                         .frame(width: size, height: size)
                                 }
-//                                if i == 0 || selectedIndex != i {
-//                                    let ang = -(.pi / 1.975) + (start * 2 * .pi)
-//                                    let hx = center.x + handleRadius * cos(ang)
-//                                    let hy = center.y + handleRadius * sin(ang)
-//                                    Circle()
-//                                        .fill(BadgeColors.color(for: colorGi))
-//                                        .overlay(
-//                                            Circle().stroke(BadgeColors.color(for: selectedIndex == 0 ? i : colorGi), lineWidth: 0.05)
-//                                        )
-//                                        .colorMultiply(colorIdx != selectedIndex ? dimmer : .white)
-//                                        .frame(width: lineW, height: lineW)
-//                                        .position(x: hx, y: hy)
-//                                }
                             }
                         }
 
+                        // Dot at 12 o'clock — last guest's color sits on top of the seam
+                        if count > 0, safeTotal > 0 {
+                            let lastI = count - 1
+                            let lastGi = included[lastI]
+                            Circle()
+                                .fill(colorForSlot(lastGi))
+                                .frame(width: lineW, height: lineW)
+                                .offset(y: -size / 2)
+                                .colorMultiply(selectedIndex == nil || selectedIndex == lastI ? .white : dimmer)
+                        }
+
                         VStack(spacing: 6) {
-                            Text("\(displayName(for: selectedGuestIndex)) owes")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-
-                            Text(ReceiptDisplay.money(selectedCents))
-                                .font(.system(size: 34, weight: .bold))
-
-                            Text(percentText(selectedCents))
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.secondary)
+                            if let gi = selectedGuestIndex {
+                                Text("\(displayName(for: gi)) owes")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Text(ReceiptDisplay.money(owed(for: gi)))
+                                    .font(.system(size: 34, weight: .bold))
+                                Text(percentText(owed(for: gi)))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Total")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                Text(ReceiptDisplay.money(safeTotal))
+                                    .font(.system(size: 34, weight: .bold))
+                                Text("split \(count) ways")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .gesture(DragGesture(minimumDistance: 0).onEnded { value in
+                        let cx = geo.size.width / 2
+                        let cy = geo.size.height / 2
+                        let dx = value.location.x - cx
+                        let dy = value.location.y - cy
+                        let dist = sqrt(dx * dx + dy * dy)
+                        let innerR = size / 2 - lineW / 2
+                        let outerR = size / 2 + lineW / 2
+
+                        guard dist >= innerR && dist <= outerR, safeTotal > 0 else {
+                            selectedIndex = nil
+                            return
+                        }
+
+                        // Convert to [0, 1) fraction from 12 o'clock, clockwise
+                        var angle = atan2(dy, dx) / (2 * .pi) + 0.25
+                        if angle < 0 { angle += 1 }
+                        if angle >= 1 { angle -= 1 }
+
+                        for i in 0..<count {
+                            let start = Double(sumBeforeIncludedSlot(i)) / Double(safeTotal)
+                            let end = Double(sumThroughIncludedSlot(i)) / Double(safeTotal)
+                            if angle >= start && angle < end {
+                                selectedIndex = i
+                                return
+                            }
+                        }
+                    })
                 }
                 .frame(height: 240)
 
@@ -507,26 +544,30 @@ struct SplitsSummaryView: View {
                                     openInSafari: uiModel.openInSafari
                                 )
                             } else {
-                                // Leave button
-                                Button {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                        unclaimSlot()
-                                        billState = .choosing
+                                // Leave button — hidden if the current user is the payer
+                                let myUid = KeychainHelper.getOrCreateUserId()
+                                let iAmPayer = split.g[split.pi].uid == myUid
+                                if !iAmPayer {
+                                    Button {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                            unclaimSlot()
+                                            billState = .choosing
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                                .font(.system(size: 12, weight: .semibold))
+                                            Text("Leave this bill")
+                                                .font(.system(size: 13, weight: .medium))
+                                        }
+                                        .foregroundStyle(.red)
+                                        .frame(maxWidth: .infinity)
+                                        .padding(.vertical, 10)
+                                        .background(Color.red.opacity(0.08))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
                                     }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                                            .font(.system(size: 12, weight: .semibold))
-                                        Text("Leave this bill")
-                                            .font(.system(size: 13, weight: .medium))
-                                    }
-                                    .foregroundStyle(.red)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
-                                    .background(Color.red.opacity(0.08))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .buttonStyle(.plain)
                                 }
-                                .buttonStyle(.plain)
                             }
                         }
 
@@ -653,6 +694,8 @@ struct SplitsSummaryView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
+            .contentShape(Rectangle())
+            .onTapGesture { selectedIndex = nil }
         }
         } // else
         } // Group

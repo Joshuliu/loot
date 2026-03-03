@@ -394,32 +394,31 @@ final class LLMClient {
 
     func analyzeReceiptPhase2(fileUri: String, knownTotalCents: Int) async throws -> Phase2Result {
         let developerMessage = """
-        You are parsing for a bill splitting app so users can easily split up receipts by items.
-        The total is \(knownTotalCents) cents, and sum of all item cents, taxes, fees, and discounts should sum up exactly to the total.
-
-        Output ONLY using this exact line-based format. No markdown, no code fences, no extra text.
+        You are extracting line items from a receipt for a bill-splitting app. The known total is \(knownTotalCents) cents.
+        Output ONLY this exact format. No markdown, no code fences, no extra text.
 
         BEGIN_RECEIPT_V2
         SUBTOTAL_CENTS|<int or empty>
         TAX_CENTS|<int or empty>
         TIP_CENTS|<int or empty>
         FEES_CENTS|<int or empty>
-        DISCOUNT_CENTS|<int or empty>
 
-        ITEM|<qty int>|<label string>|<cents int or empty>
-        (repeat ITEM lines as needed)
+        ITEM|<qty>|<label>|<line total cents or empty>
+        (one ITEM line per receipt line, repeated as needed)
 
         END_RECEIPT_V2
 
         Rules:
-        - Include ONLY items that are actually charged.
-        - Exclude ALL discounts unless it helps add up to the total.
-        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
-        - Items should only show bigger quantities than 1 if the actual receipt combines them.
-        - CHECK: Sum of all ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
+        - One ITEM per receipt line. Never merge two separate receipt lines into one ITEM.
+        - cents = the line total printed on the receipt for that item — the final amount charged for that line, already accounting for quantity. If two prices appear on the line (e.g. unit price and line total), use the rightmost/larger one. Never multiply or compute — copy the printed line total exactly. Only correct clear character-level OCR noise (e.g. "1 09" → 109, "L 09" → 109, "11. 09" → 1109). Never substitute a different number because you think it fits the total better — the transcript is accurate. Example: "2x Burger $16.00" → cents=1600 (not 800, not 3200).
+        - qty = the quantity printed on that line, or 1 if not shown.
+        - If the same item appears on two separate lines, output two separate ITEM lines.
+        - Rewrite labels to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
+        - When a per-item discount line appears (e.g. "COMP", "DISCOUNT", "PROMO" under an item): use the known total to determine which interpretation is correct. If the item's listed price is already the post-discount price (subtracting the discount would make the sum too low), ignore the discount line entirely. If the item's listed price is pre-discount (subtracting it makes the sum match), fold the discount into the item's cents. Never emit a per-item discount as a separate ITEM line. Only use a negative ITEM line for a bill-wide discount with no associated item.
+        - CHECK: sum of ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS = \(knownTotalCents).
         """
 
-        let userMessage = "Extract all items and breakdown from this receipt that add up to \(knownTotalCents) cents."
+        let userMessage = "Extract all line items and breakdown from this receipt."
 
         let systemInstruction = Content(
             role: "system",
@@ -444,7 +443,7 @@ final class LLMClient {
             generationConfig: .init(
                 maxOutputTokens: maxTokensPrimary,
                 responseMimeType: nil, // <- Phase 2 now uses a strict line protocol
-                temperature: 0.15,
+                temperature: 0,
                 thinkingConfig: .init(thinkingBudget: -1)
             )
         )
@@ -512,35 +511,30 @@ final class LLMClient {
 
     func analyzeReceiptPhase2(transcript: String, knownTotalCents: Int) async throws -> Phase2Result {
         let developerMessage = """
-        You are parsing for a bill splitting app so users can easily split up receipts by items.
-        The total is \(knownTotalCents) cents, and sum of all item cents, taxes, fees, and discounts should sum up exactly to the total.
-
-        To match items to amounts, follow these two steps:
-        1. Remove extra subitems, ensuring the # of items on left match # of amounts on right.
-        2. Match item names to amounts using logic. EXAMPLE: Sodas shouldn't cost $10. It could be a subitem.
-
-        Output ONLY using this exact line-based format. No markdown, no code fences, no extra text.
+        You are extracting line items from a receipt for a bill-splitting app. The known total is \(knownTotalCents) cents.
+        Output ONLY this exact format. No markdown, no code fences, no extra text.
 
         BEGIN_RECEIPT_V2
-        SUBTOTAL_CENTS|<int or empty>
         TAX_CENTS|<int or empty>
         TIP_CENTS|<int or empty>
         FEES_CENTS|<int or empty>
-        DISCOUNT_CENTS|<int or empty>
 
-        ITEM|<qty int>|<label string>|<cents int or empty>
-        (repeat ITEM lines as needed)
+        ITEM|<qty>|<label>|<line total cents or empty>
+        (one ITEM line per receipt line, repeated as needed)
 
         END_RECEIPT_V2
 
         Rules:
-        - Include ONLY items that are actually charged.
-        - Rewrite line items to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger
-        - Do not include sub-items as a separate item.
-        - CHECK: Sum of all ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS - DISCOUNT_CENTS MUST EQUAL \(knownTotalCents).
+        - One ITEM per receipt line. Never merge two separate receipt lines into one ITEM.
+        - cents = the line total printed on the receipt for that item — the final amount charged for that line, already accounting for quantity. If two prices appear on the line (e.g. unit price and line total), use the rightmost/larger one. Never multiply or compute — copy the printed line total exactly. Only correct clear character-level OCR noise (e.g. "1 09" → 109, "L 09" → 109). Never substitute a different number because you think it fits the total better — the transcript is accurate. Example: "2x Burger $16.00" → cents=1600 (not 800, not 3200).
+        - qty = the quantity printed on that line, or 1 if not shown.
+        - If the same item appears on two separate lines, output two separate ITEM lines.
+        - Rewrite labels to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
+        - When a per-item discount line appears (e.g. "COMP", "DISCOUNT", "PROMO" under an item): use the known total to determine which interpretation is correct. If the item's listed price is already the post-discount price (subtracting the discount would make the sum too low), ignore the discount line entirely. If the item's listed price is pre-discount (subtracting it makes the sum match), fold the discount into the item's cents. Never emit a per-item discount as a separate ITEM line. Only use a negative ITEM line for a bill-wide discount with no associated item.
+        - CHECK: sum of ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS = \(knownTotalCents).
         """
 
-        let userMessage = "Extract all items and breakdown from this receipt transcript that add up to \(knownTotalCents) cents:\n\n\(transcript)"
+        let userMessage = "Extract all line items and breakdown from this receipt transcript:\n\n\(transcript)"
 
         let systemInstruction = Content(
             role: "system",
@@ -556,7 +550,7 @@ final class LLMClient {
             generationConfig: .init(
                 maxOutputTokens: maxTokensPrimary,
                 responseMimeType: nil,
-                temperature: 0.15,
+                temperature: 0,
                 thinkingConfig: .init(thinkingBudget: -1)
             )
         )

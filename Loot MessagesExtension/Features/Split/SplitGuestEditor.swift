@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Guest model used by SplitView
 
-struct SplitGuest: Identifiable, Equatable {
+struct SplitGuest: Identifiable, Equatable, Codable {
     let id: UUID
     var name: String
     var isIncluded: Bool

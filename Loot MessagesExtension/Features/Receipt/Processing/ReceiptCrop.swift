@@ -3,110 +3,54 @@
 //  Loot
 //
 
-import Vision
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import UIKit
 
 enum ReceiptCrop {
 
-    struct Config {
-        // OPTIMIZED: Smaller size, Gemini handles 800-1024px perfectly
-        var maxLongEdge: CGFloat = 1024  // Was 1280, reduced 20%
-        
-        // OPTIMIZED: More aggressive compression, Gemini is resilient
-        var jpegQuality: CGFloat = 0.55  // Was 0.70, ~40% smaller files
-        
-        // Rectangle detection tuning
-        var minConfidence: VNConfidence = 0.55
-        var minAspectRatio: VNAspectRatio = 0.20
-        var quadTolerance: Float = 30
-        
-        // OPTIMIZED: Reduce enhancement (Gemini prefers original)
-        var contrast: Float = 1.05       // Was 1.10, more subtle
-        var sharpen: Float = 0.20        // Was 0.40, less aggressive
-        
-        // NEW: Adaptive quality based on image characteristics
-        var useAdaptiveCompression: Bool = true
+struct Config {
+        var maxLongEdge: CGFloat = 2048
+        var jpegQuality: CGFloat = 0.55
+        var contrast: Float = 1.05
+        var sharpen: Float = 0.20
         var skipEnhancementForClearImages: Bool = true
     }
 
     static func run(_ input: UIImage, config: Config = .init(), done: @escaping (UIImage) -> Void) {
         DispatchQueue.global(qos: .userInitiated).async {
             let startTime = Date()
-            
+
             // 1) Normalize orientation first
             let img = input.up
 
             guard let ci = CIImage(image: img) else {
                 let fallback = downscaleAndCompress(img, config: config)
-                print("[Crop] ⚠️  No CIImage, fallback: \(fallback.jpegData(compressionQuality: config.jpegQuality)?.count ?? 0) bytes")
+                print("[Crop] ⚠️  No CIImage, fallback")
                 return DispatchQueue.main.async { done(fallback) }
             }
 
-            // 2) Detect receipt rectangle
-            let rectReq = VNDetectRectanglesRequest()
-            rectReq.maximumObservations = 8
-            rectReq.minimumConfidence = config.minConfidence
-            rectReq.minimumAspectRatio = config.minAspectRatio
-            rectReq.quadratureTolerance = config.quadTolerance
-
-            if #available(iOS 15.0, *) {
-                rectReq.minimumSize = 0.25
-            }
-
-            let handler = VNImageRequestHandler(ciImage: ci, options: [:])
-            try? handler.perform([rectReq])
-
-            func score(_ o: VNRectangleObservation) -> Float {
-                let bb = o.boundingBox
-                let area = bb.width * bb.height
-                let dx = bb.midX - 0.5
-                let dy = bb.midY - 0.5
-                let centerPenalty = dx*dx + dy*dy
-                return Float(area) * o.confidence - Float(centerPenalty) * 0.15
-            }
-
-            let best = rectReq.results?
-                .sorted { score($0) > score($1) }
-                .first
-
-            let correctedCI: CIImage
-            var didCrop = false
-            if let obs = best {
-                let area = obs.boundingBox.width * obs.boundingBox.height
-                if area >= 0.30 && obs.confidence >= config.minConfidence {
-                    correctedCI = perspectiveCorrect(ciImage: ci, observation: obs)
-                    didCrop = true
-                } else {
-                    correctedCI = ci
-                }
-            } else {
-                correctedCI = ci
-            }
-
-            // 3) NEW: Check if image needs enhancement
+            // 2) Check if image needs enhancement
             let needsEnhancement = config.skipEnhancementForClearImages
-                ? imageNeedsEnhancement(correctedCI)
+                ? imageNeedsEnhancement(ci)
                 : true
-            
+
             let enhancedCI: CIImage
             if needsEnhancement {
-                enhancedCI = enhance(ciImage: correctedCI, contrast: config.contrast, sharpen: config.sharpen)
+                enhancedCI = enhance(ciImage: ci, contrast: config.contrast, sharpen: config.sharpen)
             } else {
-                enhancedCI = correctedCI
+                enhancedCI = ci
                 print("[Crop] ✨ Skipping enhancement (image is clear)")
             }
 
-            // 4) Render to UIImage
+            // 3) Render to UIImage
             let rendered = render(enhancedCI) ?? img
 
-            // 5) NEW: Adaptive compression
-            let output = downscaleAndCompress(rendered, config: config, wasCropped: didCrop)
-            
+            // 4) Downscale if needed
+            let output = downscaleAndCompress(rendered, config: config)
+
             let duration = Date().timeIntervalSince(startTime)
-            let sizeKB = (output.jpegData(compressionQuality: config.jpegQuality)?.count ?? 0) / 1024
-            print("[Crop] ✅ Processed in \(String(format: "%.2f", duration))s → \(sizeKB)KB (cropped: \(didCrop), enhanced: \(needsEnhancement))")
+            print("[Crop] ✅ Processed in \(String(format: "%.2f", duration))s (enhanced: \(needsEnhancement))")
 
             DispatchQueue.main.async { done(output) }
         }
@@ -114,24 +58,6 @@ enum ReceiptCrop {
 }
 
 // MARK: - Core helpers
-
-private func perspectiveCorrect(ciImage: CIImage, observation o: VNRectangleObservation) -> CIImage {
-    let w = ciImage.extent.width
-    let h = ciImage.extent.height
-
-    func px(_ p: CGPoint) -> CGPoint {
-        CGPoint(x: p.x * w, y: p.y * h)
-    }
-
-    let f = CIFilter.perspectiveCorrection()
-    f.inputImage = ciImage
-    f.topLeft = px(o.topLeft)
-    f.topRight = px(o.topRight)
-    f.bottomLeft = px(o.bottomLeft)
-    f.bottomRight = px(o.bottomRight)
-
-    return f.outputImage ?? ciImage
-}
 
 private func enhance(ciImage: CIImage, contrast: Float, sharpen: Float) -> CIImage {
     // OPTIMIZED: Lighter enhancement
@@ -239,41 +165,21 @@ private func render(_ ci: CIImage) -> UIImage? {
     return UIImage(cgImage: cg, scale: 1, orientation: .up)
 }
 
-// OPTIMIZED: Adaptive compression
+// Downscale only — no JPEG compression since image stays in memory for OCR
 private func downscaleAndCompress(_ img: UIImage, config: ReceiptCrop.Config, wasCropped: Bool = false) -> UIImage {
     let size = img.size
     let longEdge = max(size.width, size.height)
 
-    // 1) Downscale if needed
-    let scaled: UIImage
-    if longEdge > config.maxLongEdge, longEdge > 0 {
-        let scale = config.maxLongEdge / longEdge
-        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+    guard longEdge > config.maxLongEdge, longEdge > 0 else { return img }
 
-        UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0)
-        img.draw(in: CGRect(origin: .zero, size: newSize))
-        scaled = UIGraphicsGetImageFromCurrentImageContext() ?? img
-        UIGraphicsEndImageContext()
-    } else {
-        scaled = img
-    }
+    let scale = config.maxLongEdge / longEdge
+    let newSize = CGSize(width: size.width * scale, height: size.height * scale)
 
-    // 2) NEW: Adaptive quality
-    let quality: CGFloat
-    if config.useAdaptiveCompression {
-        // If we successfully cropped the receipt, we can compress more aggressively
-        // If no crop, be more conservative (might have important context)
-        quality = wasCropped ? config.jpegQuality : min(config.jpegQuality + 0.10, 0.75)
-    } else {
-        quality = config.jpegQuality
-    }
-
-    // 3) JPEG compress
-    guard let data = scaled.jpegData(compressionQuality: quality),
-          let out = UIImage(data: data) else {
-        return scaled
-    }
-    return out
+    UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0)
+    img.draw(in: CGRect(origin: .zero, size: newSize))
+    let scaled = UIGraphicsGetImageFromCurrentImageContext() ?? img
+    UIGraphicsEndImageContext()
+    return scaled
 }
 
 // MARK: - Orientation fix
@@ -289,42 +195,3 @@ private extension UIImage {
     }
 }
 
-// MARK: - Additional optimization utilities
-
-extension ReceiptCrop {
-    // NEW: Preset for maximum speed (smaller files, faster upload)
-    static var fastConfig: Config {
-        var config = Config()
-        config.maxLongEdge = 896           // Even smaller
-        config.jpegQuality = 0.50          // More aggressive
-        config.contrast = 1.03             // Minimal enhancement
-        config.sharpen = 0.15
-        config.useAdaptiveCompression = true
-        config.skipEnhancementForClearImages = true
-        return config
-    }
-    
-    // NEW: Preset for maximum quality (larger files, better accuracy)
-    static var qualityConfig: Config {
-        var config = Config()
-        config.maxLongEdge = 1280          // Keep original
-        config.jpegQuality = 0.75          // Higher quality
-        config.contrast = 1.10
-        config.sharpen = 0.40
-        config.useAdaptiveCompression = false
-        config.skipEnhancementForClearImages = false
-        return config
-    }
-    
-    // NEW: Balanced (recommended default)
-    static var balancedConfig: Config {
-        var config = Config()
-        config.maxLongEdge = 1024
-        config.jpegQuality = 0.55
-        config.contrast = 1.05
-        config.sharpen = 0.20
-        config.useAdaptiveCompression = true
-        config.skipEnhancementForClearImages = true
-        return config
-    }
-}

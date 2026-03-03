@@ -28,18 +28,18 @@ enum LoadingState<T> {
 
 // MARK: - Receipt display model (for ReceiptView preview)
 
-struct ReceiptDisplay: Identifiable {
+struct ReceiptDisplay: Identifiable, Codable, Equatable {
 
-    struct Responsible: Hashable {
+    struct Responsible: Hashable, Codable {
         let slotIndex: Int
         let displayName: String
-        
+
         var badgeText: String {
             BadgeColors.initials(from: displayName, fallback: slotIndex)
         }
     }
 
-    struct Item: Identifiable {
+    struct Item: Identifiable, Codable, Equatable {
         let id: String
         let label: String
         let priceCents: Int
@@ -123,6 +123,9 @@ final class LootUIModel: ObservableObject {
 
     // Two-phase parsing: items loading state (phase 2 runs in background)
     @Published var itemsLoadingState: LoadingState<Phase2Result> = .idle
+
+    // Debug: OCR chunk images from last scan (populated when DEBUG_SHOW_CHUNKS = true)
+    @Published var debugChunkImages: [UIImage] = []
     var phase2Task: Task<Void, Never>? = nil
 
     // True while phase 1 LLM is running (shows BillCardLoadingView on confirmation screen)
@@ -156,6 +159,11 @@ final class LootUIModel: ObservableObject {
         phase2Task?.cancel()
         phase2Task = nil
 
+        // Clear any persisted session for this conversation
+        if let key = conversationKey {
+            SessionPersistence.clear(conversationKey: key)
+        }
+
         parsedReceipt = nil
         currentReceipt = nil
         scanImageOriginal = nil
@@ -167,6 +175,7 @@ final class LootUIModel: ObservableObject {
         messageLoadingState = .idle
         itemsLoadingState = .idle
         isLoadingReceipt = false
+        debugChunkImages = []
     }
 }
 

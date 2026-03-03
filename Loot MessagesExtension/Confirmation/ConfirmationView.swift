@@ -707,9 +707,11 @@ struct ConfirmationView: View {
 
                         Button(action: {
                             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                cardOffset = CGSize(width: 0, height: 500)
-                                cardRotation = 6
+                            if !uiModel.isExpanded {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    cardOffset = CGSize(width: 0, height: 500)
+                                    cardRotation = 0
+                                }
                             }
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                 splitModesExpanded = true

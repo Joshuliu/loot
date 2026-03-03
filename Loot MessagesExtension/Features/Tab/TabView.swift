@@ -205,7 +205,7 @@ struct LootTabView: View {
                         .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
                         .frame(maxWidth: .infinity)
 
-                    Text("Fill In")
+                    Text("Enter Total")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
                         .frame(maxWidth: .infinity)

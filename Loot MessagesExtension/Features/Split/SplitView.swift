@@ -6,14 +6,14 @@
 //
 import SwiftUI
 
-struct SplitDraft: Equatable {
-    enum Mode: String, CaseIterable {
+struct SplitDraft: Equatable, Codable {
+    enum Mode: String, CaseIterable, Codable {
         case equally = "Split Equally"
         case byItems = "Split by Items"
         case custom = "Custom Split"
     }
 
-    struct Item: Identifiable, Equatable {
+    struct Item: Identifiable, Equatable, Codable {
         let id: UUID
         var label: String
         var priceCents: Int
@@ -500,6 +500,7 @@ extension ConfirmationView {
 
         if newMode == .byItems {
             if !didInitByItem { seedByItemsFromReceipt() }
+            byItemSelectedGuestId = activeGuests.first?.id ?? UUID()
         }
     }
 
@@ -1229,12 +1230,21 @@ extension ConfirmationView {
 
                     Spacer()
 
-                    // Right side: amount or checkmark
+                    // Right side: amount (byItems shows running total; other modes show editable amount)
                     if mode == .byItems {
-                        if isSelected {
-                            Image(systemName: "checkmark")
-                                .foregroundColor(.secondary)
-                        }
+                        let guestCents = byItemItems
+                            .filter { $0.assignedGuestIds.contains(gid) }
+                            .reduce(0) { acc, item in
+                                let n = max(1, item.assignedGuestIds.count)
+                                return acc + stringToCents(item.price) / n
+                            }
+                        Text(ReceiptDisplay.money(guestCents))
+                            .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(guestCents > 0 ? .primary : .secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(isSelected ? Color(.tertiarySystemFill) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
                     } else {
                         Text(ReceiptDisplay.money(guestAmountsCents.indices.contains(i) ? guestAmountsCents[i] : 0))
                             .font(.system(size: 15, weight: .semibold))
