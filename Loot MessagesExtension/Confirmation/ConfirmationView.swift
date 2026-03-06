@@ -522,21 +522,16 @@ struct ConfirmationView: View {
                         let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
 
                         Button(action: {
-                            if cameFromManual { onBack() } else { animateDeleteThenAct() }
-                        }) {
+                             animateDeleteThenAct() }
+                        ) {
                             HStack(spacing: 6) {
-                                if cameFromManual {
-                                    Image(systemName: "chevron.left")
-                                    Text("Back")
-                                } else {
-                                    Image(systemName: "trash")
-                                }
+                                Image(systemName: "trash")
                             }
                             .font(.system(size: 16, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .foregroundStyle(
-                                cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
+                                trashProgress > 0.02 ? Color.white : Color.red
                             )
                             .background(
                                 RoundedRectangle(cornerRadius: 18)
@@ -711,6 +706,30 @@ struct ConfirmationView: View {
             .offset(y: -keyboardHeight)
             .animation(.easeOut(duration: 0.22), value: keyboardHeight)
             .ignoresSafeArea(edges: .bottom)
+
+//            // Trash swipe indicator — pops up on the right when dragging left to delete
+//            if dragIntent == .left && leftButtonIsTrash && !hasSent {
+//                HStack {
+//                    Spacer()
+//                    ZStack {
+//                        Circle()
+//                            .fill(.regularMaterial)
+//                            .frame(width: 62, height: 62)
+//                            .shadow(color: Color.red.opacity(0.25), radius: 14, x: 0, y: 4)
+//                        Image(systemName: "trash.fill")
+//                            .font(.system(size: 22, weight: .semibold))
+//                            .foregroundColor(.red)
+//                    }
+//                    .scaleEffect(
+//                        min(1.0, Double(leftProgress) * 1.4),
+//                        anchor: .center
+//                    )
+//                    .animation(.spring(response: 0.28, dampingFraction: 0.5), value: leftProgress)
+//                    .padding(.trailing, 28)
+//                }
+//                .allowsHitTesting(false)
+//                .transition(.opacity)
+//            }
 
             // Success overlay
             if showSuccess {
