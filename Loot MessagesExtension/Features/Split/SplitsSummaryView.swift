@@ -158,10 +158,11 @@ struct SplitsSummaryView: View {
     // MARK: - Transaction row
 
     @ViewBuilder
-    private func transactionRow(from: String, to: String, amount: Int, color: Color, guestIndex: Int, showPayButton: Bool = false) -> some View {
+    private func transactionRow(from: String, to: String, amount: Int, color: Color, guestIndex: Int, showPayButton: Bool = false, showRequestButton: Bool = false) -> some View {
         let paid = isPaid(guestIndex: guestIndex)
         let editable = canTogglePaid(guestIndex: guestIndex)
         let canPay = showPayButton && !paid && !(payerPaymentMethods?.isEmpty ?? true)
+        let canRequest = showRequestButton && !paid
 
         VStack(spacing: 6) {
             HStack(spacing: 8) {
@@ -220,10 +221,23 @@ struct SplitsSummaryView: View {
                 } label: {
                     Label("Pay Now", systemImage: "arrow.up.circle.fill")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.blue)
+                        .foregroundStyle(.blue)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(Color(.secondarySystemBackground))
+                        .background(Color(.systemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            } else if canRequest {
+                Button {
+                    uiModel.sendRequestCard?(to, from, amount, nil)
+                } label: {
+                    Label("Request", systemImage: "bell.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.blue)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(.systemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
                 .buttonStyle(.plain)
@@ -293,6 +307,8 @@ struct SplitsSummaryView: View {
 
                     if split.pi == gi {
                         // Payer: show who owes them
+                        let myUid = KeychainHelper.getOrCreateUserId()
+                        let iAmPayer = split.g[gi].uid == myUid
                         ForEach(0..<count, id: \.self) { j in
                             let gj = included[j]
                             if gj != gi {
@@ -301,7 +317,8 @@ struct SplitsSummaryView: View {
                                     to: displayName(for: gi),
                                     amount: owed(for: gj),
                                     color: colorForSlot(gj),
-                                    guestIndex: gj
+                                    guestIndex: gj,
+                                    showRequestButton: !isTabReceipt && iAmPayer && !(split.g[gj].uid ?? "").isEmpty
                                 )
                             }
                         }
@@ -690,7 +707,7 @@ struct SplitsSummaryView: View {
                 }
                 .padding(.top, 8)
 
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 60)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 20)
@@ -759,7 +776,6 @@ struct SplitsSummaryView: View {
         }
         .sheet(item: $paySheetInfo) { info in
             let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
-            let openInSafari = uiModel.openInSafari   // capture as local so inner closure holds it directly
             let sendSettlement = uiModel.sendSettlementCard
             TabPayNowSheet(
                 toName: info.toName,
@@ -785,11 +801,7 @@ struct SplitsSummaryView: View {
                     sendSettlement?(info.fromName, info.toName,
                                     info.amountCents, method.type.displayName, nil)
                     if let url = deepLink {
-                        if method.type == .zelle, let openInSafari {
-                            openInSafari(url)
-                        } else {
-                            openURL(url)
-                        }
+                        openURL(url)
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }

@@ -140,6 +140,10 @@ struct ZelleSetupSheet: View {
                             // Non-override banks have a web Zelle page — link straight to it
                             if let url = URL(string: bankURL) {
                                 Button {
+                                    UserDefaults.standard.set(true, forKey: DefaultsKeys.pendingReturnToPaymentMethods)
+                                    UserDefaults.standard.set(true, forKey: DefaultsKeys.pendingZelleReopen)
+                                    UserDefaults.standard.set(bankName, forKey: DefaultsKeys.pendingZelleBankName)
+                                    UserDefaults.standard.set(bankURL, forKey: DefaultsKeys.pendingZelleBankURL)
                                     openURL(url)
                                 } label: {
                                     HStack(spacing: 10) {
@@ -165,18 +169,21 @@ struct ZelleSetupSheet: View {
                         }
 
                         if !bankIsOverride {
-                            TextField("Paste zellepay.com/… link", text: $qrURLText)
-                                .autocorrectionDisabled(true)
-                                .textInputAutocapitalization(.never)
-                                .onChange(of: qrURLText) { _, newValue in
-                                    tryParseZelleURL(newValue)
+                            HStack(spacing: 10) {
+                                TextField("Paste QR link or upload image", text: $qrURLText)
+                                    .autocorrectionDisabled(true)
+                                    .textInputAutocapitalization(.never)
+                                    .onChange(of: qrURLText) { _, newValue in
+                                        tryParseZelleURL(newValue)
+                                    }
+                                PhotosPicker(selection: $photoPickerItem, matching: .images) {
+                                    Image(systemName: "photo.badge.plus")
+                                        .font(.system(size: 20))
+                                        .foregroundStyle(.blue)
                                 }
-
-                            PhotosPicker(selection: $photoPickerItem, matching: .images) {
-                                Label("Upload QR Image", systemImage: "photo")
-                            }
-                            .onChange(of: photoPickerItem) { _, item in
-                                Task { await readQRFromPhoto(item) }
+                                .onChange(of: photoPickerItem) { _, item in
+                                    Task { await readQRFromPhoto(item) }
+                                }
                             }
                         }
 
@@ -213,7 +220,7 @@ struct ZelleSetupSheet: View {
                     Label("2. Your Zelle QR Code", systemImage: "2.circle.fill")
                 } footer: {
                     if bankConfirmed && !bankIsOverride && zelleData.isEmpty {
-                        Text("In your bank app, open Zelle → tap your profile or QR icon → tap Share → copy the link, or save the image and upload it here.")
+                        Text("In your bank app, go to Zelle → tap your QR icon → tap Share → copy the link or save the QR image, then paste or upload it above.")
                             .font(.system(size: 12))
                     }
                 }

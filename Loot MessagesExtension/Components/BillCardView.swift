@@ -136,7 +136,7 @@ struct SettlementCardView: View {
 
             // Right col: via/from _ / to ___
             VStack(alignment: .leading, spacing: 2) {
-                Text(isRequest ? "from \(fromName)" : "via \(methodName)")
+                Text(isRequest ? "from" : "via \(methodName)")
                     .font(.system(size: 11))
                     .foregroundColor(sub)
                     .lineLimit(1)

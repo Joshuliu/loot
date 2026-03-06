@@ -27,41 +27,6 @@ struct ReceiptView: View {
         uiModel.itemsLoadingState.isLoading
     }
 
-    @ViewBuilder
-    private var captureButton: some View {
-        let button = Button {
-            showCapture = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "doc.viewfinder")
-                Text("View capture")
-            }
-            .font(.system(size: 16, weight: .semibold))
-        }
-        .buttonStyle(.plain)
-
-        if compactCaptureButton {
-            button
-                .padding(.vertical, 14)
-                .padding(.horizontal, 20)
-                .background(Color(.tertiarySystemFill))
-                .cornerRadius(14)
-                .padding(.bottom, 16)
-        } else {
-            button
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(Color(.tertiarySystemFill))
-                .cornerRadius(14)
-                .padding(.horizontal, 18)
-                .padding(.top, 30)
-                .padding(.bottom, 50)
-                .background(Color(.secondarySystemBackground))
-                .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-                .shadow(color: Color.black.opacity(0.15), radius: 18, x: 0, y: -2)
-        }
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if showBackRow {
@@ -91,13 +56,29 @@ struct ReceiptView: View {
                 VStack(alignment: .leading, spacing: 14) {
                     
                     // Header
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(receipt.title)
-                            .font(.system(size: 28, weight: .bold))
-                        
-                        Text(receipt.dateText)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(receipt.title)
+                                .font(.system(size: 28, weight: .bold))
+
+                            Text(receipt.dateText)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        if showCaptureButton, captureImage != nil {
+                            Button { showCapture = true } label: {
+                                Image(systemName: "doc.viewfinder")
+                                    .font(.system(size: 17))
+                                    .foregroundStyle(.blue)
+                                    .padding(8)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
@@ -171,11 +152,6 @@ struct ReceiptView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 90)
                 }
-            }
-        }
-        .overlay(alignment: .bottom) {
-            if showCaptureButton && uiModel.isExpanded == true && captureImage != nil {
-                captureButton
             }
         }
         .sheet(isPresented: $showCapture) {

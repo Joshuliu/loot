@@ -360,6 +360,15 @@ struct ConfirmationView: View {
 
                 // ✅ Up swipe = send (your existing logic)
                 if isMostlyVertical, dy < -max(verticalTrigger, 50), abs(dx) < 160 {
+                    // Don't allow sending while phase 1 is still running (total is unknown)
+                    guard !uiModel.isLoadingReceipt else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            cardOffset = .zero
+                            cardRotation = 0
+                            dragIntent = .none
+                        }
+                        return
+                    }
                     hasSent = true
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
@@ -446,6 +455,7 @@ struct ConfirmationView: View {
             Text(dragIntent == .left ? "Swipe left to delete" :
                 dragIntent == .right ? "Swipe right to tip" :
                 dragIntent == .down ? "Swipe down for split options" :
+                uiModel.isLoadingReceipt ? "Swipe left to delete" :
                 isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
             .font(.system(size: 14, weight: .regular))
             .foregroundColor(.secondary)
@@ -819,6 +829,13 @@ struct ConfirmationView: View {
                 break
             }
         }
+        .onChange(of: uiModel.isLoadingReceipt) { _, isNowLoading in
+            // Phase 1 just finished — immediately show BillCardView with the real total
+            // instead of waiting for the loading animation to complete on its own.
+            if !isNowLoading {
+                introAnimationDone = true
+            }
+        }
         .onChange(of: uiModel.itemsLoadingState.isLoading) { _, isNowLoading in
             if !isNowLoading {
                 // Phase 2 just finished. Re-seed items immediately if already in byItems mode,
@@ -835,6 +852,26 @@ struct ConfirmationView: View {
                 uiModel: uiModel,
                 onSave: { updatedReceipt in
                     uiModel.currentReceipt = updatedReceipt
+                    // Keep byItemItems in sync: update prices while preserving assignments
+                    if mode == .byItems {
+                        var matched = Set<UUID>()
+                        byItemItems = updatedReceipt.items.map { newItem in
+                            if let existing = byItemItems.first(where: {
+                                $0.label == newItem.label && !matched.contains($0.id)
+                            }) {
+                                matched.insert(existing.id)
+                                var updated = existing
+                                updated.price = ReceiptDisplay.money(newItem.priceCents)
+                                return updated
+                            }
+                            return DraftReceiptItem(
+                                id: UUID(),
+                                label: newItem.label,
+                                price: ReceiptDisplay.money(newItem.priceCents),
+                                assignedGuestIds: []
+                            )
+                        }
+                    }
                     showEditReceipt = false
                 },
                 onCancel: {
