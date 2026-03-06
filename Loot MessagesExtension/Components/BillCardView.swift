@@ -140,12 +140,10 @@ struct SettlementCardView: View {
                     .font(.system(size: 11))
                     .foregroundColor(sub)
                     .lineLimit(1)
-                if !isRequest {
-                    Text(toName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(fg)
-                        .lineLimit(1)
-                }
+                Text(isRequest ? fromName : toName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(fg)
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
