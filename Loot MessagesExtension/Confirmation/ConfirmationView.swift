@@ -109,11 +109,9 @@ struct ConfirmationView: View {
         return 1
     }
 
-    private var leftButtonIsTrash: Bool { !cameFromManual }
-
     // Left button “selected” styling when trash + dragging left
     private var trashSelectProgress: CGFloat {
-        (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
+        dragIntent == .left ? leftProgress : 0
     }
 
     private var splitLabel: String {
@@ -519,7 +517,7 @@ struct ConfirmationView: View {
                 } else {
                     HStack(spacing: 12) {
                         // 1) Back or Delete
-                        let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
+                        let trashProgress = dragIntent == .left ? leftProgress : 0
 
                         Button(action: {
                              animateDeleteThenAct() }
