@@ -28,7 +28,7 @@ enum TranscriptGenerator {
     /// 1. Correct text skew via single-pass rotation.
     /// 2. Run OCR on the corrected image to obtain text observations.
     /// 3. Group observations into lines with Y-bound metadata.
-    /// 4. Compute chunk boundaries at every 20th line with overlap.
+    /// 4. Compute chunk boundaries at every 10th line with overlap.
     /// 5. Crop horizontal chunks and OCR each concurrently.
     /// 6. Trim overlap lines and join chunk transcripts.
     static func generate(from image: UIImage) async throws -> String {
@@ -279,16 +279,16 @@ enum TranscriptGenerator {
 
     // MARK: - Chunking
 
-    /// Computes normalized crop rects that split the image at every 20th
+    /// Computes normalized crop rects that split the image at every 10th
     /// line with one-line overlap on each side.
     ///
-    /// - Current chunk extends down to line 21's lower Y bound.
-    /// - Next chunk starts at line 20's upper Y bound.
+    /// - Current chunk extends down to line 11's lower Y bound.
+    /// - Next chunk starts at line 10's upper Y bound.
     /// - Transcript trimming later removes the duplicated boundary lines.
     private static func chunkBounds(from lines: [TranscriptLine], margin: CGFloat = 0.000) -> [CGRect] {
         guard !lines.isEmpty else { return [] }
 
-        let splitLineIndices = stride(from: 19, to: lines.count, by: 20)
+        let splitLineIndices = stride(from: 9, to: lines.count, by: 10)
         var chunkRects: [CGRect] = []
         var chunkTopY: CGFloat = 1.0
 
@@ -412,7 +412,7 @@ enum TranscriptGenerator {
     /// Larger pixels give VisionKit more signal per character; sharpening
     /// enhances edges without the destructive side-effects of binarization.
     private static func prepareChunkForOCR(_ image: UIImage) -> UIImage {
-        let scale: CGFloat = 1.5
+        let scale: CGFloat = 2.0
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
 
         UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0)

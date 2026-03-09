@@ -442,7 +442,7 @@ struct ConfirmationView: View {
 
     // MARK: - Confirmation Panel (card + swipe-to-send + bottom buttons)
     private func confirmationPanel() -> some View {
-        let cardScale: CGFloat = !uiModel.isExpanded ? 0.9 : 1.1
+        let cardScale: CGFloat = !uiModel.isExpanded ? 0.9 : 0.9 //1.1
         let cardH: CGFloat = 160 * cardScale
 
         return VStack(spacing: 0) {
@@ -461,44 +461,105 @@ struct ConfirmationView: View {
 
             Color.clear.frame(height: 18)
 
-            // Card with split ring (crossfades between loading and real card)
-            ZStack {
-                if uiModel.isLoadingReceipt || !introAnimationDone {
-                    BillCardLoadingView(
-                        participantCount: participantCount,
-                        displayName: payerDisplayName(),
-                        tabName: uiModel.activeTab?.name,
-                        splitLabel: splitLabel,
-                        tabColorHex: uiModel.activeTab?.colorHex,
-                        onAnimationComplete: {
-                            introAnimationDone = true
+            // Card with long arrow hints whose shafts disappear behind the card
+            ZStack(alignment: .center) {
+                // Hint layer — two independent sublayers so arrows don't compete with labels for space
+                ZStack {
+                    // Arrow shafts: span the full side width (card covers the inner ends)
+                    HStack(alignment: .center, spacing: 0) {
+                        HStack(spacing: 0) {
+                            Image(systemName: "arrowtriangle.left.fill")
+                                .font(.system(size: 8))
+                            Rectangle()
+                                .frame(height: 1.5)
                         }
-                    )
-                    .transition(.opacity)
-                } else {
-                    BillCardView(
-                        receiptName: receiptName,
-                        displayAmount: displayAmount,
-                        displayName: payerDisplayName(),
-                        splitLabel: splitLabel,
-                        owedAmounts: owedAmounts,
-                        totalCents: totalCents,
-                        tabName: uiModel.activeTab?.name,
-                        tabColorHex: uiModel.activeTab?.colorHex
-                    )
-                    .transition(.opacity)
+                        .foregroundColor(.red)
+                        .padding(.leading, 54)
+                        .frame(maxWidth: .infinity)
+
+                        Color.clear.frame(width: 220 * cardScale)
+
+                        HStack(spacing: 0) {
+                            Rectangle()
+                                .frame(height: 1.5)
+                            Image(systemName: "arrowtriangle.right.fill")
+                                .font(.system(size: 8))
+                        }
+                        .foregroundColor(.blue)
+                        .padding(.trailing, 54)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // Labels: float at screen edges on top of arrow outer ends
+                    HStack(alignment: .center) {
+                        VStack(spacing: 3) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Delete")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(.red)
+                        .padding(.leading, 20)
+                        Spacer()
+                        VStack(spacing: 3) {
+                            Image(systemName: "dollarsign.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Tip")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(.blue)
+                        .padding(.trailing, 24)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: cardH)
+                .opacity(buttonsOpacity * 0.55)
+                .allowsHitTesting(false)
+                .zIndex(0)
+
+                // Card on top — covers the inner shaft ends, creating the peek effect
+                ZStack {
+                    if uiModel.isLoadingReceipt || !introAnimationDone {
+                        BillCardLoadingView(
+                            participantCount: participantCount,
+                            displayName: payerDisplayName(),
+                            tabName: uiModel.activeTab?.name,
+                            splitLabel: splitLabel,
+                            tabColorHex: uiModel.activeTab?.colorHex,
+                            onAnimationComplete: {
+                                introAnimationDone = true
+                            }
+                        )
+                        .transition(.opacity)
+                    } else {
+                        BillCardView(
+                            receiptName: receiptName,
+                            displayAmount: displayAmount,
+                            displayName: payerDisplayName(),
+                            splitLabel: splitLabel,
+                            owedAmounts: owedAmounts,
+                            totalCents: totalCents,
+                            tabName: uiModel.activeTab?.name,
+                            tabColorHex: uiModel.activeTab?.colorHex
+                        )
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
+                .cardPhysics(isDragging: cardOffset != .zero)
+                .scaleEffect(cardScale)
+                .frame(width: 260 * cardScale, height: cardH)
+                .offset(cardOffset)
+                .rotationEffect(.degrees(cardRotation), anchor: .bottom)
+                .gesture(swipeCardGesture)
+                .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
+                .contentShape(Rectangle())
+                .zIndex(1)
             }
-            .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
-            .cardPhysics(isDragging: cardOffset != .zero)
-            .scaleEffect(cardScale)
-            .frame(width: 260 * cardScale, height: cardH)
-            .offset(cardOffset)
-            .rotationEffect(.degrees(cardRotation), anchor: .bottom)
-            .gesture(swipeCardGesture)
-            .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
-            .contentShape(Rectangle())
-            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
+            .frame(height: cardH)
 
             VStack(spacing: 6) {
                 Text(isLoadingItems ? "Loading receipt items..." : "Tap to edit receipt")
@@ -642,13 +703,13 @@ struct ConfirmationView: View {
                 interactive: mode == .custom
             )
             .padding(.horizontal, 24)
-            .padding(.top, 20)
+            .padding(.top, 6)
         }
         // Items panel
         if uiModel.isExpanded && confirmed == false && mode == .byItems {
             byItemPanel()
                 .padding(.horizontal, 24)
-                .padding(.top, 20)
+                .padding(.top, 6)
         }
         // Tip panel
         if showTipPanel {
@@ -665,7 +726,7 @@ struct ConfirmationView: View {
         GeometryReader { geo in
         let topPad: CGFloat = uiModel.isExpanded ? 20 : 4
         // Cap the panel height in expanded mode so the guestList below has immediate room.
-        let panelH: CGFloat = min(geo.size.height * 0.65, 500)
+        let panelH: CGFloat = min(geo.size.height * 0.55, 500)
         ZStack {
             // Main content
             ScrollView {
