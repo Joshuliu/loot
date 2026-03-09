@@ -542,7 +542,7 @@ struct ConfirmationView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
+                        .opacity(dragIntent == .left ? 1 : buttonsOpacity)
 
                         // 2) Split — tap to expand mode selector
                         let splitProgress = (dragIntent == .down) ? downProgress : 0

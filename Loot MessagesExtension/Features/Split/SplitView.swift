@@ -1167,129 +1167,132 @@ extension ConfirmationView {
             .padding(.horizontal, 14)
             .padding(.bottom, 4)
 
-            // Guest rows
-            ForEach(0..<activeCount, id: \.self) { i in
-                let guest = activeGuests[i]
-                let gid = guest.id
-                let isSelected: Bool = mode == .byItems
-                    ? gid == byItemSelectedGuestId
-                    : i == guestSelectedIndex
-
-                HStack(spacing: 8) {
-                    // Badge – tap to select guest
-                    ColoredCircleBadge(
-                        text: BadgeColors.initials(
-                            from: displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)),
-                            fallback: allIndex(for: gid) ?? i
-                        ),
-                        color: colorForActiveIdx(i)
-                    )
-                    .onTapGesture {
-                        if mode == .byItems { byItemSelectedGuestId = gid }
-                        else { guestSelectedIndex = i }
-                    }
-
-                    // Name – tap to edit inline (disabled for tab members)
-                    let isTabMember = uiModel.activeTab != nil && guest.uid != nil && !guest.uid!.isEmpty
-                    if editingGuestNameId == gid && !guest.isMe && !isTabMember {
-                        TextField(
-                            "Guest name",
-                            text: Binding(
-                                get: {
-                                    guests.first(where: { $0.id == gid })?.name ?? ""
-                                },
-                                set: { newValue in
-                                    if let idx = guests.firstIndex(where: { $0.id == gid }) {
-                                        guests[idx].name = newValue
-                                        draftGuests = guests
-                                    }
-                                }
+            ScrollView {
+//                VStack{
+                    // Guest rows
+                    ForEach(0..<activeCount, id: \.self) { i in
+                        let guest = activeGuests[i]
+                        let gid = guest.id
+                        let isSelected: Bool = mode == .byItems
+                        ? gid == byItemSelectedGuestId
+                        : i == guestSelectedIndex
+                        
+                        HStack(spacing: 8) {
+                            // Badge – tap to select guest
+                            ColoredCircleBadge(
+                                text: BadgeColors.initials(
+                                    from: displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)),
+                                    fallback: allIndex(for: gid) ?? i
+                                ),
+                                color: colorForActiveIdx(i)
                             )
-                        )
-                        .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                        .focused($guestNameFocusedId, equals: gid)
-                        .textInputAutocapitalization(.words)
-                        .submitLabel(.done)
-                        .onSubmit {
-                            editingGuestNameId = nil
-                        }
-                    } else {
-                        let isUnnamed = guest.trimmedName.isEmpty && !guest.isMe
-                        Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)))
-                            .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(isUnnamed ? .secondary : .primary)
                             .onTapGesture {
-                                if !guest.isMe && !isTabMember {
-                                    editingGuestNameId = gid
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        guestNameFocusedId = gid
+                                if mode == .byItems { byItemSelectedGuestId = gid }
+                                else { guestSelectedIndex = i }
+                            }
+                            
+                            // Name – tap to edit inline (disabled for tab members)
+                            let isTabMember = uiModel.activeTab != nil && guest.uid != nil && !guest.uid!.isEmpty
+                            if editingGuestNameId == gid && !guest.isMe && !isTabMember {
+                                TextField(
+                                    "Guest name",
+                                    text: Binding(
+                                        get: {
+                                            guests.first(where: { $0.id == gid })?.name ?? ""
+                                        },
+                                        set: { newValue in
+                                            if let idx = guests.firstIndex(where: { $0.id == gid }) {
+                                                guests[idx].name = newValue
+                                                draftGuests = guests
+                                            }
+                                        }
+                                    )
+                                )
+                                .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                                .focused($guestNameFocusedId, equals: gid)
+                                .textInputAutocapitalization(.words)
+                                .submitLabel(.done)
+                                .onSubmit {
+                                    editingGuestNameId = nil
+                                }
+                            } else {
+                                let isUnnamed = guest.trimmedName.isEmpty && !guest.isMe
+                                Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)))
+                                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                                    .foregroundColor(isUnnamed ? .secondary : .primary)
+                                    .onTapGesture {
+                                        if !guest.isMe && !isTabMember {
+                                            editingGuestNameId = gid
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                                guestNameFocusedId = gid
+                                            }
+                                        }
                                     }
+                            }
+                            
+                            Spacer()
+                            
+                            // Right side: amount (byItems shows running total; other modes show editable amount)
+                            if mode == .byItems {
+                                let guestCents = byItemItems
+                                    .filter { $0.assignedGuestIds.contains(gid) }
+                                    .reduce(0) { acc, item in
+                                        let n = max(1, item.assignedGuestIds.count)
+                                        return acc + stringToCents(item.price) / n
+                                    }
+                                Text(ReceiptDisplay.money(guestCents))
+                                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                                    .foregroundColor(guestCents > 0 ? .primary : .secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(isSelected ? Color(.tertiarySystemFill) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            } else {
+                                Text(ReceiptDisplay.money(guestAmountsCents.indices.contains(i) ? guestAmountsCents[i] : 0))
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(mode != .byItems ? Color(.tertiarySystemFill) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        if mode != .byItems {
+                                            startEditingAmount(for: i)
+                                        }
+                                    }
+                            }
+                            
+                            // Remove/exclude button (hidden when only one included guest remains)
+                            if activeCount > 1 {
+                                Button {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        removeGuestInline(guestId: gid)
+                                    }
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .font(.system(size: 18))
+                                        .foregroundColor(.red.opacity(0.5))
                                 }
+                                .buttonStyle(.plain)
                             }
-                    }
-
-                    Spacer()
-
-                    // Right side: amount (byItems shows running total; other modes show editable amount)
-                    if mode == .byItems {
-                        let guestCents = byItemItems
-                            .filter { $0.assignedGuestIds.contains(gid) }
-                            .reduce(0) { acc, item in
-                                let n = max(1, item.assignedGuestIds.count)
-                                return acc + stringToCents(item.price) / n
-                            }
-                        Text(ReceiptDisplay.money(guestCents))
-                            .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(guestCents > 0 ? .primary : .secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(isSelected ? Color(.tertiarySystemFill) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                    } else {
-                        Text(ReceiptDisplay.money(guestAmountsCents.indices.contains(i) ? guestAmountsCents[i] : 0))
-                            .font(.system(size: 15, weight: .semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(mode != .byItems ? Color(.tertiarySystemFill) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 6))
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                if mode != .byItems {
-                                    startEditingAmount(for: i)
-                                }
-                            }
-                    }
-
-                    // Remove/exclude button (hidden when only one included guest remains)
-                    if activeCount > 1 {
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                removeGuestInline(guestId: gid)
-                            }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 18))
-                                .foregroundColor(.red.opacity(0.5))
                         }
-                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            // Dismiss any open name edit when tapping another row
+                            if editingGuestNameId != nil && editingGuestNameId != gid {
+                                editingGuestNameId = nil
+                                guestNameFocusedId = nil
+                            }
+                            if mode == .byItems { byItemSelectedGuestId = gid }
+                            else { guestSelectedIndex = i }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(isSelected && mode != .equally ? Color(.secondarySystemBackground) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    // Dismiss any open name edit when tapping another row
-                    if editingGuestNameId != nil && editingGuestNameId != gid {
-                        editingGuestNameId = nil
-                        guestNameFocusedId = nil
-                    }
-                    if mode == .byItems { byItemSelectedGuestId = gid }
-                    else { guestSelectedIndex = i }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(isSelected && mode != .equally ? Color(.secondarySystemBackground) : Color.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+//                }
             }
-
             // Custom mode remaining
             if mode == .custom {
                 let remaining = max(0, totalCents - guestAmountsCents.reduce(0, +))
