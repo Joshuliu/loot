@@ -1293,6 +1293,9 @@ extension ConfirmationView {
                     }
 //                }
             }
+            .frame(maxHeight: 230)
+            .defaultScrollAnchor(.bottom)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
             // Custom mode remaining
             if mode == .custom {
                 let remaining = max(0, totalCents - guestAmountsCents.reduce(0, +))
