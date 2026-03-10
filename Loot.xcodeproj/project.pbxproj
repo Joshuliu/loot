@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = F615A0592F0738EA005E6C5E /* Secrets.xcconfig */; };
+		F62737242F36700200EC3388 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000002 /* FirebaseAuth */; };
+		F62737252F36700200EC3388 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000003 /* FirebaseFirestore */; };
 		F64F33C72F0674A10065BCB2 /* Loot MessagesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F64F33CC2F0674A10065BCB2 /* Messages.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F64F33CB2F0674A10065BCB2 /* Messages.framework */; };
 /* End PBXBuildFile section */
@@ -84,6 +86,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F62737252F36700200EC3388 /* FirebaseFirestore in Frameworks */,
+				F62737242F36700200EC3388 /* FirebaseAuth in Frameworks */,
 				F64F33CC2F0674A10065BCB2 /* Messages.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -161,6 +165,8 @@
 			);
 			name = "Loot MessagesExtension";
 			packageProductDependencies = (
+				A1B2C3D42F0A00000000002 /* FirebaseAuth */,
+				A1B2C3D42F0A00000000003 /* FirebaseFirestore */,
 			);
 			productName = "Loot MessagesExtension";
 			productReference = F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */;
@@ -194,6 +200,9 @@
 			);
 			mainGroup = F64F33B62F06749F0065BCB2;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = F64F33BE2F06749F0065BCB2 /* Products */;
 			projectDirPath = "";
@@ -264,8 +273,8 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = joshuliu.Loot.MessagesExtension;
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -303,8 +312,8 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = joshuliu.Loot.MessagesExtension;
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -459,8 +468,8 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = joshuliu.Loot;
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -488,8 +497,8 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = joshuliu.Loot;
+				MARKETING_VERSION = 1.2;
+				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -531,6 +540,30 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = exactVersion;
+				version = 12.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A1B2C3D42F0A00000000002 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		A1B2C3D42F0A00000000003 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1B2C3D42F0A00000000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F64F33B72F06749F0065BCB2 /* Project object */;
 }
