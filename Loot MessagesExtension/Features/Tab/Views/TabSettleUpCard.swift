@@ -129,11 +129,7 @@ struct TabSettleUpCard: View {
                     onSendSettlementCard?(fromName, toName, txn.amountCents,
                                          method.type.displayName, colorHex)
                     if let url = deepLink {
-                        if method.type == .zelle, let openInSafari {
-                            openInSafari(url)
-                        } else {
-                            openURL(url)
-                        }
+                        openURL(url)
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }

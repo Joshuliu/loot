@@ -16,6 +16,10 @@ enum DefaultsKeys {
     /// Set to true when the user closes Loot to retrieve their Zelle QR code.
     /// Cleared on reopen; causes the app to navigate directly to Payment Methods.
     static let pendingReturnToPaymentMethods = "loot.pendingReturnToPaymentMethods"
+    /// Set to true when the user taps "Open [Bank]" so PaymentMethodView auto-reopens ZelleSetupSheet.
+    static let pendingZelleReopen = "loot.pendingZelleReopen"
+    static let pendingZelleBankName = "loot.pendingZelleBankName"
+    static let pendingZelleBankURL = "loot.pendingZelleBankURL"
 }
 
 func myDisplayNameFromDefaults() -> String {

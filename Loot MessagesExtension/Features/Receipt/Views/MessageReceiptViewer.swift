@@ -21,65 +21,31 @@ struct MessageReceiptViewer: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Top bar
-            HStack {
+        TabView(selection: $tab) {
+            SplitsSummaryView(uiModel: uiModel, split: payload.s, items: payload.r.i)
+                .id(uiModel.openedMessageDocId ?? payload.r.id)
+                .tabItem { Label("Splits", systemImage: "chart.pie.fill") }
+                .tag(Tab.splits)
 
-                Spacer()
-
-                Text(tab == .splits ? "Splits" : "Receipt")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-
-            // Content
-            ZStack {
-                if tab == .splits {
-                    SplitsSummaryView(uiModel: uiModel, split: payload.s, items: payload.r.i)
-                        .id(uiModel.openedMessageDocId ?? payload.r.id)
-                        .transition(.opacity)
+            Group {
+                if let receipt = uiModel.currentReceipt {
+                    ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false, showCaptureButton: true, compactCaptureButton: true)
                 } else {
-                    if let receipt = uiModel.currentReceipt {
-                        ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false, showCaptureButton: true, compactCaptureButton: true)
-                            .transition(.opacity)
-                    } else {
-                        ProgressView("Loading…")
-                    }
+                    ProgressView("Loading…")
                 }
             }
-            .animation(.easeInOut(duration: 0.18), value: tab)
-
-            // Bottom menu bar
-            HStack(spacing: 10) {
-                bottomTabButton("Splits", system: "chart.pie.fill", selected: tab == .splits) { tab = .splits }
-                bottomTabButton("Receipt", system: "doc.text.fill", selected: tab == .receipt) { tab = .receipt }
-            }
-            .padding(.horizontal, 14)
-            .padding(.top, 34)
-            .padding(.bottom, 60)
-            .background(Color(.secondarySystemBackground))
-            .clipShape(RoundedCorner(radius: 22, corners: [.topLeft, .topRight]))
-            .shadow(color: Color.black.opacity(0.20), radius: 18, x: 0, y: 2)
+            .tabItem { Label("Receipt", systemImage: "doc.text.fill") }
+            .tag(Tab.receipt)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func bottomTabButton(_ title: String, system: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: system)
-                Text(title).font(.system(size: 14, weight: .semibold))
-            }
-            .foregroundStyle(selected ? .white : .primary)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(selected ? Color.blue : Color(.tertiarySystemFill))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+        .toolbarBackground(.regularMaterial, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .onAppear {
+            guard #unavailable(iOS 26) else { return }
+            let appearance = UITabBarAppearance()
+            appearance.configureWithDefaultBackground()
+            UITabBar.appearance().standardAppearance = appearance
+            UITabBar.appearance().scrollEdgeAppearance = appearance
         }
-        .buttonStyle(.plain)
     }
 }

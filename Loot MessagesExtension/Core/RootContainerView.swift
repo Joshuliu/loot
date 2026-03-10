@@ -127,8 +127,11 @@ struct RootContainerView: View {
     // MARK: - Session persistence helpers
 
     private func saveSession(screen: AppScreen) {
-        guard screen.isPersistableScreen,
-              let key = uiModel.conversationKey else { return }
+        guard let key = uiModel.conversationKey else { return }
+        guard screen.isPersistableScreen else {
+            if screen == .tabview { SessionPersistence.clear(conversationKey: key) }
+            return
+        }
         SessionPersistence.save(
             screen: screen,
             receipt: uiModel.currentReceipt,
@@ -161,6 +164,7 @@ struct RootContainerView: View {
     }
 
     private func startScanFlow() {
+        uiModel.resetForNewReceipt()
         onScan()
         analyzeError = nil
         capturedImage = nil
@@ -168,6 +172,7 @@ struct RootContainerView: View {
     }
 
     private func startPhotoLibraryFlow() {
+        uiModel.resetForNewReceipt()
         analyzeError = nil
         photoLibraryImage = nil
         showPhotoLibrary = true
@@ -461,7 +466,7 @@ struct RootContainerView: View {
     // MARK: - Main content (extracted to avoid type-check timeout)
 
     private var mainContent: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             Color(.systemBackground).ignoresSafeArea()
             screenContent
         }
@@ -530,7 +535,7 @@ struct RootContainerView: View {
                 uiModel.currentScreen = .messageViewer
             }
         }
-        // MARK: - Session persistence: save on state changes
+        // MARK: - Session persistence: save on state changes t
         .onChange(of: uiModel.currentScreen) { _, screen in
             saveSession(screen: screen)
         }
@@ -727,18 +732,20 @@ struct RootContainerView: View {
 
     @ViewBuilder
     private var tipContent: some View {
-        TipView(
-            subtotalString: amountString,
-            taxCents: uiModel.currentReceipt?.taxCents ?? 0,
-            feesCents: uiModel.currentReceipt?.feesCents ?? 0,
-            discountCents: uiModel.currentReceipt?.discountCents ?? 0,
+        let preTip = stringToCents(amountString)
+            + (uiModel.currentReceipt?.taxCents ?? 0)
+            + (uiModel.currentReceipt?.feesCents ?? 0)
+            - (uiModel.currentReceipt?.discountCents ?? 0)
+        TipPanelView(
+            preTipTotalCents: preTip,
             existingTipCents: uiModel.currentReceipt?.tipCents ?? 0,
+            isExpanded: uiModel.isExpanded,
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = confirmationCameFromManual ? .fill : .confirmation
                 }
             },
-            onNext: { tip, _ in
+            onApply: { tip, _ in
                 tipAmount = tip
                 if let receipt = uiModel.currentReceipt {
                     let tipCentsValue = stringToCents(tip)
@@ -785,6 +792,9 @@ struct RootContainerView: View {
                     applySplitDraftToCurrentReceipt(draft)
                 }
                 onSendBill(receiptName, totalAmount)
+                if let key = uiModel.conversationKey {
+                    SessionPersistence.clear(conversationKey: key)
+                }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         if !hasPaymentMethodsConfigured() {

@@ -23,12 +23,8 @@ final class MessagesViewController: MSMessagesAppViewController {
         // is authenticated before the first write fires.
         Task { try? await SharedReceiptService.shared.ensureAnonymousAuth() }
 
-        uiModel.openInSafari = { url in
-            // Dynamically access UIApplication.shared to open in Safari
-            // (UIApplication is unavailable at compile time in extensions)
-            guard let appClass = NSClassFromString("UIApplication"),
-                  let app = appClass.value(forKey: "sharedApplication") as? NSObject else { return }
-            app.perform(NSSelectorFromString("openURL:"), with: url)
+        uiModel.openInSafari = { [weak self] url in
+            self?.extensionContext?.open(url, completionHandler: nil)
         }
 
         uiModel.sendSettlementCard = { [weak self] fromName, toName, amountCents, methodName, tabColorHex in
@@ -117,7 +113,7 @@ extension MessagesViewController {
                         uiModel.scanImageCropped = captureImage
                     }
                     uiModel.messageLoadingState = .loaded(payload)
-                    if let tabData = payload.tab { applyTabData(tabData) }
+                    if let tabData = payload.tab { await applyTabData(tabData) }
                 } catch {
                     print("[applyMessage] Firestore fetch failed: \(error)")
                     if let inline = inlinePayload {
@@ -127,7 +123,7 @@ extension MessagesViewController {
                         uiModel.openedMessagePayload = inline
                         uiModel.currentReceipt = inline.toReceiptDisplay()
                         uiModel.messageLoadingState = .loaded(inline)
-                        if let tabData = inline.tab { applyTabData(tabData) }
+                        if let tabData = inline.tab { await applyTabData(tabData) }
                         // Heal: upload the inline payload to Firestore so future
                         // recipients (and slot-claim updates) can use the doc.
                         Task {
@@ -183,14 +179,41 @@ extension MessagesViewController {
             uiModel.openedMessagePayload = payload
             uiModel.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
-            if let tabData = payload.tab { applyTabData(tabData) }
+            if let tabData = payload.tab { Task { @MainActor in await self.applyTabData(tabData) } }
         }
     }
 
-    private func applyTabData(_ tabData: TabPayload) {
+    private func applyTabData(_ tabData: TabPayload) async {
         let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
         uiModel.receiptTab = minimal
-        if uiModel.activeTab == nil { uiModel.activeTab = minimal }
+
+        // No switch needed if the receipt belongs to the already-active tab
+        guard uiModel.activeTab?.id != tabData.id else { return }
+
+        let myId = KeychainHelper.getOrCreateUserId()
+
+        // Check local cache first (avoids a network round-trip)
+        if let cached = uiModel.userTabs.first(where: { $0.id == tabData.id }) {
+            if cached.memberIds.contains(myId) {
+                uiModel.activeTab = cached
+                if let ck = uiModel.conversationKey {
+                    TabService.shared.cacheTab(cached, for: ck)
+                }
+            }
+            // Non-member: SplitsSummaryView's locked screen handles the UI
+            return
+        }
+
+        // Not in local tabs — fetch to verify membership
+        if let tab = try? await TabService.shared.fetchTab(id: tabData.id) {
+            if tab.memberIds.contains(myId) {
+                uiModel.activeTab = tab
+                if let ck = uiModel.conversationKey {
+                    TabService.shared.cacheTab(tab, for: ck)
+                }
+            }
+            // Non-member: SplitsSummaryView's locked screen handles the UI
+        }
     }
 
     private func setupRootView(conversation: MSConversation) {

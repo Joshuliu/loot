@@ -36,15 +36,8 @@ struct ConfirmationView: View {
     @State private var hasSent: Bool = false
     @State private var showSuccess: Bool = false
     @State private var dragIntent: DragIntent = .none
-    @State private var tipPercent: Double = 15.0
-    @State private var hasTipInitialized: Bool = false
     @State private var isBottomHeaderExpanded: Bool = false
     @State private var showTipPanel: Bool = false
-
-    private enum TipEditField: Hashable { case tip, total }
-    @State private var tipEditingField: TipEditField? = nil
-    @State private var tipManualInput: String = ""
-    @FocusState private var tipInputFocused: TipEditField?
 
     // Guest drawer state
     @State var showGuestEditor: Bool = false
@@ -116,11 +109,9 @@ struct ConfirmationView: View {
         return 1
     }
 
-    private var leftButtonIsTrash: Bool { !cameFromManual }
-
     // Left button “selected” styling when trash + dragging left
     private var trashSelectProgress: CGFloat {
-        (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
+        dragIntent == .left ? leftProgress : 0
     }
 
     private var splitLabel: String {
@@ -140,23 +131,6 @@ struct ConfirmationView: View {
     private var displayAmount: String { "$" + formatAmount(amount) }
     private var hasTip: Bool {
         !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
-    }
-
-    // Pre-tip total for tip percentage calculations.
-    // Always derived from the live `amount`/`tipAmount` props — the split draft's totalCents
-    // can be stale (e.g. user edited the subtotal in ManualInputView without resaving the draft).
-    private var preTipTotalCents: Int {
-        stringToCents(amount) - stringToCents(tipAmount)
-    }
-
-    // Tip cents based on current slider percentage
-    private var sliderTipCents: Int {
-        Int(round(Double(preTipTotalCents) * (tipPercent / 100.0)))
-    }
-
-    // Total with current tip
-    private var totalWithTipCents: Int {
-        preTipTotalCents + sliderTipCents
     }
 
     // Extract owed amounts and total from split draft (or compute default equal split)
@@ -384,6 +358,15 @@ struct ConfirmationView: View {
 
                 // ✅ Up swipe = send (your existing logic)
                 if isMostlyVertical, dy < -max(verticalTrigger, 50), abs(dx) < 160 {
+                    // Don't allow sending while phase 1 is still running (total is unknown)
+                    guard !uiModel.isLoadingReceipt else {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            cardOffset = .zero
+                            cardRotation = 0
+                            dragIntent = .none
+                        }
+                        return
+                    }
                     hasSent = true
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
 
@@ -435,168 +418,31 @@ struct ConfirmationView: View {
         }
     }
 
-    // MARK: - Tip Panel (embedded in ZStack like byGuestPanel / byItemPanel)
+    // MARK: - Tip Panel (delegates to shared TipPanelView)
     private func tipPanel() -> some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: 12) {
-                    Spacer()
-                    VStack(spacing: 0) {
-                        // Pre-tip total row (static)
-                        HStack {
-                            Text("Pre-tip total")
-                                .font(.system(size: 14, weight: .regular))
-                            Spacer()
-                            Text(ReceiptDisplay.money(preTipTotalCents))
-                                .font(.system(size: 14, weight: .regular))
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-
-                        // Tip row — tap to enter manually
-                        HStack {
-                            Text("Tip (\(String(format: "%.0f", tipPercent))%)")
-                                .font(.system(size: 14, weight: .regular))
-                            Spacer()
-                            if tipEditingField == .tip {
-                                TextField("0.00", text: $tipManualInput)
-                                    .font(.system(size: 14, weight: .regular))
-                                    .foregroundColor(.blue)
-                                    .keyboardType(.decimalPad)
-                                    .focused($tipInputFocused, equals: .tip)
-                                    .multilineTextAlignment(.trailing)
-                                    .fixedSize()
-                                    .onChange(of: tipManualInput) { _, newValue in
-                                        let cents = stringToCents(newValue)
-                                        if preTipTotalCents > 0 {
-                                            tipPercent = min(100, max(0, (Double(cents) / Double(preTipTotalCents)) * 100.0))
-                                        }
-                                    }
-                            } else {
-                                Text(ReceiptDisplay.money(sliderTipCents))
-                                    .font(.system(size: 14, weight: .regular))
-                                    .foregroundColor(.blue)
-                                    .onTapGesture {
-                                        tipManualInput = String(format: "%.2f", Double(sliderTipCents) / 100.0)
-                                        tipEditingField = .tip
-                                        tipInputFocused = .tip
-                                    }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-
-                        Divider()
-                            .padding(.horizontal, 16)
-
-                        // Total row — tap to enter manually; offset from pre-tip total becomes the tip
-                        HStack {
-                            Text("Total")
-                                .font(.system(size: 15, weight: .semibold))
-                            Spacer()
-                            if tipEditingField == .total {
-                                TextField("0.00", text: $tipManualInput)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .keyboardType(.decimalPad)
-                                    .focused($tipInputFocused, equals: .total)
-                                    .multilineTextAlignment(.trailing)
-                                    .fixedSize()
-                                    .onChange(of: tipManualInput) { _, newValue in
-                                        let enteredTotal = stringToCents(newValue)
-                                        let impliedTip = enteredTotal - preTipTotalCents
-                                        if preTipTotalCents > 0 && impliedTip >= 0 {
-                                            tipPercent = min(100, (Double(impliedTip) / Double(preTipTotalCents)) * 100.0)
-                                        }
-                                    }
-                            } else {
-                                Text(ReceiptDisplay.money(totalWithTipCents))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .onTapGesture {
-                                        tipManualInput = String(format: "%.2f", Double(totalWithTipCents) / 100.0)
-                                        tipEditingField = .total
-                                        tipInputFocused = .total
-                                    }
-                            }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                    }
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(16)
-                    .padding(.horizontal, 24)
-
-                    VStack(spacing: 16) {
-                        PercentageSlider(
-                            percent: $tipPercent,
-                            minPercent: 0,
-                            maxPercent: 100
-                        )
-                        .frame(height: 60)
-                        .padding(.horizontal, 24)
-                        .onTapGesture { tipEditingField = nil }
-
-                        if uiModel.isExpanded {
-                            Text(tipEditingField == nil ? "Scroll to adjust • Tap a % to jump" : "Tap amount again to edit")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-
-                    Spacer()
+        let preTip = stringToCents(amount) - stringToCents(tipAmount)
+        let existing = stringToCents(tipAmount)
+        return TipPanelView(
+            preTipTotalCents: preTip,
+            existingTipCents: existing,
+            isExpanded: uiModel.isExpanded,
+            onBack: {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    showTipPanel = false
+                }
+            },
+            onApply: { tipStr, totalStr in
+                onTipChanged(tipStr, totalStr)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                    showTipPanel = false
                 }
             }
-            .padding(.top, uiModel.isExpanded ? 10 : 0)
-//            .onChange(of: tipInputFocused) { _, newFocus in
-//                if newFocus == nil {
-//                    tipEditingField = nil
-//                }
-//            }
-
-            HStack(spacing: 12) {
-                Button(action: {
-                    tipEditingField = nil
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                        showTipPanel = false
-                    }
-                }) {
-                    Text("Back")
-                        .font(.system(size: 17, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(18)
-                }
-                .buttonStyle(.plain)
-
-                Button(action: {
-                    tipEditingField = nil
-                    let tipStr = ReceiptDisplay.money(sliderTipCents).replacingOccurrences(of: "$", with: "")
-                    let totalStr = ReceiptDisplay.money(totalWithTipCents).replacingOccurrences(of: "$", with: "")
-                    onTipChanged(tipStr, totalStr)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                        showTipPanel = false
-                    }
-                }) {
-                    Text("Apply")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(Color(.systemBlue))
-                        .cornerRadius(18)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 40)
-            .padding(.top, 5)
-            .padding(.bottom, 18)
-        }
-        .padding(.top, 9)
+        )
     }
 
     // MARK: - Confirmation Panel (card + swipe-to-send + bottom buttons)
     private func confirmationPanel() -> some View {
-        let cardScale: CGFloat = !uiModel.isExpanded ? 0.9 : 1.1
+        let cardScale: CGFloat = !uiModel.isExpanded ? 0.9 : 0.9 //1.1
         let cardH: CGFloat = 160 * cardScale
 
         return VStack(spacing: 0) {
@@ -607,6 +453,7 @@ struct ConfirmationView: View {
             Text(dragIntent == .left ? "Swipe left to delete" :
                 dragIntent == .right ? "Swipe right to tip" :
                 dragIntent == .down ? "Swipe down for split options" :
+                uiModel.isLoadingReceipt ? "Swipe left to delete" :
                 isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
             .font(.system(size: 14, weight: .regular))
             .foregroundColor(.secondary)
@@ -614,44 +461,105 @@ struct ConfirmationView: View {
 
             Color.clear.frame(height: 18)
 
-            // Card with split ring (crossfades between loading and real card)
-            ZStack {
-                if uiModel.isLoadingReceipt || !introAnimationDone {
-                    BillCardLoadingView(
-                        participantCount: participantCount,
-                        displayName: payerDisplayName(),
-                        tabName: uiModel.activeTab?.name,
-                        splitLabel: splitLabel,
-                        tabColorHex: uiModel.activeTab?.colorHex,
-                        onAnimationComplete: {
-                            introAnimationDone = true
+            // Card with long arrow hints whose shafts disappear behind the card
+            ZStack(alignment: .center) {
+                // Hint layer — two independent sublayers so arrows don't compete with labels for space
+                ZStack {
+                    // Arrow shafts: span the full side width (card covers the inner ends)
+                    HStack(alignment: .center, spacing: 0) {
+                        HStack(spacing: 0) {
+                            Image(systemName: "arrowtriangle.left.fill")
+                                .font(.system(size: 8))
+                            Rectangle()
+                                .frame(height: 1.5)
                         }
-                    )
-                    .transition(.opacity)
-                } else {
-                    BillCardView(
-                        receiptName: receiptName,
-                        displayAmount: displayAmount,
-                        displayName: payerDisplayName(),
-                        splitLabel: splitLabel,
-                        owedAmounts: owedAmounts,
-                        totalCents: totalCents,
-                        tabName: uiModel.activeTab?.name,
-                        tabColorHex: uiModel.activeTab?.colorHex
-                    )
-                    .transition(.opacity)
+                        .foregroundColor(.red)
+                        .padding(.leading, 54)
+                        .frame(maxWidth: .infinity)
+
+                        Color.clear.frame(width: 220 * cardScale)
+
+                        HStack(spacing: 0) {
+                            Rectangle()
+                                .frame(height: 1.5)
+                            Image(systemName: "arrowtriangle.right.fill")
+                                .font(.system(size: 8))
+                        }
+                        .foregroundColor(.blue)
+                        .padding(.trailing, 54)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    // Labels: float at screen edges on top of arrow outer ends
+                    HStack(alignment: .center) {
+                        VStack(spacing: 3) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Delete")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(.red)
+                        .padding(.leading, 20)
+                        Spacer()
+                        VStack(spacing: 3) {
+                            Image(systemName: "dollarsign.circle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Tip")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .foregroundColor(.blue)
+                        .padding(.trailing, 24)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: cardH)
+                .opacity(buttonsOpacity * 0.55)
+                .allowsHitTesting(false)
+                .zIndex(0)
+
+                // Card on top — covers the inner shaft ends, creating the peek effect
+                ZStack {
+                    if uiModel.isLoadingReceipt || !introAnimationDone {
+                        BillCardLoadingView(
+                            participantCount: participantCount,
+                            displayName: payerDisplayName(),
+                            tabName: uiModel.activeTab?.name,
+                            splitLabel: splitLabel,
+                            tabColorHex: uiModel.activeTab?.colorHex,
+                            onAnimationComplete: {
+                                introAnimationDone = true
+                            }
+                        )
+                        .transition(.opacity)
+                    } else {
+                        BillCardView(
+                            receiptName: receiptName,
+                            displayAmount: displayAmount,
+                            displayName: payerDisplayName(),
+                            splitLabel: splitLabel,
+                            owedAmounts: owedAmounts,
+                            totalCents: totalCents,
+                            tabName: uiModel.activeTab?.name,
+                            tabColorHex: uiModel.activeTab?.colorHex
+                        )
+                        .transition(.opacity)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
+                .cardPhysics(isDragging: cardOffset != .zero)
+                .scaleEffect(cardScale)
+                .frame(width: 260 * cardScale, height: cardH)
+                .offset(cardOffset)
+                .rotationEffect(.degrees(cardRotation), anchor: .bottom)
+                .gesture(swipeCardGesture)
+                .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
+                .contentShape(Rectangle())
+                .zIndex(1)
             }
-            .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
-            .cardPhysics(isDragging: cardOffset != .zero)
-            .scaleEffect(cardScale)
-            .frame(width: 260 * cardScale, height: cardH)
-            .offset(cardOffset)
-            .rotationEffect(.degrees(cardRotation), anchor: .bottom)
-            .gesture(swipeCardGesture)
-            .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
-            .contentShape(Rectangle())
-            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
+            .frame(height: cardH)
 
             VStack(spacing: 6) {
                 Text(isLoadingItems ? "Loading receipt items..." : "Tap to edit receipt")
@@ -670,24 +578,19 @@ struct ConfirmationView: View {
                 } else {
                     HStack(spacing: 12) {
                         // 1) Back or Delete
-                        let trashProgress = (dragIntent == .left && leftButtonIsTrash) ? leftProgress : 0
+                        let trashProgress = dragIntent == .left ? leftProgress : 0
 
                         Button(action: {
-                            if cameFromManual { onBack() } else { animateDeleteThenAct() }
-                        }) {
+                             animateDeleteThenAct() }
+                        ) {
                             HStack(spacing: 6) {
-                                if cameFromManual {
-                                    Image(systemName: "chevron.left")
-                                    Text("Back")
-                                } else {
-                                    Image(systemName: "trash")
-                                }
+                                Image(systemName: "trash")
                             }
                             .font(.system(size: 16, weight: .semibold))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
                             .foregroundStyle(
-                                cameFromManual ? Color.primary : (trashProgress > 0.02 ? Color.white : Color.red)
+                                trashProgress > 0.02 ? Color.white : Color.red
                             )
                             .background(
                                 RoundedRectangle(cornerRadius: 18)
@@ -700,7 +603,7 @@ struct ConfirmationView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        .opacity(dragIntent == .left && !cameFromManual ? 1 : buttonsOpacity)
+                        .opacity(dragIntent == .left ? 1 : buttonsOpacity)
 
                         // 2) Split — tap to expand mode selector
                         let splitProgress = (dragIntent == .down) ? downProgress : 0
@@ -800,13 +703,13 @@ struct ConfirmationView: View {
                 interactive: mode == .custom
             )
             .padding(.horizontal, 24)
-            .padding(.top, 20)
+            .padding(.top, 6)
         }
         // Items panel
         if uiModel.isExpanded && confirmed == false && mode == .byItems {
             byItemPanel()
                 .padding(.horizontal, 24)
-                .padding(.top, 20)
+                .padding(.top, 6)
         }
         // Tip panel
         if showTipPanel {
@@ -823,7 +726,7 @@ struct ConfirmationView: View {
         GeometryReader { geo in
         let topPad: CGFloat = uiModel.isExpanded ? 20 : 4
         // Cap the panel height in expanded mode so the guestList below has immediate room.
-        let panelH: CGFloat = min(geo.size.height * 0.65, 500)
+        let panelH: CGFloat = min(geo.size.height * 0.55, 500)
         ZStack {
             // Main content
             ScrollView {
@@ -862,6 +765,30 @@ struct ConfirmationView: View {
             .offset(y: -keyboardHeight)
             .animation(.easeOut(duration: 0.22), value: keyboardHeight)
             .ignoresSafeArea(edges: .bottom)
+
+//            // Trash swipe indicator — pops up on the right when dragging left to delete
+//            if dragIntent == .left && leftButtonIsTrash && !hasSent {
+//                HStack {
+//                    Spacer()
+//                    ZStack {
+//                        Circle()
+//                            .fill(.regularMaterial)
+//                            .frame(width: 62, height: 62)
+//                            .shadow(color: Color.red.opacity(0.25), radius: 14, x: 0, y: 4)
+//                        Image(systemName: "trash.fill")
+//                            .font(.system(size: 22, weight: .semibold))
+//                            .foregroundColor(.red)
+//                    }
+//                    .scaleEffect(
+//                        min(1.0, Double(leftProgress) * 1.4),
+//                        anchor: .center
+//                    )
+//                    .animation(.spring(response: 0.28, dampingFraction: 0.5), value: leftProgress)
+//                    .padding(.trailing, 28)
+//                }
+//                .allowsHitTesting(false)
+//                .transition(.opacity)
+//            }
 
             // Success overlay
             if showSuccess {
@@ -917,16 +844,6 @@ struct ConfirmationView: View {
                 introAnimationDone = true
             } else {
                 introAnimationDone = false
-            }
-
-            if !hasTipInitialized {
-                hasTipInitialized = true
-                let existingTipCents = splitDraft?.tipCents ?? stringToCents(tipAmount)
-                if existingTipCents > 0 && preTipTotalCents > 0 {
-                    tipPercent = (Double(existingTipCents) / Double(preTipTotalCents)) * 100.0
-                } else {
-                    tipPercent = 15.0
-                }
             }
 
             if draftGuests.isEmpty {
@@ -990,6 +907,13 @@ struct ConfirmationView: View {
                 break
             }
         }
+        .onChange(of: uiModel.isLoadingReceipt) { _, isNowLoading in
+            // Phase 1 just finished — immediately show BillCardView with the real total
+            // instead of waiting for the loading animation to complete on its own.
+            if !isNowLoading {
+                introAnimationDone = true
+            }
+        }
         .onChange(of: uiModel.itemsLoadingState.isLoading) { _, isNowLoading in
             if !isNowLoading {
                 // Phase 2 just finished. Re-seed items immediately if already in byItems mode,
@@ -1001,11 +925,65 @@ struct ConfirmationView: View {
                 }
             }
         }
+        .onChange(of: introAnimationDone) { _, isDone in
+            guard isDone, !UserDefaults.standard.bool(forKey: "didSeeSwipeHint") else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                guard !hasSent else { return }
+                // Left
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
+                    cardOffset = CGSize(width: -28, height: 0); cardRotation = -4
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { cardOffset = .zero; cardRotation = 0 }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        guard !hasSent else { return }
+                        // Right
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
+                            cardOffset = CGSize(width: 28, height: 0); cardRotation = 4
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { cardOffset = .zero; cardRotation = 0 }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                guard !hasSent else { return }
+                                // Down
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
+                                    cardOffset = CGSize(width: 0, height: 24)
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { cardOffset = .zero }
+                                    UserDefaults.standard.set(true, forKey: "didSeeSwipeHint")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $showEditReceipt) {
             EditReceiptView(
                 uiModel: uiModel,
                 onSave: { updatedReceipt in
                     uiModel.currentReceipt = updatedReceipt
+                    // Keep byItemItems in sync: update prices while preserving assignments
+                    if mode == .byItems {
+                        var matched = Set<UUID>()
+                        byItemItems = updatedReceipt.items.map { newItem in
+                            if let existing = byItemItems.first(where: {
+                                $0.label == newItem.label && !matched.contains($0.id)
+                            }) {
+                                matched.insert(existing.id)
+                                var updated = existing
+                                updated.price = ReceiptDisplay.money(newItem.priceCents)
+                                return updated
+                            }
+                            return DraftReceiptItem(
+                                id: UUID(),
+                                label: newItem.label,
+                                price: ReceiptDisplay.money(newItem.priceCents),
+                                assignedGuestIds: []
+                            )
+                        }
+                    }
                     showEditReceipt = false
                 },
                 onCancel: {

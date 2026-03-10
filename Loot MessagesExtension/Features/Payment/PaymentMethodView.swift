@@ -15,6 +15,12 @@ struct PaymentMethodView: View {
     @State private var isSaving: Bool = false
     @State private var zelleSheetItem: ZelleSheetItem? = nil
 
+    // Drag-to-reorder state
+    @State private var draggingId: String? = nil
+    @State private var dragStartIndex: Int = 0
+    @State private var dragTranslation: CGFloat = 0
+    private let rowHeight: CGFloat = 52
+
     private struct ZelleSheetItem: Identifiable { let id: Int }
 
     private var availableTypes: [PaymentMethodType] {
@@ -55,23 +61,46 @@ struct PaymentMethodView: View {
                 .font(.system(size: 16))
                 .foregroundStyle(.secondary)
 
+            // Draggable methods list — intentionally outside ScrollView
+            // so the ScrollView's pan gesture can't interfere with the drag gesture.
+            if !methods.isEmpty {
+                ZStack(alignment: .top) {
+                    // Clipped card — dragged row is opacity(0) but still holds the gesture
+                    VStack(spacing: 0) {
+                        ForEach(Array(methods.enumerated()), id: \.element.id) { index, method in
+                            methodRow(index: index, method: method)
+                                .frame(height: rowHeight)
+                                .overlay(alignment: .bottom) {
+                                    if index < methods.count - 1 {
+                                        Divider().padding(.leading, 44)
+                                    }
+                                }
+                                .background(Color(.secondarySystemBackground))
+                                .opacity(draggingId == method.id ? 0 : 1)
+                        }
+                    }
+                    .background(Color(.secondarySystemBackground))
+                    .cornerRadius(12)
+                    .coordinateSpace(name: "reorderList")
+
+                    // Floating copy — positioned from startIndex + raw translation,
+                    // so it never jumps when the array reorders underneath.
+                    if let dId = draggingId,
+                       let idx = methods.firstIndex(where: { $0.id == dId }) {
+                        methodRow(index: idx, method: methods[idx])
+                            .frame(height: rowHeight)
+                            .background(Color(.secondarySystemBackground))
+                            .cornerRadius(8)
+                            .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
+                            .offset(y: CGFloat(dragStartIndex) * rowHeight + dragTranslation)
+                            .allowsHitTesting(false)
+                    }
+                }
+            }
+
+            // The rest (add buttons + save) can scroll if needed
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    // Added methods
-                    if !methods.isEmpty {
-                        VStack(spacing: 0) {
-                            ForEach(Array(methods.enumerated()), id: \.element.id) { index, method in
-                                methodRow(index: index, method: method)
-                                if index < methods.count - 1 {
-                                    Divider().padding(.leading, 44)
-                                }
-                            }
-                        }
-                        .background(Color(.secondarySystemBackground))
-                        .cornerRadius(12)
-                    }
-
-                    // Available methods to add
                     if !availableTypes.isEmpty {
                         Text("Add a method")
                             .font(.system(size: 14, weight: .medium))
@@ -107,7 +136,6 @@ struct PaymentMethodView: View {
                         }
                     }
 
-                    // Save button
                     Button(action: save) {
                         if isSaving {
                             ProgressView()
@@ -123,7 +151,6 @@ struct PaymentMethodView: View {
                     .disabled(!canSave || isSaving)
                     .opacity(canSave && !isSaving ? 1.0 : 0.4)
 
-                    // Skip button (post-send only)
                     if isPostSendPrompt {
                         Button(action: onSaved) {
                             Text("Skip for Now")
@@ -142,6 +169,31 @@ struct PaymentMethodView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             methods = savedPaymentMethods()
+            guard UserDefaults.standard.bool(forKey: DefaultsKeys.pendingZelleReopen) else { return }
+            UserDefaults.standard.removeObject(forKey: DefaultsKeys.pendingZelleReopen)
+            let bName = UserDefaults.standard.string(forKey: DefaultsKeys.pendingZelleBankName) ?? ""
+            let bURL  = UserDefaults.standard.string(forKey: DefaultsKeys.pendingZelleBankURL) ?? ""
+            UserDefaults.standard.removeObject(forKey: DefaultsKeys.pendingZelleBankName)
+            UserDefaults.standard.removeObject(forKey: DefaultsKeys.pendingZelleBankURL)
+
+            if let idx = methods.firstIndex(where: { $0.type == .zelle }) {
+                if (methods[idx].bankURL ?? "").isEmpty, !bURL.isEmpty {
+                    methods[idx].bankName = bName
+                    methods[idx].bankURL  = bURL
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    zelleSheetItem = ZelleSheetItem(id: idx)
+                }
+            } else if !bURL.isEmpty {
+                var m = PaymentMethod(type: .zelle, identifier: "")
+                m.bankName = bName
+                m.bankURL  = bURL
+                methods.append(m)
+                let idx = methods.count - 1
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    zelleSheetItem = ZelleSheetItem(id: idx)
+                }
+            }
         }
         .task {
             onRequestExpand()
@@ -168,21 +220,72 @@ struct PaymentMethodView: View {
             Image(systemName: "line.3.horizontal")
                 .foregroundStyle(.tertiary)
                 .font(.system(size: 14))
+                .padding(.vertical, 8)
+                .padding(.horizontal, 2)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 4, coordinateSpace: .named("reorderList"))
+                        .onChanged { val in
+                            if draggingId == nil {
+                                draggingId = method.id
+                                dragStartIndex = index
+                            }
+                            guard draggingId == method.id else { return }
+                            dragTranslation = val.translation.height
+
+                            // Where the dragged item visually is, in fractional row units
+                            let fractional = CGFloat(dragStartIndex) + dragTranslation / rowHeight
+
+                            guard let currentIdx = methods.firstIndex(where: { $0.id == method.id }) else { return }
+
+                            // Compute target with 0.6 hysteresis to prevent oscillation
+                            var target = currentIdx
+                            while fractional > CGFloat(target) + 0.6 && target < methods.count - 1 {
+                                target += 1
+                            }
+                            while fractional < CGFloat(target) - 0.6 && target > 0 {
+                                target -= 1
+                            }
+
+                            guard target != currentIdx else { return }
+                            let toOffset = target > currentIdx ? target + 1 : target
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+                                methods.move(fromOffsets: IndexSet(integer: currentIdx),
+                                             toOffset: toOffset)
+                            }
+                        }
+                        .onEnded { _ in
+                            guard let finalIdx = methods.firstIndex(where: { $0.id == draggingId }) else {
+                                draggingId = nil
+                                dragTranslation = 0
+                                return
+                            }
+                            // Snap floating copy to the final row position
+                            let snap = CGFloat(finalIdx - dragStartIndex) * rowHeight
+                            withAnimation(.spring(response: 0.2, dampingFraction: 0.85)) {
+                                dragTranslation = snap
+                            }
+                            // Then reveal the real row
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                                draggingId = nil
+                                dragTranslation = 0
+                            }
+                        }
+                )
 
             // Icon
             Image(systemName: method.type.iconName)
                 .font(.system(size: 18))
                 .frame(width: 24)
-            
+
             // Name
             Text(method.type.displayName)
                 .font(.system(size: 15, weight: .medium))
-            
+
             Spacer()
 
             // Identifier
             VStack(alignment: .trailing, spacing: 4) {
-
                 if method.type.requiresIdentifier {
                     TextField(method.type.identifierPlaceholder, text: Binding(
                         get: { methods.indices.contains(index) ? methods[index].identifier : "" },
@@ -208,10 +311,13 @@ struct PaymentMethodView: View {
                                 Text(method.identifier)
                                     .font(.system(size: 13, weight: .medium))
                                     .foregroundStyle(.blue)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
                                 if let bName = method.bankName {
                                     Text(bName)
                                         .font(.system(size: 11))
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
                         } else {
