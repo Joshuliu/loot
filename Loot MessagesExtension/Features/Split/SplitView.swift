@@ -601,7 +601,7 @@ extension ConfirmationView {
 
         let parts = moneyParts(selectedCents)
 
-        return VStack(alignment: .leading, spacing: 18) {
+        return VStack(alignment: .leading, spacing: 0) {
             splitPanelToolbar()
             
             Spacer(minLength: 0)
@@ -808,9 +808,9 @@ extension ConfirmationView {
 
     // MARK: - By items panel (seeded)
     func byItemPanel() -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
             splitPanelToolbar()
-
+            Spacer()
             HStack {
                 Text("Select a guest, then tap an item to assign/unassign them.")
                     .font(.system(size: 13))
@@ -835,7 +835,7 @@ extension ConfirmationView {
                 .disabled(isLoadingItems)
                 .opacity(isLoadingItems ? 0.5 : 1)
             }
-
+            Spacer()
             VStack(alignment: .leading, spacing: 10) {
                 Text("Receipt items")
                     .font(.system(size: 14, weight: .semibold))
@@ -924,7 +924,7 @@ extension ConfirmationView {
                 }
             }
             .layoutPriority(1)
-            Spacer(minLength: 0)
+            Spacer()
 
             splitModePicker()
                 .padding(.top, 7)
@@ -990,15 +990,15 @@ extension ConfirmationView {
     func splitModePicker(closesExpanded: Bool = false, capturesSnapshot: Bool = false) -> some View {
         let modes: [(SplitDraft.Mode, String)] = [
             (.byItems, "By Items"),
-            (.equally, "Equally"),
+            (.equally, "Even Split"),
             (.custom,  "Custom")
         ]
         return VStack(alignment: .center, spacing: 7) {
-            Text("Split Method")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundColor(.secondary)
-                .padding(.top, 10)
-                .padding(.bottom, 7)
+//            Text("Split Method")
+//                .font(.system(size: 14, weight: .regular))
+//                .foregroundColor(.secondary)
+//                .padding(.top, 10)
+//                .padding(.bottom, 7)
             HStack(spacing: 12) {
                 ForEach(modes, id: \.1) { (m, label) in
                     Button {
@@ -1016,8 +1016,9 @@ extension ConfirmationView {
                         Text(label)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(mode == m ? .white : .primary)
-                            .frame(maxWidth: .infinity)
                             .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                            .frame(minWidth: 0)
                             .background(RoundedRectangle(cornerRadius: 18).fill(mode == m ? .blue : buttonBase))
                     }
                     .buttonStyle(.plain)
