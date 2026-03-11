@@ -929,29 +929,47 @@ struct ConfirmationView: View {
             guard isDone, !UserDefaults.standard.bool(forKey: "didSeeSwipeHint") else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 guard !hasSent else { return }
-                // Left
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
-                    cardOffset = CGSize(width: -28, height: 0); cardRotation = -4
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { cardOffset = .zero; cardRotation = 0 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                // Left #1
+                withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: -9, height: 0); cardRotation = -1.8 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
+                    // Left #2
+                    DispatchQueue.main.asyncAfter(deadline: .now()) {
                         guard !hasSent else { return }
-                        // Right
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
-                            cardOffset = CGSize(width: 28, height: 0); cardRotation = 4
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { cardOffset = .zero; cardRotation = 0 }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: -9, height: 0); cardRotation = -1.8 }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                            withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
                                 guard !hasSent else { return }
-                                // Down
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.55)) {
-                                    cardOffset = CGSize(width: 0, height: 24)
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { cardOffset = .zero }
-                                    UserDefaults.standard.set(true, forKey: "didSeeSwipeHint")
+                                // Right #1
+                                withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 9, height: 0); cardRotation = 1.8 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                    withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
+                                    // Right #2
+                                    DispatchQueue.main.asyncAfter(deadline: .now()) {
+                                        guard !hasSent else { return }
+                                        withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 9, height: 0); cardRotation = 1.8 }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                            withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                                                guard !hasSent else { return }
+                                                // Down #1
+                                                withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 0, height: 9) }
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                                    withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero }
+                                                    // Down #2
+                                                    DispatchQueue.main.asyncAfter(deadline: .now()) {
+                                                        guard !hasSent else { return }
+                                                        withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 0, height: 9) }
+                                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                                                            withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero }
+                                                           UserDefaults.standard.set(true, forKey: "didSeeSwipeHint")
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

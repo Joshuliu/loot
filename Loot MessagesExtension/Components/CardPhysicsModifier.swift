@@ -111,15 +111,17 @@ struct CardPhysicsModifier: ViewModifier {
     private func performNudge() {
         guard !hasInteracted else { return }
 
-        withAnimation(.easeOut(duration: 0.45)) {
-            nudgeOffset = -14
+        // Gentle lift
+        withAnimation(.easeOut(duration: 0.18)) {
+            nudgeOffset = -9
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        // Spring back with soft bounce oscillation
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             guard !hasInteracted else { return }
-            withAnimation(.easeInOut(duration: 0.5)) {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) {
                 nudgeOffset = 0
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) {
                 performNudge()
             }
         }
