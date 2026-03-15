@@ -16,6 +16,8 @@ struct TipPanelView: View {
     @State private var hasInitialized: Bool = false
     @State private var tipEditingField: TipEditField? = nil
     @State private var tipManualInput: String = ""
+    @State private var manualTipOverrideCents: Int? = nil
+    @State private var isUpdatingPercentFromManualInput: Bool = false
     @FocusState private var tipInputFocused: TipEditField?
 
     private var sliderTipCents: Int {
@@ -24,6 +26,120 @@ struct TipPanelView: View {
 
     private var totalWithTipCents: Int {
         preTipTotalCents + sliderTipCents
+    }
+
+    private func manualTipCents(from input: String, field: TipEditField?) -> Int? {
+        guard let field else { return nil }
+        switch field {
+        case .tip:
+            return max(0, stringToCents(input))
+        case .total:
+            return max(0, stringToCents(input) - preTipTotalCents)
+        }
+    }
+
+    private var manualTipCentsWhileEditing: Int? {
+        manualTipCents(from: tipManualInput, field: tipEditingField)
+    }
+
+    private var effectiveTipCents: Int {
+        manualTipCentsWhileEditing ?? manualTipOverrideCents ?? sliderTipCents
+    }
+
+    private var effectiveTotalCents: Int {
+        preTipTotalCents + effectiveTipCents
+    }
+
+    private var appliedTipCents: Int {
+        effectiveTipCents
+    }
+
+    private var appliedTotalCents: Int {
+        effectiveTotalCents
+    }
+
+    private func cappedSliderPercent(forManualTip tipCents: Int) -> Double {
+        guard preTipTotalCents > 0 else { return tipCents > 0 ? 100 : 0 }
+        let rawPercent = (Double(tipCents) / Double(preTipTotalCents)) * 100.0
+        return min(100, max(0, rawPercent))
+    }
+
+    private func sanitizedUSDAmountInput(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        var integerPart = ""
+        var fractionalPart = ""
+        var hasDecimalSeparator = false
+
+        for char in trimmed {
+            if char.isWholeNumber {
+                if hasDecimalSeparator {
+                    if fractionalPart.count < 2 {
+                        fractionalPart.append(char)
+                    }
+                } else {
+                    integerPart.append(char)
+                }
+            } else if char == "." && !hasDecimalSeparator {
+                hasDecimalSeparator = true
+            }
+        }
+
+        if integerPart.isEmpty {
+            integerPart = "0"
+        } else {
+            integerPart = String(integerPart.drop { $0 == "0" })
+            if integerPart.isEmpty {
+                integerPart = "0"
+            }
+        }
+
+        if hasDecimalSeparator {
+            return "\(integerPart).\(fractionalPart)"
+        }
+
+        return integerPart
+    }
+
+    private func normalizedUSDAmount(_ raw: String) -> String {
+        let sanitized = sanitizedUSDAmountInput(raw)
+        guard !sanitized.isEmpty else { return "" }
+        return centsToDecimalString(stringToCents(sanitized))
+    }
+
+    private func updateManualTipInput(_ newValue: String, field: TipEditField) {
+        let sanitized = sanitizedUSDAmountInput(newValue)
+        if sanitized != newValue {
+            tipManualInput = sanitized
+            return
+        }
+
+        let manualTipCents = manualTipCents(from: sanitized, field: field) ?? 0
+        manualTipOverrideCents = manualTipCents
+        isUpdatingPercentFromManualInput = true
+        tipPercent = cappedSliderPercent(forManualTip: manualTipCents)
+        isUpdatingPercentFromManualInput = false
+    }
+
+    private func cancelKeyboardEditing() {
+        tipInputFocused = nil
+        tipEditingField = nil
+        tipManualInput = ""
+    }
+
+    private func finishKeyboardEditing() {
+        let field = tipEditingField
+        let normalizedInput = normalizedUSDAmount(tipManualInput)
+        tipManualInput = normalizedInput
+        if let manualTipCents = manualTipCents(from: normalizedInput, field: field) {
+            manualTipOverrideCents = manualTipCents
+            isUpdatingPercentFromManualInput = true
+            tipPercent = cappedSliderPercent(forManualTip: manualTipCents)
+            isUpdatingPercentFromManualInput = false
+        }
+        tipInputFocused = nil
+        tipEditingField = nil
     }
 
     var body: some View {
@@ -58,18 +174,15 @@ struct TipPanelView: View {
                                     .multilineTextAlignment(.trailing)
                                     .fixedSize()
                                     .onChange(of: tipManualInput) { _, newValue in
-                                        let cents = stringToCents(newValue)
-                                        if preTipTotalCents > 0 {
-                                            tipPercent = min(100, max(0, (Double(cents) / Double(preTipTotalCents)) * 100.0))
-                                        }
+                                        updateManualTipInput(newValue, field: .tip)
                                     }
                             } else {
                                 Button {
-                                    tipManualInput = String(format: "%.2f", Double(sliderTipCents) / 100.0)
+                                    tipManualInput = centsToDecimalString(effectiveTipCents)
                                     tipEditingField = .tip
                                     tipInputFocused = .tip
                                 } label: {
-                                    Text(ReceiptDisplay.money(sliderTipCents))
+                                    Text(ReceiptDisplay.money(effectiveTipCents))
                                         .font(.system(size: 14, weight: .regular))
                                         .foregroundColor(.blue)
                                 }
@@ -95,19 +208,15 @@ struct TipPanelView: View {
                                     .multilineTextAlignment(.trailing)
                                     .fixedSize()
                                     .onChange(of: tipManualInput) { _, newValue in
-                                        let enteredTotal = stringToCents(newValue)
-                                        let impliedTip = enteredTotal - preTipTotalCents
-                                        if preTipTotalCents > 0 && impliedTip >= 0 {
-                                            tipPercent = min(100, (Double(impliedTip) / Double(preTipTotalCents)) * 100.0)
-                                        }
+                                        updateManualTipInput(newValue, field: .total)
                                     }
                             } else {
                                 Button {
-                                    tipManualInput = String(format: "%.2f", Double(totalWithTipCents) / 100.0)
+                                    tipManualInput = centsToDecimalString(effectiveTotalCents)
                                     tipEditingField = .total
                                     tipInputFocused = .total
                                 } label: {
-                                    Text(ReceiptDisplay.money(totalWithTipCents))
+                                    Text(ReceiptDisplay.money(effectiveTotalCents))
                                         .font(.system(size: 15, weight: .semibold))
                                         .foregroundColor(.primary)
                                 }
@@ -122,10 +231,22 @@ struct TipPanelView: View {
                     .padding(.horizontal, 24)
 
                     VStack(spacing: 16) {
-                        PercentageSlider(percent: $tipPercent, minPercent: 0, maxPercent: 100)
+                        PercentageSlider(
+                            percent: $tipPercent,
+                            minPercent: 0,
+                            maxPercent: 100
+                        )
                             .frame(height: 60)
                             .padding(.horizontal, 24)
                             .onTapGesture { tipEditingField = nil }
+                            .onChange(of: tipPercent) { _, _ in
+                                guard tipEditingField == nil, !isUpdatingPercentFromManualInput else { return }
+                                guard let manualTipOverrideCents else { return }
+                                let cappedManualPercent = cappedSliderPercent(forManualTip: manualTipOverrideCents)
+                                if abs(tipPercent - cappedManualPercent) > 0.001 {
+                                    self.manualTipOverrideCents = nil
+                                }
+                            }
 
                         if isExpanded {
                             Text(tipEditingField == nil ? "Scroll to adjust • Tap a % to jump" : "Tap amount again to edit")
@@ -154,9 +275,9 @@ struct TipPanelView: View {
                 .buttonStyle(.plain)
 
                 Button(action: {
+                    let tipStr = ReceiptDisplay.money(appliedTipCents).replacingOccurrences(of: "$", with: "")
+                    let totalStr = ReceiptDisplay.money(appliedTotalCents).replacingOccurrences(of: "$", with: "")
                     tipEditingField = nil
-                    let tipStr = ReceiptDisplay.money(sliderTipCents).replacingOccurrences(of: "$", with: "")
-                    let totalStr = ReceiptDisplay.money(totalWithTipCents).replacingOccurrences(of: "$", with: "")
                     onApply(tipStr, totalStr)
                 }) {
                     Text("Apply")
@@ -174,11 +295,28 @@ struct TipPanelView: View {
             .padding(.bottom, 18)
         }
         .padding(.top, 9)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Button("Cancel") {
+                    cancelKeyboardEditing()
+                }
+                Spacer()
+                Button("Done") {
+                    finishKeyboardEditing()
+                }
+                .fontWeight(.semibold)
+            }
+        }
         .onAppear {
             guard !hasInitialized else { return }
             hasInitialized = true
-            if existingTipCents > 0 && preTipTotalCents > 0 {
-                tipPercent = min(100, (Double(existingTipCents) / Double(preTipTotalCents)) * 100.0)
+            if existingTipCents > 0 {
+                isUpdatingPercentFromManualInput = true
+                tipPercent = cappedSliderPercent(forManualTip: existingTipCents)
+                isUpdatingPercentFromManualInput = false
+                if existingTipCents != sliderTipCents {
+                    manualTipOverrideCents = existingTipCents
+                }
             }
         }
     }

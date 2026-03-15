@@ -124,6 +124,11 @@ final class LootUIModel: ObservableObject {
     // Two-phase parsing: items loading state (phase 2 runs in background)
     @Published var itemsLoadingState: LoadingState<Phase2Result> = .idle
 
+    /// Optional pre-tip total override chosen in EditReceiptView.
+    /// This is kept separate from ReceiptDisplay fields so we can preserve explicit
+    /// "Override total" intent across re-opens of Edit Receipt until the user removes it.
+    @Published var preTipTotalOverrideCents: Int? = nil
+
     // Debug: OCR chunk images from last scan (populated when DEBUG_SHOW_CHUNKS = true)
     @Published var debugChunkImages: [UIImage] = []
     var phase2Task: Task<Void, Never>? = nil
@@ -169,6 +174,7 @@ final class LootUIModel: ObservableObject {
         scanImageOriginal = nil
         scanImageCropped = nil
         currentSplitDraft = nil
+        preTipTotalOverrideCents = nil
         openedMessagePayload = nil
         openedMessageDocId = nil
         receiptTab = nil

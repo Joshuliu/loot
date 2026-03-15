@@ -39,6 +39,8 @@ struct EditReceiptView: View {
         case item(UUID?)      // nil = adding new, UUID = editing existing
         case fee(UUID?)
         case discount(UUID?)
+        case preTipTotal
+        case tip
 
         var isActive: Bool { self != .none }
     }
@@ -131,12 +133,16 @@ struct EditReceiptView: View {
         }
         _discounts = State(initialValue: discountsList)
 
-        // Initialize pre-tip total override
-        // If there are no items, use the pre-tip total (total - tip) as override
+        // Initialize pre-tip total override.
+        // Priority:
+        // 1) Explicit override previously saved in this receipt flow (persist user intent),
+        // 2) legacy fallback for no-item receipts.
         let hasItems = !receipt.items.isEmpty
         let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents
 
-        if !hasItems && calculatedPreTip > 0 {
+        if let persistedOverride = uiModel.preTipTotalOverrideCents {
+            _preTipTotalOverride = State(initialValue: centsToDecimalString(persistedOverride))
+        } else if !hasItems && calculatedPreTip > 0 {
             _preTipTotalOverride = State(initialValue: centsToDecimalString(calculatedPreTip))
         } else {
             _preTipTotalOverride = State(initialValue: "")
@@ -221,7 +227,7 @@ struct EditReceiptView: View {
         case .item(let id):
             if let id = id, let item = items.first(where: { $0.id == id }) {
                 editorLabel = item.label
-                editorAmount = item.price
+                editorAmount = sanitizedUSDAmountInput(item.price)
             } else {
                 editorLabel = ""
                 editorAmount = ""
@@ -229,7 +235,7 @@ struct EditReceiptView: View {
         case .fee(let id):
             if let id = id, let fee = taxesAndFees.first(where: { $0.id == id }) {
                 editorLabel = fee.label
-                editorAmount = fee.amount
+                editorAmount = sanitizedUSDAmountInput(fee.amount)
             } else {
                 editorLabel = ""
                 editorAmount = ""
@@ -237,11 +243,17 @@ struct EditReceiptView: View {
         case .discount(let id):
             if let id = id, let discount = discounts.first(where: { $0.id == id }) {
                 editorLabel = discount.label
-                editorAmount = discount.amount
+                editorAmount = sanitizedUSDAmountInput(discount.amount)
             } else {
                 editorLabel = ""
                 editorAmount = ""
             }
+        case .preTipTotal:
+            editorLabel = "Override total"
+            editorAmount = sanitizedUSDAmountInput(preTipTotalOverride)
+        case .tip:
+            editorLabel = "Tip amount"
+            editorAmount = sanitizedUSDAmountInput(tipString)
         }
         editorMode = mode
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -251,7 +263,20 @@ struct EditReceiptView: View {
 
     private func saveEditor() {
         let label = editorLabel.trimmingCharacters(in: .whitespacesAndNewlines)
-        let amount = editorAmount.trimmingCharacters(in: .whitespacesAndNewlines)
+        let amount = normalizedUSDAmountForStorage(editorAmount)
+
+        switch editorMode {
+        case .preTipTotal:
+            preTipTotalOverride = amount
+            closeEditor()
+            return
+        case .tip:
+            tipString = amount
+            closeEditor()
+            return
+        case .none, .item, .fee, .discount:
+            break
+        }
 
         // Don't save if both are empty
         guard !label.isEmpty || !amount.isEmpty else {
@@ -283,6 +308,8 @@ struct EditReceiptView: View {
             } else {
                 discounts.append(EditableLineItem(id: UUID(), label: label, amount: amount))
             }
+        case .preTipTotal, .tip:
+            break
         }
         closeEditor()
     }
@@ -300,6 +327,8 @@ struct EditReceiptView: View {
         case .item(let id): return id == nil ? "Add Item" : "Edit Item"
         case .fee(let id): return id == nil ? "Add Tax/Fee" : "Edit Tax/Fee"
         case .discount(let id): return id == nil ? "Add Discount" : "Edit Discount"
+        case .preTipTotal: return "Edit Override Total"
+        case .tip: return "Edit Tip Amount"
         }
     }
 
@@ -309,7 +338,71 @@ struct EditReceiptView: View {
         case .item: return "Item name"
         case .fee: return "e.g. Tax, Service fee"
         case .discount: return "e.g. Coupon, Promo"
+        case .preTipTotal, .tip: return ""
         }
+    }
+
+    private var showsEditorLabelField: Bool {
+        switch editorMode {
+        case .item, .fee, .discount:
+            return true
+        case .none, .preTipTotal, .tip:
+            return false
+        }
+    }
+
+    private var editorAmountPlaceholder: String {
+        switch editorMode {
+        case .preTipTotal:
+            return "Auto"
+        case .tip:
+            return "0.00"
+        case .none, .item, .fee, .discount:
+            return "0.00"
+        }
+    }
+
+    private func sanitizedUSDAmountInput(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        var integerPart = ""
+        var fractionalPart = ""
+        var hasDecimalSeparator = false
+
+        for char in trimmed {
+            if char.isWholeNumber {
+                if hasDecimalSeparator {
+                    if fractionalPart.count < 2 {
+                        fractionalPart.append(char)
+                    }
+                } else {
+                    integerPart.append(char)
+                }
+            } else if char == "." && !hasDecimalSeparator {
+                hasDecimalSeparator = true
+            }
+        }
+
+        if integerPart.isEmpty {
+            integerPart = "0"
+        } else {
+            integerPart = String(integerPart.drop { $0 == "0" })
+            if integerPart.isEmpty {
+                integerPart = "0"
+            }
+        }
+
+        if hasDecimalSeparator {
+            return "\(integerPart).\(fractionalPart)"
+        }
+        return integerPart
+    }
+
+    private func normalizedUSDAmountForStorage(_ raw: String) -> String {
+        let sanitized = sanitizedUSDAmountInput(raw)
+        guard !sanitized.isEmpty else { return "" }
+        return centsToDecimalString(stringToCents(sanitized))
     }
     
     private func saveReceipt() {
@@ -338,6 +431,14 @@ struct EditReceiptView: View {
 
         // Final total is always pre-tip + tip
         let finalTotalCents = calculatedTotalCents
+
+        // Persist explicit override intent only when user kept a non-empty override value.
+        // Clearing this field and saving means "revert to calculated total".
+        if preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            uiModel.preTipTotalOverrideCents = nil
+        } else {
+            uiModel.preTipTotalOverrideCents = preTipTotalCents
+        }
 
         let updatedReceipt = ReceiptDisplay(
             id: uiModel.currentReceipt?.id ?? UUID().uuidString,
@@ -684,15 +785,18 @@ struct EditReceiptView: View {
 
                                     Spacer()
 
-                                    TextField("Auto", text: $preTipTotalOverride)
+                                    Text(preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Auto" : preTipTotalOverride)
                                         .font(.system(size: 15, weight: .semibold))
-                                        .keyboardType(.decimalPad)
+                                        .foregroundColor(preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
                                         .multilineTextAlignment(.trailing)
-                                        .focused($focusedField, equals: .preTipTotal)
-                                        .frame(width: 100)
+                                        .frame(width: 100, alignment: .trailing)
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    openEditor(mode: .preTipTotal, focusField: .amount)
+                                }
                             }
                             .background(Color(.secondarySystemBackground))
                             .cornerRadius(12)
@@ -715,15 +819,18 @@ struct EditReceiptView: View {
 
                                     Spacer()
 
-                                    TextField("0.00", text: $tipString)
+                                    Text(tipString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "0.00" : tipString)
                                         .font(.system(size: 15, weight: .semibold))
-                                        .keyboardType(.decimalPad)
+                                        .foregroundColor(tipString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
                                         .multilineTextAlignment(.trailing)
-                                        .focused($focusedField, equals: .tip)
-                                        .frame(width: 100)
+                                        .frame(width: 100, alignment: .trailing)
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 10)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    openEditor(mode: .tip, focusField: .amount)
+                                }
                             }
                             .background(Color(.secondarySystemBackground))
                             .cornerRadius(12)
@@ -777,27 +884,36 @@ struct EditReceiptView: View {
 
                         // Input fields
                         HStack(spacing: 12) {
-                            TextField(editorLabelPlaceholder, text: $editorLabel)
-                                .font(.system(size: 16))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .background(Color(.tertiarySystemBackground))
-                                .cornerRadius(8)
-                                .focused($editorFocusedField, equals: .label)
-                                .submitLabel(.next)
-                                .onSubmit {
-                                    editorFocusedField = .amount
-                                }
+                            if showsEditorLabelField {
+                                TextField(editorLabelPlaceholder, text: $editorLabel)
+                                    .font(.system(size: 16))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(Color(.tertiarySystemBackground))
+                                    .cornerRadius(8)
+                                    .focused($editorFocusedField, equals: .label)
+                                    .submitLabel(.next)
+                                    .onSubmit {
+                                        editorFocusedField = .amount
+                                    }
+                            }
 
-                            TextField("0.00", text: $editorAmount)
+                            TextField(editorAmountPlaceholder, text: $editorAmount)
                                 .font(.system(size: 16))
                                 .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .background(Color(.tertiarySystemBackground))
                                 .cornerRadius(8)
-                                .frame(width: 100)
+                                .frame(width: showsEditorLabelField ? 100 : nil)
                                 .focused($editorFocusedField, equals: .amount)
+                                .onChange(of: editorAmount) { _, newValue in
+                                    let sanitized = sanitizedUSDAmountInput(newValue)
+                                    if sanitized != newValue {
+                                        editorAmount = sanitized
+                                    }
+                                }
                         }
                         .padding(.horizontal, 16)
                         .padding(.vertical, 16)

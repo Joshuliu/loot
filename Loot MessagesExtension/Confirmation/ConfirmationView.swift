@@ -395,6 +395,13 @@ struct ConfirmationView: View {
             cardOffset = CGSize(width: -500, height: 0)
             cardRotation = -6
         }
+
+        // Ensure transient tip edits are cleared before we reset to landing.
+        // This keeps parent state (`tipAmount`, receipt tip cents, and split draft tip)
+        // from leaking into the next receipt flow.
+        let resetTotalCents = max(0, stringToCents(amount) - stringToCents(tipAmount))
+        onTipChanged("0", centsToDecimalString(resetTotalCents))
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
             onDeleteToLanding()
         }
@@ -982,6 +989,8 @@ struct ConfirmationView: View {
                 uiModel: uiModel,
                 onSave: { updatedReceipt in
                     uiModel.currentReceipt = updatedReceipt
+                    let updatedTipAmount = updatedReceipt.tipCents > 0 ? centsToDecimalString(updatedReceipt.tipCents) : ""
+                    onTipChanged(updatedTipAmount, centsToDecimalString(updatedReceipt.totalCents))
                     // Keep byItemItems in sync: update prices while preserving assignments
                     if mode == .byItems {
                         var matched = Set<UUID>()
