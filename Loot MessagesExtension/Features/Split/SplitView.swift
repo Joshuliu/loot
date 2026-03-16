@@ -1017,8 +1017,7 @@ extension ConfirmationView {
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(mode == m ? .white : .primary)
                             .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
-                            .frame(minWidth: 0)
+                            .frame(maxWidth: .infinity)
                             .background(RoundedRectangle(cornerRadius: 18).fill(mode == m ? .blue : buttonBase))
                     }
                     .buttonStyle(.plain)
