@@ -864,6 +864,9 @@ struct RootContainerView: View {
                     applySplitDraftToCurrentReceipt(draft)
                 }
                 onSendBill(receiptName, totalAmount)
+                receiptName = ""
+                amountString = "0"
+                tipAmount = ""
                 if let key = uiModel.conversationKey {
                     SessionPersistence.clear(conversationKey: key)
                 }
