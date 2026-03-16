@@ -19,6 +19,7 @@ struct PaymentMethodView: View {
     @State private var draggingId: String? = nil
     @State private var dragStartIndex: Int = 0
     @State private var dragTranslation: CGFloat = 0
+    @FocusState private var focusedIdentifierMethodId: String?
     private let rowHeight: CGFloat = 52
 
     private struct ZelleSheetItem: Identifiable { let id: Int }
@@ -34,8 +35,35 @@ struct PaymentMethodView: View {
             if method.type == .zelle {
                 return !(method.zelleData ?? "").isEmpty && !(method.bankURL ?? "").isEmpty
             }
-            return !method.type.requiresIdentifier || !method.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            guard method.type.requiresIdentifier else { return true }
+            if method.type == .venmo {
+                // Venmo keeps a visible "@" prefix; validate the username content after it.
+                return !method.identifier
+                    .replacingOccurrences(of: "@", with: "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty
+            }
+            return !method.identifier.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
+    }
+
+    private func venmoUsername(from raw: String) -> String {
+        raw
+            .replacingOccurrences(of: "@", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Normalizes identifier input while preserving Venmo UX rules:
+    /// - show "@" only while focused (or when a username already exists),
+    /// - prevent additional "@" characters,
+    /// - allow placeholder to reappear on blur when username is empty.
+    private func normalizedIdentifierInput(_ raw: String, for type: PaymentMethodType, isFocused: Bool) -> String {
+        guard type == .venmo else { return raw }
+        let username = venmoUsername(from: raw)
+        if username.isEmpty {
+            return isFocused ? "@" : ""
+        }
+        return "@\(username)"
     }
 
     var body: some View {
@@ -169,6 +197,13 @@ struct PaymentMethodView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onAppear {
             methods = savedPaymentMethods()
+            // Canonicalize persisted Venmo identifiers so existing values render consistently.
+            methods = methods.map { method in
+                guard method.type == .venmo else { return method }
+                var copy = method
+                copy.identifier = normalizedIdentifierInput(copy.identifier, for: .venmo, isFocused: false)
+                return copy
+            }
             guard UserDefaults.standard.bool(forKey: DefaultsKeys.pendingZelleReopen) else { return }
             UserDefaults.standard.removeObject(forKey: DefaultsKeys.pendingZelleReopen)
             let bName = UserDefaults.standard.string(forKey: DefaultsKeys.pendingZelleBankName) ?? ""
@@ -194,6 +229,13 @@ struct PaymentMethodView: View {
                     zelleSheetItem = ZelleSheetItem(id: idx)
                 }
             }
+        }
+        .onChange(of: focusedIdentifierMethodId) { oldValue, newValue in
+            // When leaving a Venmo field, remove a bare "@" so placeholder returns.
+            guard let oldValue, oldValue != newValue else { return }
+            guard let idx = methods.firstIndex(where: { $0.id == oldValue }) else { return }
+            guard methods[idx].type == .venmo else { return }
+            methods[idx].identifier = normalizedIdentifierInput(methods[idx].identifier, for: .venmo, isFocused: false)
         }
         .task {
             onRequestExpand()
@@ -288,10 +330,17 @@ struct PaymentMethodView: View {
             VStack(alignment: .trailing, spacing: 4) {
                 if method.type.requiresIdentifier {
                     TextField(method.type.identifierPlaceholder, text: Binding(
-                        get: { methods.indices.contains(index) ? methods[index].identifier : "" },
+                        get: {
+                            guard methods.indices.contains(index) else { return "" }
+                            let current = methods[index]
+                            let isFocused = (focusedIdentifierMethodId == current.id)
+                            return normalizedIdentifierInput(current.identifier, for: current.type, isFocused: isFocused)
+                        },
                         set: { newValue in
                             if methods.indices.contains(index) {
-                                methods[index].identifier = newValue
+                                let current = methods[index]
+                                let isFocused = (focusedIdentifierMethodId == current.id)
+                                methods[index].identifier = normalizedIdentifierInput(newValue, for: current.type, isFocused: isFocused)
                             }
                         }
                     ))
@@ -300,6 +349,7 @@ struct PaymentMethodView: View {
                     .autocorrectionDisabled(true)
                     .multilineTextAlignment(.trailing)
                     .frame(maxWidth: .infinity, alignment: .trailing)
+                    .focused($focusedIdentifierMethodId, equals: method.id)
                 }
 
                 if method.type == .zelle {

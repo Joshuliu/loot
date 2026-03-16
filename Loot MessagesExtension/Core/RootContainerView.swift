@@ -370,6 +370,67 @@ struct RootContainerView: View {
             }
         }
     }
+
+    /// Computes an exact-cents even split for active guest count.
+    /// Used by draft reconciliation so "Split evenly" stays consistent with live totals.
+    private func equalSplitCents(total: Int, count: Int) -> [Int] {
+        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
+        var out = Array(repeating: total / count, count: count)
+        let remainder = total - out.reduce(0, +)
+        if remainder > 0 {
+            for i in 0..<min(remainder, count) {
+                out[i] += 1
+            }
+        }
+        return out
+    }
+
+    /// Reconciles split-draft totals with the latest receipt totals.
+    ///
+    /// Why this exists:
+    /// - `ConfirmationView` can seed a draft before OCR phase 1/2 final totals are known.
+    /// - If that draft keeps stale `0` totals, the send payload can produce a `$0` / `0 ways` split.
+    ///
+    /// Usage:
+    /// - Called from phase completion events only (`isLoadingReceipt` and `itemsLoadingState` transitions).
+    /// - Keeps both the shared model draft and local draft mirror in sync.
+    @MainActor
+    private func reconcileSplitDraftWithLiveReceipt(trigger: String) {
+        guard let receipt = uiModel.currentReceipt else { return }
+        guard receipt.totalCents > 0 else { return }
+
+        // Prefer the shared source used by sending; fall back to local confirmation mirror.
+        guard var draft = uiModel.currentSplitDraft ?? splitDraft else { return }
+
+        let activeGuests = draft.guests.filter { $0.isIncluded }
+        guard !activeGuests.isEmpty else { return }
+
+        let previousTotal = draft.totalCents
+
+        draft.totalCents = receipt.totalCents
+        draft.feesCents = receipt.feesCents
+        draft.taxCents = receipt.taxCents
+        draft.tipCents = receipt.tipCents
+        draft.discountCents = receipt.discountCents
+
+        // For default "split evenly", keep per-guest amounts aligned with the live total.
+        if draft.mode == .equally {
+            draft.perGuestCents = equalSplitCents(total: receipt.totalCents, count: activeGuests.count)
+        }
+
+        // Keep payer valid if guest membership changed earlier in the flow.
+        if !draft.guests.contains(where: { $0.id == draft.payerGuestId && $0.isIncluded }) {
+            draft.payerGuestId = activeGuests.first?.id ?? draft.payerGuestId
+        }
+
+        uiModel.currentSplitDraft = draft
+        splitDraft = draft
+
+        if previousTotal != draft.totalCents {
+            print("[SplitSync] Reconciled draft total after \(trigger): \(previousTotal) -> \(draft.totalCents)")
+        }
+    }
+
     @MainActor
     private func applySplitDraftToCurrentReceipt(_ draft: SplitDraft) {
         guard let r = uiModel.currentReceipt else { return }
@@ -544,6 +605,17 @@ struct RootContainerView: View {
         }
         .onChange(of: uiModel.currentSplitDraft) { _, _ in
             saveSession(screen: uiModel.currentScreen)
+        }
+        .onChange(of: uiModel.isLoadingReceipt) { wasLoading, isLoading in
+            // Event-driven sync point #1: phase 1 completion (loading true -> false).
+            guard wasLoading, !isLoading else { return }
+            reconcileSplitDraftWithLiveReceipt(trigger: "phase 1 completion")
+        }
+        .onChange(of: uiModel.itemsLoadingState.isLoading) { wasLoading, isLoading in
+            // Event-driven sync point #2: phase 2 completion (loading true -> false),
+            // regardless of success/failure, so any live receipt totals are reflected in draft.
+            guard wasLoading, !isLoading else { return }
+            reconcileSplitDraftWithLiveReceipt(trigger: "phase 2 completion")
         }
         // Restore when conversationKey is first assigned (app reopened into same chat)
         .onChange(of: uiModel.conversationKey) { _, key in
@@ -792,6 +864,9 @@ struct RootContainerView: View {
                     applySplitDraftToCurrentReceipt(draft)
                 }
                 onSendBill(receiptName, totalAmount)
+                receiptName = ""
+                amountString = "0"
+                tipAmount = ""
                 if let key = uiModel.conversationKey {
                     SessionPersistence.clear(conversationKey: key)
                 }
