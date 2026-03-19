@@ -434,9 +434,23 @@ struct RootContainerView: View {
     @MainActor
     private func applySplitDraftToCurrentReceipt(_ draft: SplitDraft) {
         guard let r = uiModel.currentReceipt else { return }
+        var effectiveDraft = draft
+
+        // If a user-entered tip exists in confirmation state, fold it into the split draft
+        // right before send. This covers flows where the draft may be stale relative to the
+        // latest tip edit, so both payload math and rendered receipt stay aligned.
+        let tipFromConfirmationCents = stringToCents(tipAmount)
+        let hasValidNonZeroTip = !tipAmount.isEmpty &&
+            tipAmount != "$0" &&
+            tipAmount != "$0.00" &&
+            tipFromConfirmationCents > 0
+        if hasValidNonZeroTip {
+            effectiveDraft.tipCents += tipFromConfirmationCents
+            effectiveDraft.totalCents += tipFromConfirmationCents
+        }
 
         let updatedItems: [ReceiptDisplay.Item] = {
-            switch draft.mode {
+            switch effectiveDraft.mode {
             case .byItems:
                 // Use full-guest index (matches SplitPayload.g / SplitsSummaryView slot lookup)
                 func displayName(_ g: SplitGuest, at allIndex: Int) -> String {
@@ -449,12 +463,12 @@ struct RootContainerView: View {
                     return "Guest \(allIndex + 1)"
                 }
 
-                return draft.items.map { it in
+                return effectiveDraft.items.map { it in
                     let responsible = it.assignedGuestIds.compactMap { gid -> ReceiptDisplay.Responsible? in
-                        guard let idx = draft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
+                        guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
                         return ReceiptDisplay.Responsible(
                             slotIndex: idx,
-                            displayName: displayName(draft.guests[idx], at: idx)
+                            displayName: displayName(effectiveDraft.guests[idx], at: idx)
                         )
                     }.sorted(by: { $0.slotIndex < $1.slotIndex })
                     return ReceiptDisplay.Item(
@@ -477,13 +491,17 @@ struct RootContainerView: View {
             title: r.title,
             createdAt: r.createdAt,
             subtotalCents: updatedItems.reduce(0) { $0 + $1.priceCents },
-            feesCents: draft.feesCents,
-            taxCents: draft.taxCents,
-            tipCents: draft.tipCents,
-            discountCents: draft.discountCents,
-            totalCents: draft.totalCents,
+            feesCents: effectiveDraft.feesCents,
+            taxCents: effectiveDraft.taxCents,
+            tipCents: effectiveDraft.tipCents,
+            discountCents: effectiveDraft.discountCents,
+            totalCents: effectiveDraft.totalCents,
             items: updatedItems
         )
+
+        // Keep both draft sources in sync so the send payload uses the same tip-adjusted values.
+        uiModel.currentSplitDraft = effectiveDraft
+        splitDraft = effectiveDraft
     }
 
     // MARK: - Body
@@ -1062,11 +1080,14 @@ struct RootContainerView: View {
             onRequestExpand: onExpand,
             onBack: {
                 pendingTabId = ""
+                uiModel.activeTab = nil
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .tabview
                 }
             },
             onNext: { name, colorHex in
+                // Build a local-only tab first so invite confirmation can render immediately
+                // without waiting on network writes.
                 let tabId = pendingTabId.isEmpty ? TabService.shared.generateTabId() : pendingTabId
                 let tab = TabService.shared.createLocalTab(name: name, colorHex: colorHex, tabId: tabId)
                 pendingTabName = tab.name
@@ -1080,14 +1101,6 @@ struct RootContainerView: View {
                 onCollapse()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .tabInviteConfirmation
-                }
-                Task {
-                    do {
-                        try await TabService.shared.uploadTab(tab, tabId: tabId, conversationKey: uiModel.conversationKey ?? "")
-                        print("[RootContainer] Tab uploaded: \(tabId)")
-                    } catch {
-                        print("[RootContainer] Tab upload failed: \(error)")
-                    }
                 }
             },
             tabName: $pendingTabName,
@@ -1116,6 +1129,28 @@ struct RootContainerView: View {
                 }
             },
             onSend: { tabName, tabColorHex, tabId in
+                // Upload is intentionally deferred until invite send. If this tab does not
+                // exist in the local list yet, insert it locally and then upload in background.
+                let hasLocalTab = uiModel.userTabs.contains(where: { $0.id == tabId })
+                if !hasLocalTab {
+                    let localTab: LootTab
+                    if let active = uiModel.activeTab, active.id == tabId {
+                        localTab = active
+                    } else {
+                        localTab = TabService.shared.createLocalTab(name: tabName, colorHex: tabColorHex, tabId: tabId)
+                    }
+
+                    uiModel.userTabs.append(localTab)
+
+                    Task {
+                        do {
+                            try await TabService.shared.uploadTab(localTab, tabId: tabId, conversationKey: uiModel.conversationKey ?? "")
+                            print("[RootContainer] Tab uploaded on invite send: \(tabId)")
+                        } catch {
+                            print("[RootContainer] Tab upload failed on invite send: \(error)")
+                        }
+                    }
+                }
                 onSendTabInvite?(tabName, tabColorHex, tabId)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {

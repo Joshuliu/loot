@@ -988,7 +988,7 @@ struct ConfirmationView: View {
             EditReceiptView(
                 uiModel: uiModel,
                 onSave: { updatedReceipt in
-                    uiModel.currentReceipt = updatedReceipt
+                    //uiModel.currentReceipt = updatedReceipt
                     let updatedTipAmount = updatedReceipt.tipCents > 0 ? centsToDecimalString(updatedReceipt.tipCents) : ""
                     onTipChanged(updatedTipAmount, centsToDecimalString(updatedReceipt.totalCents))
                     // Keep byItemItems in sync: update prices while preserving assignments
@@ -1011,6 +1011,7 @@ struct ConfirmationView: View {
                             )
                         }
                     }
+                    uiModel.currentReceipt = updatedReceipt
                     showEditReceipt = false
                 },
                 onCancel: {
