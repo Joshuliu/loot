@@ -1012,6 +1012,30 @@ struct ConfirmationView: View {
                         }
                     }
                     uiModel.currentReceipt = updatedReceipt
+                    // Sync splitDraft so send doesn't overwrite edits
+                    if var draft = uiModel.currentSplitDraft {
+                        draft.feesCents = updatedReceipt.feesCents
+                        draft.taxCents = updatedReceipt.taxCents
+                        draft.tipCents = updatedReceipt.tipCents
+                        draft.discountCents = updatedReceipt.discountCents
+                        draft.totalCents = updatedReceipt.totalCents
+                        // Sync items: update labels and prices, remove deleted items
+                        draft.items = updatedReceipt.items.map { newItem in
+                            if let existing = draft.items.first(where: { $0.id.uuidString == newItem.id }) {
+                                var updated = existing
+                                updated.label = newItem.label
+                                updated.priceCents = newItem.priceCents
+                                return updated
+                            }
+                            return SplitDraft.Item(
+                                id: UUID(uuidString: newItem.id) ?? UUID(),
+                                label: newItem.label,
+                                priceCents: newItem.priceCents,
+                                assignedGuestIds: []
+                            )
+                        }
+                        uiModel.currentSplitDraft = draft
+                    }
                     showEditReceipt = false
                 },
                 onCancel: {
