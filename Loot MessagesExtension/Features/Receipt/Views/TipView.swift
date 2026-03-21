@@ -176,6 +176,10 @@ struct TipPanelView: View {
                                     .onChange(of: tipManualInput) { _, newValue in
                                         updateManualTipInput(newValue, field: .tip)
                                     }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
                             } else {
                                 Button {
                                     tipManualInput = centsToDecimalString(effectiveTipCents)
@@ -185,6 +189,10 @@ struct TipPanelView: View {
                                     Text(ReceiptDisplay.money(effectiveTipCents))
                                         .font(.system(size: 14, weight: .regular))
                                         .foregroundColor(.blue)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color(.tertiarySystemFill))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -210,6 +218,10 @@ struct TipPanelView: View {
                                     .onChange(of: tipManualInput) { _, newValue in
                                         updateManualTipInput(newValue, field: .total)
                                     }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
                             } else {
                                 Button {
                                     tipManualInput = centsToDecimalString(effectiveTotalCents)
@@ -219,6 +231,10 @@ struct TipPanelView: View {
                                     Text(ReceiptDisplay.money(effectiveTotalCents))
                                         .font(.system(size: 15, weight: .semibold))
                                         .foregroundColor(.primary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(Color(.tertiarySystemFill))
+                                        .clipShape(RoundedRectangle(cornerRadius: 6))
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -330,11 +346,14 @@ struct PercentageSlider: View {
     let maxPercent: Double
 
     private let itemWidth: CGFloat = 60
-    private let dotWidth: CGFloat = 5.866667
-    private var stride: CGFloat { itemWidth + dotWidth }
+    private let dotWidth: CGFloat = 6.0
+    private var nominalStride: CGFloat { itemWidth + dotWidth }
 
     @State private var isReadyToTrackScroll = false
     @State private var isProgrammaticScroll = false
+    @State private var measuredStride: CGFloat?
+
+    private var effectiveStride: CGFloat { measuredStride ?? nominalStride }
 
     var body: some View {
         GeometryReader { geometry in
@@ -368,6 +387,16 @@ struct PercentageSlider: View {
                                 }
                             }
                         }
+                        .background(
+                            GeometryReader { innerGeo in
+                                Color.clear.onAppear {
+                                    let steps = Int(maxPercent - minPercent)
+                                    if steps > 0 {
+                                        measuredStride = (innerGeo.size.width - itemWidth) / CGFloat(steps)
+                                    }
+                                }
+                            }
+                        )
 
                         Color.clear.frame(width: sidePad)
                     }
@@ -378,7 +407,7 @@ struct PercentageSlider: View {
                                     guard isReadyToTrackScroll else { return }
                                     guard !isProgrammaticScroll else { return }
 
-                                    let index = (-offset) / stride
+                                    let index = (-offset) / effectiveStride
                                     let newPercent = minPercent + Double(index)
                                     if newPercent >= minPercent && newPercent <= maxPercent {
                                         percent = newPercent
@@ -408,7 +437,7 @@ struct PercentageSlider: View {
         withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
             proxy.scrollTo(clamped, anchor: .center)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             isProgrammaticScroll = false
         }
     }
