@@ -894,9 +894,21 @@ struct RootContainerView: View {
                             paymentMethodsIsPostSend = true
                             uiModel.currentScreen = .paymentMethods
                         } else {
+                            // Set view
                             uiModel.currentScreen = .tabview
                         }
                     }
+                    // Reset states
+                    uiModel.resetForNewReceipt()
+                    pendingTranscriptTask?.cancel()
+                    pendingTranscriptTask = nil
+                    receiptName = ""
+                    amountString = "0"
+                    tipAmount = ""
+                    splitDraft = nil
+                    capturedImage = nil
+                    photoLibraryImage = nil
+                    analyzeError = nil
                 }
             },
             onPreviewReceipt: {
