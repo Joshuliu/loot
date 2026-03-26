@@ -450,6 +450,30 @@ final class TabService {
         print("[TabService] recordSettlement for tab \(tabId)")
     }
 
+    /// Updates an existing TabReceipt and recomputes tab balances authoritatively.
+    func updateReceipt(_ receipt: TabReceipt, inTab tabId: String, receiptId: String) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let tabRef = db.collection("tabs").document(tabId)
+        let receiptRef = tabRef.collection("receipts").document(receiptId)
+
+        // Update the TabReceipt document
+        let receiptData = try Firestore.Encoder().encode(receipt)
+        try await receiptRef.setData(receiptData, merge: true)
+
+        // Recompute balances authoritatively from all sharedReceipts
+        guard var tab = try await fetchTab(id: tabId) else { return }
+        let balances = try await computeTabBalances(tabId: tabId, members: tab.members)
+
+        // Apply computed balances to tab members
+        for i in tab.members.indices {
+            tab.members[i].balanceCents = balances[tab.members[i].memberId] ?? 0
+        }
+        let tabData = try Firestore.Encoder().encode(tab)
+        try await tabRef.setData(tabData)
+        print("[TabService] updateReceipt and recomputed balances for tab \(tabId)")
+    }
+
     /// Computes net balances for all tab members by querying sharedReceipts + settlements.
     /// This is authoritative even for receipts sent before addReceipt was wired up.
     func computeTabBalances(tabId: String, members: [TabMember]) async throws -> [String: Int] {

@@ -13,6 +13,8 @@ struct SplitsSummaryView: View {
     @ObservedObject var uiModel: LootUIModel
     @State private var split: SplitPayload
     let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
+    let canEdit: Bool
+    let onEditSplit: (() -> Void)?
 
     private var isTabReceipt: Bool { uiModel.openedMessagePayload?.tid != nil }
 
@@ -42,10 +44,12 @@ struct SplitsSummaryView: View {
 
     @Environment(\.openURL) private var openURL
 
-    init(uiModel: LootUIModel, split: SplitPayload, items: [ReceiptItemPayload]) {
+    init(uiModel: LootUIModel, split: SplitPayload, items: [ReceiptItemPayload], canEdit: Bool = false, onEditSplit: (() -> Void)? = nil) {
         self.uiModel = uiModel
         self._split = State(initialValue: split)
         self.items = items
+        self.canEdit = canEdit
+        self.onEditSplit = onEditSplit
     }
 
     private var includedIndices: [Int] {
@@ -413,6 +417,28 @@ struct SplitsSummaryView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
 
+                // Edit Split button
+                if canEdit {
+                    HStack {
+                        Spacer()
+                        Button(action: { onEditSplit?() }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "pencil")
+                                    .font(.system(size: 13))
+                                Text("Edit Split")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.blue.opacity(0.15))
+                            .foregroundStyle(Color.blue)
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+//                    .padding(.horizontal, 16)
+                }
+
                 // Donut chart — tapping an arc selects it; tapping anywhere else deselects.
                 // The ZStack's DragGesture takes child-priority over this onTapGesture.
                 GeometryReader { geo in
@@ -773,6 +799,11 @@ struct SplitsSummaryView: View {
                 payerPaymentMethods = try? await TabService.shared.fetchPaymentMethods(userId: payerUid)
             }
 
+        }
+        .onChange(of: uiModel.openedMessagePayload?.s) { _, newSplit in
+            if let newSplit {
+                split = newSplit
+            }
         }
         .sheet(item: $paySheetInfo) { info in
             let note = uiModel.openedMessagePayload?.r.t ?? "Loot"

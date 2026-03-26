@@ -18,6 +18,7 @@ struct LootMessagePayload: Codable, Equatable {
     var tid: String?       // tabId (links message to a tab)
     var trid: String?      // tabReceiptId (links to receipt within tab)
     var tab: TabPayload?   // inline tab info for offline/fast restoration
+    var su: String?        // senderUid — Keychain UUID of the person who sent this receipt
 }
 
 struct TabPayload: Codable, Equatable {
@@ -76,6 +77,101 @@ struct SplitPayload: Codable, Equatable {
     var tip: Int? // tipCents
     var d: Int?   // discountCents
     var tot: Int  // totalCents
+}
+
+// MARK: - SplitPayload → SplitDraft conversion
+
+extension SplitPayload {
+    /// Converts a sent SplitPayload back to a SplitDraft for editing.
+    /// Returns the draft and the UUID-per-slot mapping (for converting back).
+    func toSplitDraft(receiptItems: [ReceiptItemPayload], totalCents: Int) -> (draft: SplitDraft, slotUUIDs: [UUID]) {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let slotUUIDs = g.map { _ in UUID() }
+
+        let guests = g.enumerated().map { i, guest in
+            SplitGuest(
+                id: slotUUIDs[i],
+                name: guest.n,
+                isIncluded: guest.inc,
+                isMe: guest.uid == myUid,
+                uid: guest.uid
+            )
+        }
+
+        let mode: SplitDraft.Mode = {
+            switch m {
+            case .equally: return .equally
+            case .custom: return .custom
+            case .byItems: return .byItems
+            }
+        }()
+
+        let items = receiptItems.map { item in
+            SplitDraft.Item(
+                id: UUID(),
+                label: item.l,
+                priceCents: item.p,
+                assignedGuestIds: item.rs.compactMap { slotUUIDs.indices.contains($0) ? slotUUIDs[$0] : nil }
+            )
+        }
+
+        // Map owed cents to active guests (preserving original slot indices)
+        let activePerGuestCents: [Int] = {
+            var result: [Int] = []
+            for guest in guests where guest.isIncluded {
+                if let origIdx = guests.firstIndex(where: { $0.id == guest.id }),
+                   o.indices.contains(origIdx) {
+                    result.append(o[origIdx])
+                } else {
+                    result.append(0)
+                }
+            }
+            return result
+        }()
+
+        let draft = SplitDraft(
+            guests: guests,
+            payerGuestId: slotUUIDs.indices.contains(pi) ? slotUUIDs[pi] : (slotUUIDs.first ?? UUID()),
+            mode: mode,
+            totalCents: totalCents,
+            perGuestCents: activePerGuestCents,
+            items: items,
+            feesCents: f ?? 0,
+            taxCents: tx ?? 0,
+            tipCents: tip ?? 0,
+            discountCents: d ?? 0
+        )
+        return (draft, slotUUIDs)
+    }
+}
+
+// MARK: - Edit Permission
+
+extension LootMessagePayload {
+    /// Returns true if the given user can edit this receipt.
+    /// Editing is allowed if:
+    /// 1. The user is the sender (matched by `su` field), OR
+    /// 2. The receipt belongs to a tab and the user is a member of that tab.
+    /// For backward compat (old payloads without `su`), falls back to checking
+    /// if the user's uid appears in any guest slot.
+    func canEdit(myUid: String, userTabs: [LootTab]) -> Bool {
+        // Check sender identity
+        if let senderUid = su {
+            if senderUid == myUid { return true }
+        } else {
+            // Fallback for old payloads: check if user is any guest
+            if s.g.contains(where: { $0.uid == myUid }) { return true }
+        }
+
+        // Check tab membership
+        if let tabId = tid, !tabId.isEmpty {
+            if userTabs.contains(where: { $0.id == tabId && $0.memberIds.contains(myUid) }) {
+                return true
+            }
+        }
+
+        return false
+    }
 }
 
 // MARK: - Base64URL + Codec

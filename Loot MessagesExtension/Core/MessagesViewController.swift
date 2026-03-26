@@ -452,7 +452,7 @@ extension MessagesViewController {
 
         let receiptPayload = ReceiptPayload.from(receipt: receiptDisplay, split: splitPayload)
 
-        var payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: uiModel.activeTab?.id)
+        var payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: uiModel.activeTab?.id, su: KeychainHelper.getOrCreateUserId())
         if let activeTab = uiModel.activeTab, let tabId = activeTab.id {
             payload.tab = TabPayload(id: tabId, n: activeTab.name, c: activeTab.colorHex)
         }
@@ -604,7 +604,7 @@ extension LootMessagePayload {
 
 // MARK: - Build SplitPayload / ReceiptPayload
 
-private extension SplitPayload {
+extension SplitPayload {
     static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
         // Seed guests if no draft
         let guests: [Guest] = {
@@ -679,7 +679,7 @@ private extension SplitPayload {
     }
 }
 
-private extension ReceiptPayload {
+extension ReceiptPayload {
     static func from(receipt: ReceiptDisplay, split: SplitPayload) -> ReceiptPayload {
         let isByItems = (split.m == .byItems)
 
@@ -732,19 +732,6 @@ enum SplitMath {
 
         let safePayer = included.contains(payerIndex) ? payerIndex : (included.first ?? 0)
 
-        func clampToTotal(_ owed: inout [Int]) {
-            var sum = owed.reduce(0, +)
-            let diff = totalCents - sum
-            if diff != 0, owed.indices.contains(safePayer) {
-                owed[safePayer] = max(0, owed[safePayer] + diff)
-                sum = owed.reduce(0, +)
-            }
-            // still mismatched? (shouldn't happen, but keep safe)
-            if sum != totalCents, let first = included.first {
-                owed[first] = max(0, owed[first] + (totalCents - sum))
-            }
-        }
-
         // Start with all zeros for full guest list
         var owed = Array(repeating: 0, count: guests.count)
 
@@ -752,7 +739,6 @@ enum SplitMath {
         case .equally:
             let shares = splitEvenly(total: totalCents, count: included.count)
             for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
-            clampToTotal(&owed)
             return owed
 
         case .custom:
@@ -763,7 +749,6 @@ enum SplitMath {
                 let shares = splitEvenly(total: totalCents, count: included.count)
                 for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
             }
-            clampToTotal(&owed)
             return owed
 
         case .byItems:
@@ -785,7 +770,6 @@ enum SplitMath {
                 owed[idx] = max(0, subtotals[idx] + extrasAlloc[idx])
             }
 
-            clampToTotal(&owed)
             return owed
         }
     }

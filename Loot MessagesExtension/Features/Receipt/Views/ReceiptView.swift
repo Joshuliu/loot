@@ -16,6 +16,8 @@ struct ReceiptView: View {
     var showBackRow: Bool = true
     var showCaptureButton: Bool = true
     var compactCaptureButton: Bool = false
+    var canEdit: Bool = false
+    var onPostSendSave: ((ReceiptDisplay) -> Void)? = nil
     @State private var showCapture: Bool = false
     @State private var showEditReceipt: Bool = false
 
@@ -68,16 +70,30 @@ struct ReceiptView: View {
 
                         Spacer()
 
-                        if showCaptureButton, captureImage != nil {
-                            Button { showCapture = true } label: {
-                                Image(systemName: "doc.viewfinder")
-                                    .font(.system(size: 17))
-                                    .foregroundStyle(.blue)
-                                    .padding(8)
-                                    .background(Color(.tertiarySystemFill))
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                        HStack(spacing: 8) {
+                            if showCaptureButton, captureImage != nil {
+                                Button { showCapture = true } label: {
+                                    Image(systemName: "doc.viewfinder")
+                                        .font(.system(size: 17))
+                                        .foregroundStyle(.blue)
+                                        .padding(8)
+                                        .background(Color(.tertiarySystemFill))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
+
+                            if !showBackRow && canEdit {
+                                Button { showEditReceipt = true } label: {
+                                    Image(systemName: "pencil")
+                                        .font(.system(size: 17))
+                                        .foregroundStyle(.blue)
+                                        .padding(8)
+                                        .background(Color(.tertiarySystemFill))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
                     .padding(.horizontal, 16)
@@ -164,6 +180,7 @@ struct ReceiptView: View {
                 uiModel: uiModel,
                 onSave: { updatedReceipt in
                     uiModel.currentReceipt = updatedReceipt
+                    onPostSendSave?(updatedReceipt)
                     showEditReceipt = false
                 },
                 onCancel: {
