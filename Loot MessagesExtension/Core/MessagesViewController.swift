@@ -383,7 +383,9 @@ extension MessagesViewController {
         message.layout = layout
         message.url = components.url
 
-        conversation.insert(message) { error in
+        // Changed from insert to send directly
+        //conversation.insert(message) { error in
+        conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
         }
         requestPresentationStyle(.compact)
@@ -484,7 +486,9 @@ extension MessagesViewController {
         message.layout = layout
         message.url = components.url
 
-        conversation.insert(message) { error in
+        // Changed from insert to send directly
+        //conversation.insert(message) { error in
+        conversation.send(message) { error in
             if let error { print("Error inserting message: \(error)") }
         }
 
@@ -544,7 +548,9 @@ extension MessagesViewController {
         message.layout = layout
         message.url = components.url
 
-        conversation.insert(message) { error in
+        // Changed from insert to send directly
+        //conversation.insert(message) { error in
+        conversation.send(message) { error in
             if let error { print("Error inserting tab invite: \(error)") }
         }
 
