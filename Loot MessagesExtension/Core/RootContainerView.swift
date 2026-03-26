@@ -445,8 +445,14 @@ struct RootContainerView: View {
             tipAmount != "$0.00" &&
             tipFromConfirmationCents > 0
         if hasValidNonZeroTip {
-            effectiveDraft.tipCents += tipFromConfirmationCents
-            effectiveDraft.totalCents += tipFromConfirmationCents
+            let oldTip = effectiveDraft.tipCents
+
+            // Previous additive behavior caused manual-entry tips to be counted twice at send.
+            // effectiveDraft.tipCents += tipFromConfirmationCents
+            // effectiveDraft.totalCents += tipFromConfirmationCents
+
+            effectiveDraft.tipCents = tipFromConfirmationCents
+            effectiveDraft.totalCents = max(0, effectiveDraft.totalCents - oldTip + effectiveDraft.tipCents)
         }
 
         let updatedItems: [ReceiptDisplay.Item] = {
@@ -486,11 +492,29 @@ struct RootContainerView: View {
             }
         }()
 
+        let subtotalFromItems = updatedItems.reduce(0) { $0 + $1.priceCents }
+        // SplitDraft has no explicit subtotal field; derive a fallback from draft totals.
+        let subtotalFromDraft = max(
+            0,
+            effectiveDraft.totalCents
+                - effectiveDraft.feesCents
+                - effectiveDraft.taxCents
+                - effectiveDraft.tipCents
+                + effectiveDraft.discountCents
+        )
+        let resolvedSubtotalCents: Int = {
+            // Manual input commonly has no line items; preserve existing/draft-derived subtotal.
+            if updatedItems.isEmpty && subtotalFromItems == 0 {
+                return max(r.subtotalCents, subtotalFromDraft)
+            }
+            return subtotalFromItems
+        }()
+
         uiModel.currentReceipt = ReceiptDisplay(
             id: r.id,
             title: r.title,
             createdAt: r.createdAt,
-            subtotalCents: updatedItems.reduce(0) { $0 + $1.priceCents },
+            subtotalCents: resolvedSubtotalCents,
             feesCents: effectiveDraft.feesCents,
             taxCents: effectiveDraft.taxCents,
             tipCents: effectiveDraft.tipCents,
