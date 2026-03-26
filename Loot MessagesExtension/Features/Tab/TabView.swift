@@ -29,6 +29,7 @@ struct LootTabView: View {
     var onTabUpdated: ((LootTab) -> Void)? = nil
     var onTabLeft: (() -> Void)? = nil
     var onTabDeleted: (() -> Void)? = nil
+    var onPreviewSplits: ((TabReceipt) -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
     var onSendRequestCard: ((String, String, Int, String?) -> Void)? = nil
     var openInSafari: ((URL) -> Void)? = nil
@@ -539,34 +540,37 @@ struct LootTabView: View {
 
     @ViewBuilder
     private func receiptEventRow(_ receipt: TabReceipt) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 17))
-                .foregroundColor(.secondary)
-                .frame(width: 22)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(receipt.title.isEmpty ? "Receipt" : receipt.title)
-                    .font(.system(size: 15, weight: .medium))
-                    .lineLimit(1)
-                Text("Paid by \(memberName(receipt.payerMemberId))")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+        Button (action: { onPreviewSplits?(receipt) }) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 17))
+                    .foregroundColor(.secondary)
+                    .frame(width: 22)
+                    .padding(.top, 2)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(receipt.title.isEmpty ? "Receipt" : receipt.title)
+                        .font(.system(size: 15, weight: .medium))
+                        .lineLimit(1)
+                    Text("Paid by \(memberName(receipt.payerMemberId))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(ReceiptDisplay.money(receipt.totalCents))
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(formatEventDate(receipt.createdAt?.dateValue()))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
             }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(ReceiptDisplay.money(receipt.totalCents))
-                    .font(.system(size: 15, weight: .semibold))
-                Text(formatEventDate(receipt.createdAt?.dateValue()))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
+            .padding(.vertical, 11)
+            .padding(.horizontal, 14)
         }
-        .padding(.vertical, 11)
-        .padding(.horizontal, 14)
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

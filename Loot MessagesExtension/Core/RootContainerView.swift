@@ -55,9 +55,9 @@ struct RootContainerView: View {
     // DEBUG: Set to true to only run VisionKit OCR and print JSON (no Gemini)
     private let DEBUG_OCR_ONLY = false
     // DEBUG: Set to true to copy OCR transcript to clipboard after each scan
-    private let DEBUG_COPY_TRANSCRIPT = true
+    private let DEBUG_COPY_TRANSCRIPT = false
     // DEBUG: Set to true to show OCR chunk images in Edit Receipt view
-    private let DEBUG_SHOW_CHUNKS = true
+    private let DEBUG_SHOW_CHUNKS = false
     @State private var debugOCRResult: OCRResult? = nil
     @State private var debugOriginalImage: UIImage? = nil
 
@@ -803,6 +803,29 @@ struct RootContainerView: View {
                     Task { try? await TabService.shared.removeConversationMapping(conversationKey: convKey) }
                 }
             },
+            onPreviewSplits: { receipt in
+                guard let docId = receipt.messagePayloadId, !docId.isEmpty else { return }
+                uiModel.openedMessagePayload = nil
+                uiModel.messageLoadingState = .loading
+                uiModel.openedMessageDocId = docId
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    uiModel.currentScreen = .messageViewer
+                }
+                Task { @MainActor in
+                    do {
+                        let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
+                        uiModel.openedMessagePayload = payload
+                        uiModel.currentReceipt = payload.toReceiptDisplay()
+                        if let captureImage {
+                            uiModel.scanImageCropped = captureImage
+                        }
+                        uiModel.messageLoadingState = .loaded(payload)
+                    } catch {
+                        print("[LootTabView] Failed to load receipt payload: \(error)")
+                        uiModel.messageLoadingState = .failed(error)
+                    }
+                }
+            },
             onSendSettlementCard: uiModel.sendSettlementCard,
             onSendRequestCard: uiModel.sendRequestCard,
             openInSafari: uiModel.openInSafari,
@@ -1077,10 +1100,16 @@ struct RootContainerView: View {
             .ignoresSafeArea(edges: .bottom)
         } else if uiModel.messageLoadingState.isLoading {
             VStack(spacing: 12) {
-                ProgressView()
-                Text("Loading receipt...")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Spacer()
+                HStack {
+                    Spacer()
+                    ProgressView()
+                    Text("Loading receipt...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                Spacer()
             }
         } else if let error = uiModel.messageLoadingState.error {
             VStack(spacing: 16) {

@@ -561,7 +561,7 @@ extension MessagesViewController {
 
 // MARK: - Payload -> ReceiptDisplay (✅ UPDATED for new field names)
 
-private extension LootMessagePayload {
+extension LootMessagePayload {
     func toReceiptDisplay() -> ReceiptDisplay {
         let receiptData = r
         let splitData = s
