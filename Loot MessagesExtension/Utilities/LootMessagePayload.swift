@@ -31,15 +31,58 @@ struct ReceiptPayload: Codable, Equatable {
     var id: String
     var t: String  // title
     var c: TimeInterval  // createdAtEpoch
-    
+
     var sub: Int  // subtotalCents
-    var f: Int    // feesCents
+    var f: Int    // feesCents (signed: negative = discount)
     var tx: Int   // taxCents
     var tip: Int  // tipCents
-    var d: Int    // discountCents
     var tot: Int  // totalCents
-    
-    var i: [ReceiptItemPayload]  // items
+
+    var i: [ReceiptItemPayload]               // items
+    var li: [ReceiptLineItemPayload]?         // individual fee/discount/tax rows (nil = use aggregates)
+
+    enum CodingKeys: String, CodingKey {
+        case id, t, c, sub, f, tx, tip, tot, i, li
+        case legacyD = "d"  // legacy discountCents field
+    }
+
+    init(id: String, t: String, c: TimeInterval, sub: Int, f: Int, tx: Int, tip: Int, tot: Int,
+         i: [ReceiptItemPayload], li: [ReceiptLineItemPayload]? = nil) {
+        self.id = id; self.t = t; self.c = c; self.sub = sub
+        self.f = f; self.tx = tx; self.tip = tip; self.tot = tot; self.i = i; self.li = li
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id  = try container.decode(String.self,                forKey: .id)
+        t   = try container.decode(String.self,                forKey: .t)
+        c   = try container.decode(TimeInterval.self,          forKey: .c)
+        sub = try container.decode(Int.self,                   forKey: .sub)
+        tx  = try container.decode(Int.self,                   forKey: .tx)
+        tip = try container.decode(Int.self,                   forKey: .tip)
+        tot = try container.decode(Int.self,                   forKey: .tot)
+        i   = try container.decode([ReceiptItemPayload].self,  forKey: .i)
+        li  = try container.decodeIfPresent([ReceiptLineItemPayload].self, forKey: .li)
+        // Fold legacy discountCents into feesCents as a negative value
+        let fees     = try container.decodeIfPresent(Int.self, forKey: .f) ?? 0
+        let discount = try container.decodeIfPresent(Int.self, forKey: .legacyD) ?? 0
+        f = fees - discount
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id,  forKey: .id)
+        try container.encode(t,   forKey: .t)
+        try container.encode(c,   forKey: .c)
+        try container.encode(sub, forKey: .sub)
+        try container.encode(f,   forKey: .f)
+        try container.encode(tx,  forKey: .tx)
+        try container.encode(tip, forKey: .tip)
+        try container.encode(tot, forKey: .tot)
+        try container.encode(i,   forKey: .i)
+        if let li { try container.encode(li, forKey: .li) }
+        // Never write legacyD
+    }
 }
 
 struct ReceiptItemPayload: Codable, Equatable {
@@ -47,6 +90,13 @@ struct ReceiptItemPayload: Codable, Equatable {
     var l: String     // label
     var p: Int        // priceCents
     var rs: [Int]     // responsibleSlots (only for by-items)
+}
+
+/// Individual fee/discount/tax line item stored in the payload to preserve order and identity.
+struct ReceiptLineItemPayload: Codable, Equatable {
+    var id: String  // stable UUID string
+    var l: String   // label
+    var c: Int      // cents (signed: negative = discount)
 }
 
 struct SplitPayload: Codable, Equatable {
@@ -72,10 +122,10 @@ struct SplitPayload: Codable, Equatable {
     var pd: [Bool]? // paidStatus per guest slot (nil = all unpaid)
 
     // Breakdown (only if non-zero to save space)
-    var f: Int?   // feesCents
+    var f: Int?   // feesCents (signed: negative = discount)
     var tx: Int?  // taxCents
     var tip: Int? // tipCents
-    var d: Int?   // discountCents
+    var d: Int?   // legacy discountCents — decode only, never written in new payloads
     var tot: Int  // totalCents
 }
 
@@ -129,6 +179,8 @@ extension SplitPayload {
             return result
         }()
 
+        // Fold legacy discountCents into feesCents as a negative value
+        let effectiveFees = (f ?? 0) - (d ?? 0)
         let draft = SplitDraft(
             guests: guests,
             payerGuestId: slotUUIDs.indices.contains(pi) ? slotUUIDs[pi] : (slotUUIDs.first ?? UUID()),
@@ -136,13 +188,18 @@ extension SplitPayload {
             totalCents: totalCents,
             perGuestCents: activePerGuestCents,
             items: items,
-            feesCents: f ?? 0,
+            feesCents: effectiveFees,
             taxCents: tx ?? 0,
-            tipCents: tip ?? 0,
-            discountCents: d ?? 0
+            tipCents: tip ?? 0
         )
         return (draft, slotUUIDs)
     }
+}
+
+// MARK: - Identifiable (for .sheet(item:))
+
+extension LootMessagePayload: Identifiable {
+    var id: String { r.id }
 }
 
 // MARK: - Edit Permission

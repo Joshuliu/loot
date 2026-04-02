@@ -38,8 +38,7 @@ struct Phase2Result: Codable, Equatable {
     let subtotal_cents: Int?
     let tax_cents: Int?
     let tip_cents: Int?
-    let fees_cents: Int?
-    let discount_cents: Int?
+    let fees_cents: Int?  // signed: negative = discount
     let items: [Item]
     let issues: [String]
 }
@@ -171,7 +170,7 @@ final class LLMClient {
         Extract receipt data into ONE minified JSON object.
 
         REQUIRED fields: merchant, total_cents, items, issues
-        OPTIONAL fields: subtotal_cents, tax_cents, tip_cents, fees_cents, discount_cents
+        OPTIONAL fields: subtotal_cents, tax_cents, tip_cents, fees_cents (negative if discount)
         EXAMPLE: {"merchant":"Store","total_cents":1500,"items":[{"label":"Item","qty":1,"cents":500}],"issues":[]}
 
         Rules:
@@ -401,7 +400,7 @@ final class LLMClient {
         SUBTOTAL_CENTS|<int or empty>
         TAX_CENTS|<int or empty>
         TIP_CENTS|<int or empty>
-        FEES_CENTS|<int or empty>
+        FEES_CENTS|<int or empty, negative if bill-wide discount>
 
         ITEM|<qty>|<label>|<line total cents or empty>
         (one ITEM line per receipt line, repeated as needed)
@@ -415,6 +414,7 @@ final class LLMClient {
         - If the same item appears on two separate lines, output two separate ITEM lines.
         - Rewrite labels to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
         - When a per-item discount line appears (e.g. "COMP", "DISCOUNT", "PROMO" under an item): use the known total to determine which interpretation is correct. If the item's listed price is already the post-discount price (subtracting the discount would make the sum too low), ignore the discount line entirely. If the item's listed price is pre-discount (subtracting it makes the sum match), fold the discount into the item's cents. Never emit a per-item discount as a separate ITEM line. Only use a negative ITEM line for a bill-wide discount with no associated item.
+        - Bill-wide discounts go in FEES_CENTS as a negative value (e.g. a $5 discount → FEES_CENTS|-500). If there are both fees and a discount, net them together into one FEES_CENTS value.
         - CHECK: sum of ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS = \(knownTotalCents).
         """
 
@@ -517,7 +517,7 @@ final class LLMClient {
         BEGIN_RECEIPT_V2
         TAX_CENTS|<int or empty>
         TIP_CENTS|<int or empty>
-        FEES_CENTS|<int or empty>
+        FEES_CENTS|<int or empty, negative if bill-wide discount>
 
         ITEM|<qty>|<label>|<line total cents or empty>
         (one ITEM line per receipt line, repeated as needed)
@@ -531,6 +531,7 @@ final class LLMClient {
         - If the same item appears on two separate lines, output two separate ITEM lines.
         - Rewrite labels to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
         - When a per-item discount line appears (e.g. "COMP", "DISCOUNT", "PROMO" under an item): use the known total to determine which interpretation is correct. If the item's listed price is already the post-discount price (subtracting the discount would make the sum too low), ignore the discount line entirely. If the item's listed price is pre-discount (subtracting it makes the sum match), fold the discount into the item's cents. Never emit a per-item discount as a separate ITEM line. Only use a negative ITEM line for a bill-wide discount with no associated item.
+        - Bill-wide discounts go in FEES_CENTS as a negative value (e.g. a $5 discount → FEES_CENTS|-500). If there are both fees and a discount, net them together into one FEES_CENTS value.
         - CHECK: sum of ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS = \(knownTotalCents).
         """
 
@@ -588,7 +589,6 @@ final class LLMClient {
             var tax: Int? = nil
             var tip: Int? = nil
             var fees: Int? = nil
-            var discount: Int? = nil
             var items: [Phase2Result.Item] = []
             var issues: [String] = []
 
@@ -623,7 +623,10 @@ final class LLMClient {
                 case "FEES_CENTS":
                     if parts.count >= 2 { fees = parseOptionalInt(parts[1]) }
                 case "DISCOUNT_CENTS":
-                    if parts.count >= 2 { discount = parseOptionalInt(parts[1]) }
+                    // Legacy: fold discount into fees as negative value
+                    if parts.count >= 2, let d = parseOptionalInt(parts[1]) {
+                        fees = (fees ?? 0) - d
+                    }
                 case "ISSUE":
                     if parts.count >= 2 {
                         let msg = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
@@ -651,7 +654,6 @@ final class LLMClient {
                 tax_cents: tax,
                 tip_cents: tip,
                 fees_cents: fees,
-                discount_cents: discount,
                 items: items,
                 issues: issues
             )

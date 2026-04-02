@@ -27,10 +27,9 @@ struct SplitDraft: Equatable, Codable {
     var totalCents: Int
     var perGuestCents: [Int]
     var items: [Item]
-    var feesCents: Int
+    var feesCents: Int  // signed: negative = discount
     var taxCents: Int
     var tipCents: Int
-    var discountCents: Int
 
     var activeGuests: [SplitGuest] {
         guests.filter { $0.isIncluded }
@@ -477,7 +476,6 @@ extension ConfirmationView {
         feesString = (r?.feesCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.feesCents ?? 0)
         taxString = (r?.taxCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.taxCents ?? 0)
         tipString = (r?.tipCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.tipCents ?? 0)
-        discountString = (r?.discountCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.discountCents ?? 0)
     }
 
     // MARK: - Mode switching logic
@@ -526,8 +524,7 @@ extension ConfirmationView {
             items: items,
             feesCents: stringToCents(feesString),
             taxCents: stringToCents(taxString),
-            tipCents: stringToCents(tipString),
-            discountCents: stringToCents(discountString)
+            tipCents: stringToCents(tipString)
         )
     }
 

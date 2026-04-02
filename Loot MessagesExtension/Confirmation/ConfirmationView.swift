@@ -16,7 +16,6 @@ struct ConfirmationView: View {
     let onBack: () -> Void
     let onSend: () -> Void
 
-    let onPreviewReceipt: () -> Void
     let onDeleteToLanding: () -> Void
     let onGoToSplit: () -> Void
     let onAddTip: () -> Void
@@ -67,7 +66,6 @@ struct ConfirmationView: View {
     @State var feesString: String = ""
     @State var taxString: String = ""
     @State var tipString: String = ""
-    @State var discountString: String = ""
     @State var didInitByItem: Bool = false
     @State var showEditReceipt: Bool = false
     @State var confirmed: Bool = true
@@ -176,8 +174,7 @@ struct ConfirmationView: View {
                 items: items,
                 feesCents: draft.feesCents,
                 taxCents: draft.taxCents,
-                tipCents: draft.tipCents,
-                discountCents: draft.discountCents
+                tipCents: draft.tipCents
             )
 
             // Return all guests' amounts (excluded guests get 0, preserving color slot indices)
@@ -1017,7 +1014,6 @@ struct ConfirmationView: View {
                         draft.feesCents = updatedReceipt.feesCents
                         draft.taxCents = updatedReceipt.taxCents
                         draft.tipCents = updatedReceipt.tipCents
-                        draft.discountCents = updatedReceipt.discountCents
                         draft.totalCents = updatedReceipt.totalCents
                         // Sync items: update labels and prices, remove deleted items
                         draft.items = updatedReceipt.items.map { newItem in

@@ -15,16 +15,15 @@ struct EditSplitView: View {
     let onSave: (LootMessagePayload) -> Void
     let onCancel: () -> Void
 
-    // Split state (initialized from payload on appear)
-    @State private var mode: SplitDraft.Mode = .equally
-    @State private var guests: [SplitGuest] = []
-    @State private var payerGuestId: UUID = UUID()
-    @State private var guestAmountsCents: [Int] = []
+    // Split state (initialized from payload in init)
+    @State private var mode: SplitDraft.Mode
+    @State private var guests: [SplitGuest]
+    @State private var payerGuestId: UUID
+    @State private var guestAmountsCents: [Int]
     @State private var guestSelectedIndex: Int = 0
-    @State private var byItemItems: [DraftReceiptItem] = []
-    @State private var byItemSelectedGuestId: UUID = UUID()
-    @State private var slotUUIDs: [UUID] = []
-    @State private var initialized = false
+    @State private var byItemItems: [DraftReceiptItem]
+    @State private var byItemSelectedGuestId: UUID
+    @State private var slotUUIDs: [UUID]
 
     // Editing state
     @State private var isEditingAmount = false
@@ -33,6 +32,55 @@ struct EditSplitView: View {
     @FocusState private var isAmountFieldFocused: Bool
     @State private var editingGuestNameId: UUID? = nil
     @FocusState private var guestNameFocusedId: UUID?
+
+    init(payload: LootMessagePayload, docId: String, onSave: @escaping (LootMessagePayload) -> Void, onCancel: @escaping () -> Void) {
+        self.payload = payload
+        self.docId = docId
+        self.onSave = onSave
+        self.onCancel = onCancel
+
+        let (draft, uuids) = payload.s.toSplitDraft(
+            receiptItems: payload.r.i,
+            totalCents: payload.s.tot
+        )
+
+        _slotUUIDs = State(initialValue: uuids)
+        _guests = State(initialValue: draft.guests)
+        _payerGuestId = State(initialValue: draft.payerGuestId)
+
+        let draftMode = draft.mode
+        _mode = State(initialValue: draftMode)
+
+        let active = draft.guests.filter { $0.isIncluded }
+        let activeCount = active.count
+
+        // Compute initial amounts
+        var amounts = draft.perGuestCents
+        if draftMode == .equally {
+            amounts = Self.computeEqualSplit(total: payload.s.tot, count: activeCount)
+        }
+        _guestAmountsCents = State(initialValue: amounts)
+
+        _byItemSelectedGuestId = State(initialValue: active.first?.id ?? UUID())
+        _byItemItems = State(initialValue: draft.items.map { item in
+            DraftReceiptItem(
+                id: item.id,
+                label: item.label,
+                price: ReceiptDisplay.money(item.priceCents),
+                assignedGuestIds: Set(item.assignedGuestIds)
+            )
+        })
+    }
+
+    private static func computeEqualSplit(total: Int, count: Int) -> [Int] {
+        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
+        var out = Array(repeating: total / count, count: count)
+        let remainder = total - out.reduce(0, +)
+        if remainder > 0 {
+            for i in 0..<min(remainder, count) { out[i] += 1 }
+        }
+        return out
+    }
 
     private var activeGuests: [SplitGuest] { guests.filter { $0.isIncluded } }
     private var activeCount: Int { activeGuests.count }
@@ -90,40 +138,6 @@ struct EditSplitView: View {
                 }
             }
         }
-        .onAppear { initializeFromPayload() }
-    }
-
-    // MARK: - Initialization
-
-    private func initializeFromPayload() {
-        guard !initialized else { return }
-        initialized = true
-
-        let (draft, uuids) = payload.s.toSplitDraft(
-            receiptItems: payload.r.i,
-            totalCents: payload.s.tot
-        )
-        slotUUIDs = uuids
-        guests = draft.guests
-        payerGuestId = draft.payerGuestId
-        mode = draft.mode
-        guestAmountsCents = draft.perGuestCents
-        byItemSelectedGuestId = activeGuests.first?.id ?? UUID()
-
-        // Initialize by-item items
-        byItemItems = draft.items.map { item in
-            DraftReceiptItem(
-                id: item.id,
-                label: item.label,
-                price: ReceiptDisplay.money(item.priceCents),
-                assignedGuestIds: Set(item.assignedGuestIds)
-            )
-        }
-
-        // If equally mode, ensure amounts are correct
-        if mode == .equally {
-            guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
-        }
     }
 
     // MARK: - Save
@@ -141,6 +155,8 @@ struct EditSplitView: View {
                 )
             }
 
+        // Fold legacy discountCents into feesCents
+        let effectiveFees = (payload.s.f ?? 0) - (payload.s.d ?? 0)
         let draft = SplitDraft(
             guests: guests,
             payerGuestId: payerGuestId,
@@ -148,10 +164,9 @@ struct EditSplitView: View {
             totalCents: totalCents,
             perGuestCents: guestAmountsCents,
             items: items,
-            feesCents: payload.s.f ?? 0,
+            feesCents: effectiveFees,
             taxCents: payload.s.tx ?? 0,
-            tipCents: payload.s.tip ?? 0,
-            discountCents: payload.s.d ?? 0
+            tipCents: payload.s.tip ?? 0
         )
 
         // Convert draft back to SplitPayload
@@ -515,13 +530,7 @@ struct EditSplitView: View {
     }
 
     private func equalSplitCents(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) { out[i] += 1 }
-        }
-        return out
+        Self.computeEqualSplit(total: total, count: count)
     }
 
     private func remainingExcluding(_ idx: Int) -> Int {

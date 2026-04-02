@@ -40,7 +40,7 @@ enum TabBalanceTests {
             taxCents: 300,
             tipCents: 200,
             feesCents: 0,
-            discountCents: 0,
+            discountCents: nil,
             splitMode: .equally,
             payerMemberId: tab.members[0].memberId, // Alice
             splits: [
@@ -78,7 +78,7 @@ enum TabBalanceTests {
             taxCents: 500,
             tipCents: 500,
             feesCents: 0,
-            discountCents: 0,
+            discountCents: nil,
             splitMode: .custom,
             payerMemberId: tab.members[0].memberId, // Alice
             splits: [
@@ -132,7 +132,7 @@ enum TabBalanceTests {
         // Receipt 1: $30 split equally, Alice paid
         let r1 = TabReceipt(
             id: "r1", title: "Lunch", createdBy: "user-alice", createdAt: nil,
-            totalCents: 3000, subtotalCents: 3000, taxCents: 0, tipCents: 0, feesCents: 0, discountCents: 0,
+            totalCents: 3000, subtotalCents: 3000, taxCents: 0, tipCents: 0, feesCents: 0, discountCents: nil,
             splitMode: .equally, payerMemberId: tab.members[0].memberId,
             splits: [
                 ReceiptSplit(memberId: tab.members[0].memberId, owedCents: 1000),
@@ -147,7 +147,7 @@ enum TabBalanceTests {
         // Receipt 2: $60 split equally, Bob paid
         let r2 = TabReceipt(
             id: "r2", title: "Dinner", createdBy: "user-bob", createdAt: nil,
-            totalCents: 6000, subtotalCents: 6000, taxCents: 0, tipCents: 0, feesCents: 0, discountCents: 0,
+            totalCents: 6000, subtotalCents: 6000, taxCents: 0, tipCents: 0, feesCents: 0, discountCents: nil,
             splitMode: .equally, payerMemberId: tab.members[1].memberId,
             splits: [
                 ReceiptSplit(memberId: tab.members[0].memberId, owedCents: 2000),

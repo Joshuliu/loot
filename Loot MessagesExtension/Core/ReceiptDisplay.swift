@@ -46,21 +46,43 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
         let responsible: [Responsible]
     }
 
+    /// Individual tax/fee/discount line items for display (e.g. "Tax $2.50", "Discount -$5.00").
+    /// Empty when constructed from a payload or scan (only aggregates are available then).
+    struct LineItem: Identifiable, Codable, Equatable {
+        let id: String   // stable UUID string — order is preserved, labels need not be unique
+        let label: String
+        let cents: Int   // signed: negative = discount
+
+        init(id: String = UUID().uuidString, label: String, cents: Int) {
+            self.id = id
+            self.label = label
+            self.cents = cents
+        }
+    }
+
     let id: String
     let title: String
     let createdAt: Date?
 
     let subtotalCents: Int
-    let feesCents: Int
+    let feesCents: Int  // signed aggregate: negative = net discount
     let taxCents: Int
     let tipCents: Int
-    let discountCents: Int
     let totalCents: Int
 
     let items: [Item]
+    let lineItems: [LineItem]  // individual fee/discount rows for ReceiptView
 
     var shouldShowOnlyTotal: Bool {
-        feesCents == 0 && taxCents == 0 && tipCents == 0 && discountCents == 0
+        feesCents == 0 && taxCents == 0 && tipCents == 0
+    }
+
+    init(id: String, title: String, createdAt: Date?, subtotalCents: Int, feesCents: Int,
+         taxCents: Int, tipCents: Int, totalCents: Int, items: [Item], lineItems: [LineItem] = []) {
+        self.id = id; self.title = title; self.createdAt = createdAt
+        self.subtotalCents = subtotalCents; self.feesCents = feesCents
+        self.taxCents = taxCents; self.tipCents = tipCents; self.totalCents = totalCents
+        self.items = items; self.lineItems = lineItems
     }
 
     var dateText: String {
@@ -87,13 +109,30 @@ enum AppScreen {
     case fill
     case tipview
     case confirmation
-    case receipt
     case messageViewer
     case newTab
     case tabInviteConfirmation
     case joinTab
     case account
     case paymentMethods
+}
+
+struct PendingPayRequest: Equatable {
+    var requestId: String = UUID().uuidString
+    var receiptDocId: String?
+    var tabId: String?
+    var creditorId: String?
+    var debtorId: String?
+    var creditorName: String
+    var debtorName: String
+    var amountCents: Int
+}
+
+struct RequestCardMetadata {
+    var receiptDocId: String?
+    var tabId: String?
+    var creditorId: String?
+    var debtorId: String?
 }
 
 @MainActor
@@ -140,10 +179,12 @@ final class LootUIModel: ObservableObject {
     @Published var activeTab: LootTab? = nil
     /// Tab that belongs to the currently-opened receipt (may differ from activeTab).
     @Published var receiptTab: LootTab? = nil
+    @Published var tabReceiptsRefreshNonce: Int = 0
     @Published var userTabs: [LootTab] = []
     @Published var localParticipantId: String? = nil
     @Published var conversationKey: String? = nil
     @Published var pendingTabInviteId: String? = nil
+    @Published var pendingPayRequest: PendingPayRequest? = nil
     /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
     /// Used to sort userTabs by relevance — most overlapping members shown first.
     @Published var conversationMemberIds: Set<String> = []
@@ -156,8 +197,8 @@ final class LootUIModel: ObservableObject {
     var sendSettlementCard: ((String, String, Int, String, String?) -> Void)?
 
     /// Inserts a payment-request card into the iMessage draft box (user presses Send).
-    /// Args: (creditorName, debtorName, amountCents, tabColorHex)
-    var sendRequestCard: ((String, String, Int, String?) -> Void)?
+    /// Args: (creditorName, debtorName, amountCents, tabColorHex, request metadata)
+    var sendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)?
 
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
@@ -176,8 +217,8 @@ final class LootUIModel: ObservableObject {
         currentSplitDraft = nil
         preTipTotalOverrideCents = nil
         openedMessagePayload = nil
-        openedMessageDocId = nil
         receiptTab = nil
+        pendingPayRequest = nil
         messageLoadingState = .idle
         itemsLoadingState = .idle
         isLoadingReceipt = false
@@ -205,8 +246,7 @@ struct ParsedReceipt: Codable, Equatable {
     let subtotal_cents: Int?
     let tax_cents: Int?
     let tip_cents: Int?
-    let fees_cents: Int?
-    let discount_cents: Int?
+    let fees_cents: Int?  // signed: negative = discount
 
     let items: [Item]
     let issues: [String]
@@ -241,13 +281,12 @@ extension ParsedReceipt {
         .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    /// Best-effort breakdown with defaults (never negative in UI).
-    func breakdownDefaults() -> (fees: Int, tax: Int, tip: Int, discount: Int) {
+    /// Best-effort breakdown with defaults. fees can be negative (discount).
+    func breakdownDefaults() -> (fees: Int, tax: Int, tip: Int) {
         (
-            fees: max(0, fees_cents ?? 0),
+            fees: fees_cents ?? 0,
             tax: max(0, tax_cents ?? 0),
-            tip: max(0, tip_cents ?? 0),
-            discount: max(0, discount_cents ?? 0)
+            tip: max(0, tip_cents ?? 0)
         )
     }
 
@@ -257,7 +296,8 @@ extension ParsedReceipt {
         return t.isEmpty ? fallback : t
     }
 
-    /// Best-effort total for UI (prefers total, else subtotal+tax+fees+tip-discount if present).
+    /// Best-effort total for UI (prefers total, else subtotal+tax+fees+tip if present).
+    /// fees_cents is signed so discounts are already factored in.
     func bestTotalCents() -> Int {
         if let t = total_cents { return max(0, t) }
 
@@ -268,7 +308,6 @@ extension ParsedReceipt {
         let fees = fees_cents ?? 0
         let tax = tax_cents ?? 0
         let tip = tip_cents ?? 0
-        let disc = discount_cents ?? 0
-        return max(0, (sub ?? 0) + max(0, tax) + max(0, fees) + max(0, tip) - max(0, disc))
+        return max(0, (sub ?? 0) + max(0, tax) + fees + max(0, tip))
     }
 }

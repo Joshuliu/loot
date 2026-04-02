@@ -364,50 +364,6 @@ final class TabService {
 
     // MARK: - Tab Receipts
 
-    /// Adds a receipt to a tab, updating member balances atomically.
-    /// Returns the generated receipt document ID.
-    func addReceipt(_ receipt: TabReceipt, toTab tabId: String) async throws -> String {
-        try await SharedReceiptService.shared.ensureAnonymousAuth()
-
-        let tabRef = db.collection("tabs").document(tabId)
-        let receiptRef = tabRef.collection("receipts").document()
-
-        _ = try await db.runTransaction { transaction, errorPointer in
-            let tabSnapshot: DocumentSnapshot
-            do {
-                tabSnapshot = try transaction.getDocument(tabRef)
-            } catch let fetchError as NSError {
-                errorPointer?.pointee = fetchError
-                return nil
-            }
-
-            guard var tab = try? tabSnapshot.data(as: LootTab.self) else {
-                let err = NSError(domain: "TabService", code: 2,
-                                  userInfo: [NSLocalizedDescriptionKey: "Tab not found"])
-                errorPointer?.pointee = err
-                return nil
-            }
-
-            tab.applyReceipt(receipt)
-
-            do {
-                let tabData = try Firestore.Encoder().encode(tab)
-                transaction.setData(tabData, forDocument: tabRef)
-
-                let receiptData = try Firestore.Encoder().encode(receipt)
-                transaction.setData(receiptData, forDocument: receiptRef)
-            } catch let encodeError as NSError {
-                errorPointer?.pointee = encodeError
-                return nil
-            }
-
-            return nil
-        }
-
-        print("[TabService] addReceipt to tab \(tabId): \(receiptRef.documentID)")
-        return receiptRef.documentID
-    }
-
     /// Records a settlement, updating member balances atomically.
     func recordSettlement(_ settlement: Settlement, forTab tabId: String) async throws {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
@@ -450,28 +406,36 @@ final class TabService {
         print("[TabService] recordSettlement for tab \(tabId)")
     }
 
-    /// Updates an existing TabReceipt and recomputes tab balances authoritatively.
-    func updateReceipt(_ receipt: TabReceipt, inTab tabId: String, receiptId: String) async throws {
+    /// Recomputes the tab's derived aggregates from sharedReceipts, with legacy
+    /// fallback support for older tab receipt docs that may not have shared links.
+    @discardableResult
+    func syncTabDerivedState(tabId: String) async throws -> LootTab? {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
 
         let tabRef = db.collection("tabs").document(tabId)
-        let receiptRef = tabRef.collection("receipts").document(receiptId)
+        guard var tab = try await fetchTab(id: tabId) else { return nil }
 
-        // Update the TabReceipt document
-        let receiptData = try Firestore.Encoder().encode(receipt)
-        try await receiptRef.setData(receiptData, merge: true)
-
-        // Recompute balances authoritatively from all sharedReceipts
-        guard var tab = try await fetchTab(id: tabId) else { return }
         let balances = try await computeTabBalances(tabId: tabId, members: tab.members)
+        let receipts = try await fetchReceipts(forTab: tabId)
 
-        // Apply computed balances to tab members
         for i in tab.members.indices {
             tab.members[i].balanceCents = balances[tab.members[i].memberId] ?? 0
         }
+        tab.receiptCount = receipts.count
+
         let tabData = try Firestore.Encoder().encode(tab)
-        try await tabRef.setData(tabData)
-        print("[TabService] updateReceipt and recomputed balances for tab \(tabId)")
+        try await tabRef.setData(tabData, merge: true)
+        print("[TabService] syncTabDerivedState for tab \(tabId)")
+        return tab
+    }
+
+    func removeReceiptFromTab(tabId: String, receiptId: String) async throws {
+        try await SharedReceiptService.shared.ensureAnonymousAuth()
+
+        let receiptRef = db.collection("tabs").document(tabId).collection("receipts").document(receiptId)
+        try await receiptRef.delete()
+        _ = try await syncTabDerivedState(tabId: tabId)
+        print("[TabService] removeReceiptFromTab legacy cleanup for tab \(tabId)")
     }
 
     /// Computes net balances for all tab members by querying sharedReceipts + settlements.
@@ -483,50 +447,17 @@ final class TabService {
         var balances: [String: Int] = Dictionary(uniqueKeysWithValues:
             members.map { ($0.memberId, 0) })
 
-        // Fetch every sharedReceipt that belongs to this tab
-        let snapshot = try await db.collection("sharedReceipts")
-            .whereField("tid", isEqualTo: tabId)
-            .getDocuments()
+        let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
 
-        for doc in snapshot.documents {
-            let dict = doc.data()
+        for entry in sharedPayloads {
+            applyBalanceDelta(from: entry.payload, into: &balances)
+        }
 
-            // Extract split data directly from the Firestore dict to avoid the
-            // JSON round-trip (Firestore returns numbers as Double/Int64, which
-            // causes JSONDecoder to fail on Int fields in LootMessagePayload).
-            guard let splitDict = dict["s"] as? [String: Any],
-                  let guestsArray = splitDict["g"] as? [[String: Any]],
-                  let owedAny = splitDict["o"] as? [Any]
-            else {
-                print("[TabService] computeTabBalances: skipping doc \(doc.documentID) — missing s/g/o fields")
-                continue
-            }
-
-            func toInt(_ v: Any?) -> Int {
-                if let i = v as? Int { return i }
-                if let d = v as? Double { return Int(d) }
-                return 0
-            }
-
-            let payerIndex = toInt(splitDict["pi"])
-            let total = toInt(splitDict["tot"])
-            let owed = owedAny.map { toInt($0) }
-
-            // Each included guest owes their share
-            for (i, guestDict) in guestsArray.enumerated() {
-                let inc = guestDict["inc"] as? Bool ?? false
-                guard inc,
-                      let uid = guestDict["uid"] as? String, !uid.isEmpty,
-                      owed.indices.contains(i)
-                else { continue }
-                balances[uid, default: 0] -= owed[i]
-            }
-
-            // Payer gets the full total back
-            if guestsArray.indices.contains(payerIndex),
-               let payerUid = guestsArray[payerIndex]["uid"] as? String, !payerUid.isEmpty {
-                balances[payerUid, default: 0] += total
-            }
+        // Legacy fallback: keep supporting old tab receipt docs that may still
+        // exist without a linked shared receipt doc.
+        let legacyReceipts = try await fetchLegacyTabReceiptsNeedingFallback(forTabId: tabId)
+        for receipt in legacyReceipts {
+            applyBalanceDelta(from: receipt, into: &balances)
         }
 
         // Apply any recorded settlements
@@ -545,13 +476,18 @@ final class TabService {
     /// Fetches all receipts for a tab, ordered by creation date descending.
     func fetchReceipts(forTab tabId: String) async throws -> [TabReceipt] {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
+        guard let tab = try await fetchTab(id: tabId) else { return [] }
 
-        let snapshot = try await db.collection("tabs").document(tabId)
-            .collection("receipts")
-            .order(by: "createdAt", descending: true)
-            .getDocuments()
+        let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
+        let sharedReceipts = sharedPayloads.map { entry in
+            TabReceipt.from(payload: entry.payload, messagePayloadId: entry.docId, tab: tab)
+        }
 
-        return snapshot.documents.compactMap { try? $0.data(as: TabReceipt.self) }
+        let legacyReceipts = try await fetchLegacyTabReceiptsNeedingFallback(forTabId: tabId)
+
+        return (sharedReceipts + legacyReceipts).sorted {
+            ($0.createdAt?.dateValue() ?? .distantPast) > ($1.createdAt?.dateValue() ?? .distantPast)
+        }
     }
 
     /// Fetches all settlements for a tab, ordered by creation date descending.
@@ -579,5 +515,86 @@ final class TabService {
             "tabId": tabId,
             "updatedAt": FieldValue.serverTimestamp()
         ])
+    }
+
+    private func fetchSharedReceiptPayloads(forTabId tabId: String) async throws -> [(docId: String, payload: LootMessagePayload)] {
+        let snapshot = try await db.collection("sharedReceipts")
+            .whereField("tid", isEqualTo: tabId)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { doc in
+            guard let payload = decodeSharedReceiptPayload(from: doc.data()) else {
+                print("[TabService] failed to decode sharedReceipt \(doc.documentID)")
+                return nil
+            }
+            return (doc.documentID, payload)
+        }
+    }
+
+    private func fetchLegacyTabReceipts(forTabId tabId: String) async throws -> [TabReceipt] {
+        let snapshot = try await db.collection("tabs").document(tabId)
+            .collection("receipts")
+            .order(by: "createdAt", descending: true)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { try? $0.data(as: TabReceipt.self) }
+    }
+
+    private func fetchLegacyTabReceiptsNeedingFallback(forTabId tabId: String) async throws -> [TabReceipt] {
+        let legacyReceipts = try await fetchLegacyTabReceipts(forTabId: tabId)
+        let linkedSharedIds = Set(legacyReceipts.compactMap(\.messagePayloadId))
+        let existingSharedIds = try await fetchExistingSharedReceiptDocIds(linkedSharedIds)
+
+        return legacyReceipts.filter { receipt in
+            guard let messagePayloadId = receipt.messagePayloadId, !messagePayloadId.isEmpty else {
+                return true
+            }
+            return !existingSharedIds.contains(messagePayloadId)
+        }
+    }
+
+    private func fetchExistingSharedReceiptDocIds(_ docIds: Set<String>) async throws -> Set<String> {
+        guard !docIds.isEmpty else { return [] }
+
+        var existing: Set<String> = []
+        for docId in docIds {
+            let snapshot = try await db.collection("sharedReceipts").document(docId).getDocument()
+            if snapshot.exists {
+                existing.insert(docId)
+            }
+        }
+        return existing
+    }
+
+    private func decodeSharedReceiptPayload(from dict: [String: Any]) -> LootMessagePayload? {
+        var clean = dict
+        clean.removeValue(forKey: "_createdAt")
+        clean.removeValue(forKey: "_uid")
+        clean.removeValue(forKey: "_captureImage")
+        guard let data = try? JSONSerialization.data(withJSONObject: clean) else { return nil }
+        return try? JSONDecoder().decode(LootMessagePayload.self, from: data)
+    }
+
+    private func applyBalanceDelta(from payload: LootMessagePayload, into balances: inout [String: Int]) {
+        let split = payload.s
+
+        for (i, guest) in split.g.enumerated() {
+            guard guest.inc,
+                  let uid = guest.uid, !uid.isEmpty,
+                  split.o.indices.contains(i) else { continue }
+            balances[uid, default: 0] -= split.o[i]
+        }
+
+        if split.g.indices.contains(split.pi),
+           let payerUid = split.g[split.pi].uid, !payerUid.isEmpty {
+            balances[payerUid, default: 0] += split.tot
+        }
+    }
+
+    private func applyBalanceDelta(from receipt: TabReceipt, into balances: inout [String: Int]) {
+        for split in receipt.splits {
+            balances[split.memberId, default: 0] -= split.owedCents
+        }
+        balances[receipt.payerMemberId, default: 0] += receipt.totalCents
     }
 }

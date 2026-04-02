@@ -12,15 +12,10 @@ struct MessageReceiptViewer: View {
     @ObservedObject var uiModel: LootUIModel
     let payload: LootMessagePayload
     let onClose: () -> Void
+    let onRequestCollapse: () -> Void
 
-    enum Tab { case splits, receipt }
-    @State private var tab: Tab = .splits
-    @State private var showEditSplit: Bool = false
     @State private var editSplitPayload: LootMessagePayload? = nil
-
-    private var captureImage: UIImage? {
-        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
-    }
+    @State private var showEditReceipt: Bool = false
 
     private var canEdit: Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
@@ -28,65 +23,83 @@ struct MessageReceiptViewer: View {
     }
 
     var body: some View {
-        TabView(selection: $tab) {
-            SplitsSummaryView(uiModel: uiModel, split: payload.s, items: payload.r.i, canEdit: canEdit, onEditSplit: {
+        SplitsSummaryView(
+            uiModel: uiModel,
+            split: payload.s,
+            items: payload.r.i,
+            onEditSplit: {
                 editSplitPayload = uiModel.openedMessagePayload ?? payload
-                showEditSplit = true
-            })
-                .id(uiModel.openedMessageDocId ?? payload.r.id)
-                .tabItem { Label("Splits", systemImage: "chart.pie.fill") }
-                .tag(Tab.splits)
-
-            Group {
-                if let receipt = uiModel.currentReceipt {
-                    ReceiptView(uiModel: uiModel, receipt: receipt, onBack: {}, showBackRow: false, showCaptureButton: true, compactCaptureButton: true, canEdit: canEdit, onPostSendSave: { updatedReceipt in
-                        handleReceiptEdit(updatedReceipt)
-                    })
-                } else {
-                    ProgressView("Loading…")
+            },
+            onEditReceipt: {
+                if canEdit {
+                    showEditReceipt = true
                 }
+            },
+            onRemoveFromTab: {
+                if canEdit {
+                    removeFromTab()
+                }
+            },
+            onRequestCollapse: {
+                onRequestCollapse()
             }
-            .tabItem { Label("Receipt", systemImage: "doc.text.fill") }
-            .tag(Tab.receipt)
-        }
+        )
+        .id(uiModel.openedMessageDocId ?? payload.r.id)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .toolbarBackground(.regularMaterial, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
-        .sheet(isPresented: $showEditSplit) {
-            if let editPayload = editSplitPayload, let docId = uiModel.openedMessageDocId {
-                EditSplitView(payload: editPayload, docId: docId, onSave: { updatedPayload in
-                    handleSplitSave(updatedPayload)
-                    showEditSplit = false
-                }, onCancel: {
-                    showEditSplit = false
-                })
-            }
+        .sheet(item: $editSplitPayload) { editPayload in
+            let docId = uiModel.openedMessageDocId ?? editPayload.r.id
+            EditSplitView(payload: editPayload, docId: docId, onSave: { updatedPayload in
+                handleSplitSave(updatedPayload)
+                editSplitPayload = nil
+            }, onCancel: {
+                editSplitPayload = nil
+            })
         }
-        .onAppear {
-            guard #unavailable(iOS 26) else { return }
-            let appearance = UITabBarAppearance()
-            appearance.configureWithDefaultBackground()
-            UITabBar.appearance().standardAppearance = appearance
-            UITabBar.appearance().scrollEdgeAppearance = appearance
+        .sheet(isPresented: $showEditReceipt) {
+            EditReceiptView(
+                uiModel: uiModel,
+                onSave: { updatedReceipt in
+                    uiModel.currentReceipt = updatedReceipt
+                    handleReceiptEdit(updatedReceipt)
+                    showEditReceipt = false
+                },
+                onCancel: {
+                    showEditReceipt = false
+                }
+            )
         }
     }
 
     // MARK: - Receipt Edit Handler
 
     private func handleReceiptEdit(_ updatedReceipt: ReceiptDisplay) {
-        guard var currentPayload = uiModel.openedMessagePayload,
-              let docId = uiModel.openedMessageDocId else { return }
+        guard var currentPayload = uiModel.openedMessagePayload else { return }
+        let docId = uiModel.openedMessageDocId ?? currentPayload.r.id
 
         let oldTotal = currentPayload.s.tot
         let oldItems = currentPayload.r.i
 
         // Rebuild receipt payload from the updated receipt
         currentPayload.r = ReceiptPayload.from(receipt: updatedReceipt, split: currentPayload.s)
+
+        // Preserve existing byItems assignments — EditReceiptView always saves items with
+        // responsible: [], so ReceiptPayload.from clears rs for every item. Re-apply the
+        // original slot assignments for items that already existed.
+        if currentPayload.s.m == .byItems {
+            let oldRsByItemId = Dictionary(uniqueKeysWithValues: oldItems.map { ($0.id, $0.rs) })
+            currentPayload.r.i = currentPayload.r.i.map { item in
+                var updated = item
+                if let existingRs = oldRsByItemId[item.id] {
+                    updated.rs = existingRs
+                }
+                return updated
+            }
+        }
+
         currentPayload.s.tot = updatedReceipt.totalCents
         currentPayload.s.f = updatedReceipt.feesCents == 0 ? nil : updatedReceipt.feesCents
         currentPayload.s.tx = updatedReceipt.taxCents == 0 ? nil : updatedReceipt.taxCents
         currentPayload.s.tip = updatedReceipt.tipCents == 0 ? nil : updatedReceipt.tipCents
-        currentPayload.s.d = updatedReceipt.discountCents == 0 ? nil : updatedReceipt.discountCents
 
         let totalChanged = oldTotal != updatedReceipt.totalCents
 
@@ -102,8 +115,7 @@ struct MessageReceiptViewer: View {
                 items: [],
                 feesCents: updatedReceipt.feesCents,
                 taxCents: updatedReceipt.taxCents,
-                tipCents: updatedReceipt.tipCents,
-                discountCents: updatedReceipt.discountCents
+                tipCents: updatedReceipt.tipCents
             )
             uiModel.openedMessagePayload = currentPayload
             persistPayload(currentPayload, docId: docId)
@@ -128,7 +140,6 @@ struct MessageReceiptViewer: View {
             }
             uiModel.openedMessagePayload = currentPayload
             editSplitPayload = currentPayload
-            showEditSplit = true
 
         case .byItems:
             // Check if items were added
@@ -149,15 +160,13 @@ struct MessageReceiptViewer: View {
                 items: items,
                 feesCents: updatedReceipt.feesCents,
                 taxCents: updatedReceipt.taxCents,
-                tipCents: updatedReceipt.tipCents,
-                discountCents: updatedReceipt.discountCents
+                tipCents: updatedReceipt.tipCents
             )
             uiModel.openedMessagePayload = currentPayload
 
             if hasNewItems {
                 // Open split editor so user can assign new items to guests
                 editSplitPayload = currentPayload
-                showEditSplit = true
             } else {
                 persistPayload(currentPayload, docId: docId)
             }
@@ -172,10 +181,68 @@ struct MessageReceiptViewer: View {
     // MARK: - Split Save Handler
 
     private func handleSplitSave(_ updatedPayload: LootMessagePayload) {
-        guard let docId = uiModel.openedMessageDocId else { return }
+        let docId = uiModel.openedMessageDocId ?? updatedPayload.r.id
         uiModel.openedMessagePayload = updatedPayload
         uiModel.currentReceipt = updatedPayload.toReceiptDisplay()
         persistPayload(updatedPayload, docId: docId)
+    }
+
+    private func removeFromTab() {
+        guard var currentPayload = uiModel.openedMessagePayload,
+              let tabId = currentPayload.tid, !tabId.isEmpty
+        else { return }
+
+        let docId = uiModel.openedMessageDocId ?? currentPayload.r.id
+
+        currentPayload.tid = nil
+        currentPayload.trid = nil
+        currentPayload.tab = nil
+
+        Task {
+            do {
+                try await SharedReceiptService.shared.clearTabAssociation(docId: docId)
+
+                await MainActor.run {
+                    uiModel.openedMessagePayload = currentPayload
+                    uiModel.currentReceipt = currentPayload.toReceiptDisplay()
+                    uiModel.tabReceiptsRefreshNonce += 1
+                    if let active = uiModel.activeTab, active.id == tabId {
+                        var updated = active
+                        updated.receiptCount = max(0, active.receiptCount - 1)
+                        uiModel.activeTab = updated
+                        if let ck = uiModel.conversationKey {
+                            TabService.shared.cacheTab(updated, for: ck)
+                        }
+                    }
+                    if let receiptTab = uiModel.receiptTab, receiptTab.id == tabId {
+                        uiModel.receiptTab = nil
+                    }
+                    uiModel.openedMessagePayload = nil
+                    uiModel.openedMessageDocId = nil
+                    uiModel.messageLoadingState = .idle
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        uiModel.currentScreen = .tabview
+                    }
+                }
+
+                Task {
+                    if let refreshed = try? await TabService.shared.syncTabDerivedState(tabId: tabId) {
+                        await MainActor.run {
+                            if self.uiModel.activeTab?.id == tabId {
+                                self.uiModel.activeTab = refreshed
+                                if let ck = self.uiModel.conversationKey {
+                                    TabService.shared.cacheTab(refreshed, for: ck)
+                                }
+                            }
+                            self.uiModel.tabReceiptsRefreshNonce += 1
+                        }
+                    }
+                }
+                print("[MessageReceiptViewer] Removed receipt \(docId) from tab \(tabId)")
+            } catch {
+                print("[MessageReceiptViewer] Failed to remove receipt from tab: \(error)")
+            }
+        }
     }
 
     // MARK: - Firestore Persistence
@@ -186,13 +253,21 @@ struct MessageReceiptViewer: View {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
                 print("[MessageReceiptViewer] Persisted edit to Firestore: \(docId)")
 
-                // Recompute tab balances if this receipt belongs to a tab
+                // Recompute tab aggregates if this receipt belongs to a tab.
                 if let tabId = payload.tid, !tabId.isEmpty {
-                    if let tab = uiModel.receiptTab ?? uiModel.activeTab,
-                       let trid = payload.trid {
-                        let updatedTabReceipt = TabReceipt.from(payload: payload, messagePayloadId: docId, tab: tab)
-                        try await TabService.shared.updateReceipt(updatedTabReceipt, inTab: tabId, receiptId: trid)
-                        print("[MessageReceiptViewer] Updated TabReceipt and recomputed balances")
+                    if let refreshed = try await TabService.shared.syncTabDerivedState(tabId: tabId) {
+                        await MainActor.run {
+                            if self.uiModel.activeTab?.id == tabId {
+                                self.uiModel.activeTab = refreshed
+                                if let ck = self.uiModel.conversationKey {
+                                    TabService.shared.cacheTab(refreshed, for: ck)
+                                }
+                            }
+                            if self.uiModel.receiptTab?.id == tabId {
+                                self.uiModel.receiptTab = refreshed
+                            }
+                            self.uiModel.tabReceiptsRefreshNonce += 1
+                        }
                     }
                 }
             } catch {

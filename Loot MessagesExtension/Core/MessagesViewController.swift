@@ -33,9 +33,10 @@ final class MessagesViewController: MSMessagesAppViewController {
                                         tabColorHex: tabColorHex)
         }
 
-        uiModel.sendRequestCard = { [weak self] creditorName, debtorName, amountCents, tabColorHex in
+        uiModel.sendRequestCard = { [weak self] creditorName, debtorName, amountCents, tabColorHex, metadata in
             self?.sendRequestMessage(creditorName: creditorName, debtorName: debtorName,
-                                     amountCents: amountCents, tabColorHex: tabColorHex)
+                                     amountCents: amountCents, tabColorHex: tabColorHex,
+                                     metadata: metadata)
         }
 
         view.isOpaque = true
@@ -77,6 +78,25 @@ final class MessagesViewController: MSMessagesAppViewController {
         // Use the message parameter directly, not conversation.selectedMessage
         applyMessage(message, conversation: conversation)
     }
+
+    private func setActiveTabIfChanged(_ tab: LootTab?) {
+        let currentId = uiModel.activeTab?.id
+        let newId = tab?.id
+
+        if currentId == newId {
+            if currentId == nil, uiModel.activeTab == nil, tab == nil { return }
+            if let current = uiModel.activeTab, let tab,
+               current.name == tab.name,
+               current.colorHex == tab.colorHex,
+               current.memberIds == tab.memberIds,
+               current.receiptCount == tab.receiptCount,
+               current.status.rawValue == tab.status.rawValue {
+                return
+            }
+        }
+
+        uiModel.activeTab = tab
+    }
 }
 
 // MARK: - Card render + sending (no backend, no storage)
@@ -89,6 +109,11 @@ extension MessagesViewController {
 
         guard let msg = message, let url = msg.url else { return }
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let pendingRequest = pendingPayRequest(from: comps)
+        uiModel.pendingPayRequest = pendingRequest
+        if pendingRequest != nil {
+            requestPresentationStyle(.expanded)
+        }
 
         // New path: Firestore doc ID
         if let docId = comps?.queryItems?.first(where: { $0.name == "id" })?.value,
@@ -160,23 +185,27 @@ extension MessagesViewController {
             let tabName = comps?.queryItems?.first(where: { $0.name == "tn" })?.value
             let colorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
             if let tabName {
-                uiModel.activeTab = LootTab.minimal(id: tabId, name: tabName,
-                                                    colorHex: colorHex?.isEmpty == true ? nil : colorHex)
+                setActiveTabIfChanged(
+                    LootTab.minimal(id: tabId, name: tabName,
+                                    colorHex: colorHex?.isEmpty == true ? nil : colorHex)
+                )
             }
             // Try to upgrade with full tab data in background
             Task { @MainActor in
                 if let cached = uiModel.userTabs.first(where: { $0.id == tabId }) {
-                    uiModel.activeTab = cached
+                    setActiveTabIfChanged(cached)
                 } else if let full = try? await TabService.shared.fetchTab(id: tabId) {
-                    uiModel.activeTab = full
+                    setActiveTabIfChanged(full)
                 }
             }
+            uiModel.currentScreen = .tabview
             return
         }
 
         // Legacy path: inline payload
         if let payload = LootMessageCodec.payload(from: url) {
             uiModel.openedMessagePayload = payload
+            uiModel.openedMessageDocId = payload.r.id
             uiModel.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
             if let tabData = payload.tab { Task { @MainActor in await self.applyTabData(tabData) } }
@@ -195,7 +224,7 @@ extension MessagesViewController {
         // Check local cache first (avoids a network round-trip)
         if let cached = uiModel.userTabs.first(where: { $0.id == tabData.id }) {
             if cached.memberIds.contains(myId) {
-                uiModel.activeTab = cached
+                setActiveTabIfChanged(cached)
                 if let ck = uiModel.conversationKey {
                     TabService.shared.cacheTab(cached, for: ck)
                 }
@@ -207,7 +236,7 @@ extension MessagesViewController {
         // Not in local tabs — fetch to verify membership
         if let tab = try? await TabService.shared.fetchTab(id: tabData.id) {
             if tab.memberIds.contains(myId) {
-                uiModel.activeTab = tab
+                setActiveTabIfChanged(tab)
                 if let ck = uiModel.conversationKey {
                     TabService.shared.cacheTab(tab, for: ck)
                 }
@@ -233,7 +262,7 @@ extension MessagesViewController {
         if let convKey = uiModel.conversationKey {
             // Instant: restore from local cache so the tab shows immediately
             if uiModel.currentScreen != .joinTab {
-                uiModel.activeTab = TabService.shared.cachedTab(for: convKey)
+                setActiveTabIfChanged(TabService.shared.cachedTab(for: convKey))
             }
 
             Task { @MainActor in
@@ -242,20 +271,30 @@ extension MessagesViewController {
                 // is about to join / just joined.
                 if uiModel.currentScreen != .joinTab {
                     let myId = KeychainHelper.getOrCreateUserId()
-                    let tab = try? await TabService.shared.getTabForConversation(conversationKey: convKey)
-                    // Store conversation member IDs for tab relevance sorting,
-                    // regardless of whether the current user is still a member.
-                    if let t = tab {
-                        uiModel.conversationMemberIds = Set(t.memberIds)
-                    }
-                    // Only set as active if this user is still an active member
-                    // (guards against tabs the user has left).
-                    if let t = tab, t.memberIds.contains(myId) {
-                        uiModel.activeTab = t
-                        TabService.shared.cacheTab(t, for: convKey)
-                    } else {
-                        uiModel.activeTab = nil
-                        TabService.shared.cacheTab(nil, for: convKey)
+                    do {
+                        let tab = try await TabService.shared.getTabForConversation(conversationKey: convKey)
+
+                        // Store conversation member IDs for tab relevance sorting,
+                        // regardless of whether the current user is still a member.
+                        if let t = tab {
+                            uiModel.conversationMemberIds = Set(t.memberIds)
+                        } else {
+                            uiModel.conversationMemberIds = []
+                        }
+
+                        // Only set as active if this user is still an active member
+                        // (guards against tabs the user has left).
+                        if let t = tab, t.memberIds.contains(myId) {
+                            setActiveTabIfChanged(t)
+                            TabService.shared.cacheTab(t, for: convKey)
+                        } else {
+                            setActiveTabIfChanged(nil)
+                            TabService.shared.cacheTab(nil, for: convKey)
+                        }
+                    } catch {
+                        // Keep the cached tab on transient lookup failures instead of
+                        // silently disassociating the conversation.
+                        print("[setupRootView] getTabForConversation failed: \(error)")
                     }
                 }
                 do {
@@ -367,14 +406,31 @@ extension MessagesViewController {
     }
 
     func sendRequestMessage(creditorName: String, debtorName: String,
-                            amountCents: Int, tabColorHex: String?) {
+                            amountCents: Int, tabColorHex: String?,
+                            metadata: RequestCardMetadata?) {
         guard let conversation = activeConversation else { return }
 
         let card = SettlementCardView(fromName: creditorName, toName: debtorName,
                                      amountCents: amountCents, methodName: "",
                                      tabColorHex: tabColorHex, isRequest: true)
         let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
-        let components = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab)
+        var components = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab)
+        var items = components.queryItems ?? []
+        items.append(URLQueryItem(name: "rq", value: "1"))
+        items.append(URLQueryItem(name: "cn", value: creditorName))
+        items.append(URLQueryItem(name: "dn", value: debtorName))
+        items.append(URLQueryItem(name: "amt", value: String(amountCents)))
+        if let receiptDocId = metadata?.receiptDocId, !receiptDocId.isEmpty {
+            items.append(URLQueryItem(name: "id", value: receiptDocId))
+            items.append(URLQueryItem(name: "rd", value: receiptDocId))
+        }
+        if let creditorId = metadata?.creditorId, !creditorId.isEmpty {
+            items.append(URLQueryItem(name: "cid", value: creditorId))
+        }
+        if let debtorId = metadata?.debtorId, !debtorId.isEmpty {
+            items.append(URLQueryItem(name: "did", value: debtorId))
+        }
+        components.queryItems = items
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -389,6 +445,28 @@ extension MessagesViewController {
             if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
         }
         requestPresentationStyle(.compact)
+    }
+
+    private func pendingPayRequest(from comps: URLComponents?) -> PendingPayRequest? {
+        guard let comps,
+              comps.queryItems?.contains(where: { $0.name == "rq" && $0.value == "1" }) == true
+        else { return nil }
+
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let debtorId = comps.queryItems?.first(where: { $0.name == "did" })?.value
+        if let debtorId, !debtorId.isEmpty, debtorId != myUid {
+            return nil
+        }
+
+        return PendingPayRequest(
+            receiptDocId: comps.queryItems?.first(where: { $0.name == "rd" })?.value,
+            tabId: comps.queryItems?.first(where: { $0.name == "tabId" })?.value,
+            creditorId: comps.queryItems?.first(where: { $0.name == "cid" })?.value,
+            debtorId: debtorId,
+            creditorName: comps.queryItems?.first(where: { $0.name == "cn" })?.value ?? "Requester",
+            debtorName: comps.queryItems?.first(where: { $0.name == "dn" })?.value ?? "You",
+            amountCents: Int(comps.queryItems?.first(where: { $0.name == "amt" })?.value ?? "") ?? 0
+        )
     }
 
     func renderCardImage(receiptName: String,
@@ -440,7 +518,6 @@ extension MessagesViewController {
             feesCents: 0,
             taxCents: 0,
             tipCents: 0,
-            discountCents: 0,
             totalCents: fallbackTotalCents,
             items: []
         )
@@ -500,18 +577,10 @@ extension MessagesViewController {
                 try await SharedReceiptService.shared.upload(payload, captureImage: captureImage, docId: docId)
                 print("[sendBillMessage] Uploaded to Firestore: \(docId)")
 
-                // If this receipt belongs to a tab, create a TabReceipt and update balances
-                if let tabId = payload.tid, let activeTab = uiModel.activeTab {
-                    let tabReceipt = TabReceipt.from(payload: payload, messagePayloadId: docId, tab: activeTab)
-                    let trid = try await TabService.shared.addReceipt(tabReceipt, toTab: tabId)
-
-                    // Update the shared receipt with trid
-                    var updated = payload
-                    updated.trid = trid
-                    try await SharedReceiptService.shared.updatePayload(updated, docId: docId)
-
-                    // Refresh cached tab
-                    if let refreshed = try await TabService.shared.fetchTab(id: tabId) {
+                // If this receipt belongs to a tab, recompute its derived aggregates.
+                if let tabId = payload.tid {
+                    // Refresh cached tab from the single-source sharedReceipts model.
+                    if let refreshed = try await TabService.shared.syncTabDerivedState(tabId: tabId) {
                         await MainActor.run {
                             self.uiModel.activeTab = refreshed
                         }
@@ -519,7 +588,7 @@ extension MessagesViewController {
                             TabService.shared.cacheTab(refreshed, for: ck)
                         }
                     }
-                    print("[sendBillMessage] TabReceipt added: \(trid)")
+                    print("[sendBillMessage] Synced tab aggregates for \(tabId)")
                 }
             } catch {
                 print("[sendBillMessage] Firestore upload failed: \(error)")
@@ -587,6 +656,10 @@ extension LootMessagePayload {
             )
         }
 
+        let lineItems: [ReceiptDisplay.LineItem] = (receiptData.li ?? []).map {
+            ReceiptDisplay.LineItem(id: $0.id, label: $0.l, cents: $0.c)
+        }
+
         return ReceiptDisplay(
             id: receiptData.id,
             title: receiptData.t,
@@ -595,9 +668,9 @@ extension LootMessagePayload {
             feesCents: receiptData.f,
             taxCents: receiptData.tx,
             tipCents: receiptData.tip,
-            discountCents: receiptData.d,
             totalCents: receiptData.tot,
-            items: items
+            items: items,
+            lineItems: lineItems
         )
     }
 }
@@ -638,7 +711,6 @@ extension SplitPayload {
         let fees = draft?.feesCents ?? 0
         let tax = draft?.taxCents ?? 0
         let tip = draft?.tipCents ?? 0
-        let discount = draft?.discountCents ?? 0
 
         // ✅ Convert draft items to tuples for SplitMath (no longer creating SplitPayload.Item array)
         let itemsForMath: [(label: String, priceCents: Int, assignedSlots: [Int])] = {
@@ -661,8 +733,7 @@ extension SplitPayload {
             items: itemsForMath,
             feesCents: fees,
             taxCents: tax,
-            tipCents: tip,
-            discountCents: discount
+            tipCents: tip
         )
 
         return SplitPayload(
@@ -673,7 +744,6 @@ extension SplitPayload {
             f: fees == 0 ? nil : fees,
             tx: tax == 0 ? nil : tax,
             tip: tip == 0 ? nil : tip,
-            d: discount == 0 ? nil : discount,
             tot: totalCents
         )
     }
@@ -696,6 +766,9 @@ extension ReceiptPayload {
             }
         }()
 
+        let lineItems: [ReceiptLineItemPayload]? = receipt.lineItems.isEmpty ? nil :
+            receipt.lineItems.map { ReceiptLineItemPayload(id: $0.id, l: $0.label, c: $0.cents) }
+
         return ReceiptPayload(
             id: receipt.id,
             t: receipt.title,
@@ -704,9 +777,9 @@ extension ReceiptPayload {
             f: receipt.feesCents,
             tx: receipt.taxCents,
             tip: receipt.tipCents,
-            d: receipt.discountCents,
             tot: receipt.totalCents,
-            i: items
+            i: items,
+            li: lineItems
         )
     }
 }
@@ -720,11 +793,10 @@ enum SplitMath {
         payerIndex: Int,
         totalCents: Int,
         perGuestActive: [Int]?,
-        items: [(label: String, priceCents: Int, assignedSlots: [Int])],  // ✅ Changed from [SplitPayload.Item]
-        feesCents: Int,
+        items: [(label: String, priceCents: Int, assignedSlots: [Int])],
+        feesCents: Int,  // signed: negative = discount
         taxCents: Int,
-        tipCents: Int,
-        discountCents: Int
+        tipCents: Int
     ) -> [Int] {
 
         let included = guests.indices.filter { guests[$0].inc }  // ✅ Changed from .included
@@ -762,8 +834,8 @@ enum SplitMath {
                 for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
             }
 
-            // 2) allocate extras (fees+tax+tip-discount) proportional to subtotal (or evenly if subtotal=0)
-            let extras = max(0, feesCents) + max(0, taxCents) + max(0, tipCents) - max(0, discountCents)
+            // 2) allocate extras (fees+tax+tip) proportional to subtotal (fees is signed so discounts reduce it)
+            let extras = feesCents + max(0, taxCents) + max(0, tipCents)
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {
@@ -827,4 +899,3 @@ enum SplitMath {
         return out
     }
 }
-

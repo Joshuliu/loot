@@ -88,6 +88,8 @@ struct PaymentMethodView: View {
             Text("Let others know how to pay you! Guests using the same payment methods can pay you in your preferred methods.")
                 .font(.system(size: 16))
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
 
             // Draggable methods list — intentionally outside ScrollView
             // so the ScrollView's pan gesture can't interfere with the drag gesture.

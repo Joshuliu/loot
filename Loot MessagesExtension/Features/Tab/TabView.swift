@@ -31,8 +31,11 @@ struct LootTabView: View {
     var onTabDeleted: (() -> Void)? = nil
     var onPreviewSplits: ((TabReceipt) -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
-    var onSendRequestCard: ((String, String, Int, String?) -> Void)? = nil
+    var onSendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)? = nil
     var openInSafari: ((URL) -> Void)? = nil
+    var pendingPayRequest: PendingPayRequest? = nil
+    var onConsumePendingPayRequest: (() -> Void)? = nil
+    var paymentsRefreshNonce: Int = 0
     let onRequestCollapse: () -> Void
     
     @AppStorage(DefaultsKeys.myDisplayName) private var myDisplayName: String = ""
@@ -140,7 +143,7 @@ struct LootTabView: View {
         .onChange(of: isExpanded) { _, newValue in
             if !newValue { showingAddReceiptPanel = false }
         }
-        .task(id: activeTab?.id) {
+        .task(id: "\(activeTab?.id ?? "none")-\(paymentsRefreshNonce)") {
             await loadPayments()
         }
     }
@@ -278,7 +281,6 @@ struct LootTabView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity,
                        alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
                 .padding(.horizontal, activeTab == nil || showingAddReceiptPanel || !isExpanded ? 0 : 48)
-//                .padding(.vertical, 1)
             }
         }
         .padding(.horizontal, 16)
@@ -306,7 +308,9 @@ struct LootTabView: View {
                     tabName: tab.name,
                     onSendSettlementCard: onSendSettlementCard,
                     onSendRequestCard: onSendRequestCard,
-                    openInSafari: openInSafari
+                    openInSafari: openInSafari,
+                    pendingPayRequest: pendingPayRequest,
+                    onConsumePendingPayRequest: onConsumePendingPayRequest
                 )
             }
             segmentedPicker
@@ -318,7 +322,7 @@ struct LootTabView: View {
             }
         } else if activeTab == nil && userTabs.isEmpty {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Add up this chat's transactions with Loot Tabs! We'll do the math to settle up. When Loot is opened from this chat, receipts will be added to the selected tab.")
+                Text("Add up this chat's transactions with Loot Tabs! We'll do the math to get even. When Loot is opened from this chat, receipts will be added to the selected tab.")
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -569,6 +573,7 @@ struct LootTabView: View {
             }
             .padding(.vertical, 11)
             .padding(.horizontal, 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

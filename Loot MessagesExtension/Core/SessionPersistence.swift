@@ -90,7 +90,6 @@ extension AppScreen {
         case .confirmation:      return "confirmation"
         case .fill:              return "fill"
         case .tipview:           return "tipview"
-        case .receipt:           return "receipt"
         case .paymentMethods:    return "paymentMethods"
         case .account:           return "account"
         default:                 return "tabview"
@@ -100,7 +99,7 @@ extension AppScreen {
     /// Screens worth saving so the user lands back in the right place on reopen.
     var isPersistableScreen: Bool {
         switch self {
-        case .confirmation, .fill, .tipview, .receipt,
+        case .confirmation, .fill, .tipview,
              .paymentMethods, .account:
             return true
         default:
@@ -114,7 +113,6 @@ extension AppScreen {
         switch key {
         case "fill":           return .fill
         case "tipview":        return .tipview
-        case "receipt":        return .receipt
         case "paymentMethods": return .paymentMethods
         case "account":        return .account
         case "confirmation":   return .confirmation

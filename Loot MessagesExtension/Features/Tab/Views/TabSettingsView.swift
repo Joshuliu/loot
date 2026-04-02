@@ -98,15 +98,6 @@ struct TabSettingsView: View {
                             }
                         }
                     }
-                    .onDelete { indexSet in
-                        for idx in indexSet {
-                            let member = members[idx]
-                            // Only allow removing guests with no userId and zero balance
-                            if member.userId == nil && member.balanceCents == 0 {
-                                members.remove(at: idx)
-                            }
-                        }
-                    }
 
                     if showingAddGuest {
                         HStack(spacing: 8) {
@@ -129,7 +120,7 @@ struct TabSettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("Swipe to remove guests with no balance. Loot members can only be removed by leaving the tab themselves.")
+                    Text("Loot members can only be removed by leaving the tab themselves.")
                         .font(.system(size: 12))
                 }
 
@@ -174,7 +165,7 @@ struct TabSettingsView: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Must settle up to leave")
+                            Text("Must \(myBalance < 0 ? "get paid" : "pay back") to leave")
                                 .font(.system(size: 15, weight: .medium))
                             Text("Your balance is \(ReceiptDisplay.money(abs(myBalance)))\(myBalance < 0 ? " owed" : " to receive"). Settle up first.")
                                 .font(.system(size: 13))

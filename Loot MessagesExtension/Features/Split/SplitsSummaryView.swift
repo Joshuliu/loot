@@ -13,8 +13,16 @@ struct SplitsSummaryView: View {
     @ObservedObject var uiModel: LootUIModel
     @State private var split: SplitPayload
     let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
-    let canEdit: Bool
     let onEditSplit: (() -> Void)?
+    let onEditReceipt: (() -> Void)?
+    let onRemoveFromTab: (() -> Void)?
+    let onRequestCollapse: (() -> Void)?
+
+    private var canEdit: Bool {
+        guard let payload = uiModel.openedMessagePayload else { return false }
+        let myUid = KeychainHelper.getOrCreateUserId()
+        return payload.canEdit(myUid: myUid, userTabs: uiModel.userTabs)
+    }
 
     private var isTabReceipt: Bool { uiModel.openedMessagePayload?.tid != nil }
 
@@ -41,15 +49,133 @@ struct SplitsSummaryView: View {
         let methods: [PaymentMethod]
     }
     @State private var paySheetInfo: PaySheetInfo? = nil
+    @State private var selectedSection: DetailSection = .splits
+    @State private var showCapture: Bool = false
 
     @Environment(\.openURL) private var openURL
 
-    init(uiModel: LootUIModel, split: SplitPayload, items: [ReceiptItemPayload], canEdit: Bool = false, onEditSplit: (() -> Void)? = nil) {
+    private enum DetailSection {
+        case splits
+        case receipt
+    }
+
+    init(
+        uiModel: LootUIModel,
+        split: SplitPayload,
+        items: [ReceiptItemPayload],
+        onEditSplit: (() -> Void)? = nil,
+        onEditReceipt: (() -> Void)? = nil,
+        onRemoveFromTab: (() -> Void)? = nil,
+        onRequestCollapse: (() -> Void)? = nil
+    ) {
         self.uiModel = uiModel
         self._split = State(initialValue: split)
         self.items = items
-        self.canEdit = canEdit
         self.onEditSplit = onEditSplit
+        self.onEditReceipt = onEditReceipt
+        self.onRemoveFromTab = onRemoveFromTab
+        self.onRequestCollapse = onRequestCollapse
+    }
+
+    private var receipt: ReceiptDisplay? {
+        uiModel.currentReceipt
+    }
+
+    private var captureImage: UIImage? {
+        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+    }
+
+    private var headerTitle: String {
+        receipt?.title ?? uiModel.openedMessagePayload?.r.t ?? "Receipt"
+    }
+
+    private var headerDateText: String {
+        receipt?.dateText ?? "—"
+    }
+
+    private var associatedTab: LootTab? {
+        if let receiptTab = uiModel.receiptTab {
+            return receiptTab
+        }
+        if let payloadTab = uiModel.openedMessagePayload?.tab {
+            return LootTab.minimal(id: payloadTab.id, name: payloadTab.n, colorHex: payloadTab.c)
+        }
+        if isTabReceipt {
+            return uiModel.activeTab
+        }
+        return nil
+    }
+
+    private var headerBackgroundColor: Color {
+        if isTabReceipt, let colorHex = associatedTab?.colorHex {
+            return Color(hex: colorHex)
+        }
+        return Color(.systemBackground)
+    }
+
+    private var headerPrimaryStyle: Color {
+        isTabReceipt ? .white : .primary
+    }
+
+    private var headerSecondaryStyle: Color {
+        isTabReceipt ? .white.opacity(0.8) : .secondary
+    }
+
+    private func openAssociatedTab() {
+        if let associatedTab {
+            uiModel.activeTab = associatedTab
+        }
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            uiModel.currentScreen = .tabview
+        }
+    }
+
+    private var headerNavButtonTitle: String {
+        if isTabReceipt && tabMembershipState == .member {
+            return "View Tab"
+        }
+        return "Back"
+    }
+
+    private var headerNavButtonIcon: String {
+        if isTabReceipt && tabMembershipState == .member {
+            return "rectangle.stack.fill"
+        }
+        return "arrow.left"
+    }
+
+    private func handleHeaderNavButtonTap() {
+        if isTabReceipt && tabMembershipState == .member {
+            openAssociatedTab()
+        } else {
+            onRequestCollapse?()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                uiModel.currentScreen = .tabview
+            }
+        }
+    }
+
+    private func presentPendingRequestIfPossible() {
+        guard paySheetInfo == nil,
+              let pending = uiModel.pendingPayRequest,
+              let docId = uiModel.openedMessageDocId,
+              pending.receiptDocId == docId,
+              let debtorId = pending.debtorId,
+              let creditorId = pending.creditorId,
+              let debtorIndex = split.g.firstIndex(where: { $0.uid == debtorId }),
+              split.g.indices.contains(split.pi),
+              split.g[split.pi].uid == creditorId,
+              let methods = payerPaymentMethods, !methods.isEmpty
+        else { return }
+
+        paySheetInfo = PaySheetInfo(
+            toName: displayName(for: split.pi),
+            fromName: displayName(for: debtorIndex),
+            amountCents: pending.amountCents,
+            guestIndex: debtorIndex,
+            methods: methods
+        )
+        uiModel.pendingPayRequest = nil
     }
 
     private var includedIndices: [Int] {
@@ -234,7 +360,18 @@ struct SplitsSummaryView: View {
                 .buttonStyle(.plain)
             } else if canRequest {
                 Button {
-                    uiModel.sendRequestCard?(to, from, amount, nil)
+                    uiModel.sendRequestCard?(
+                        to,
+                        from,
+                        amount,
+                        nil,
+                        RequestCardMetadata(
+                            receiptDocId: uiModel.openedMessageDocId,
+                            tabId: nil,
+                            creditorId: split.g[split.pi].uid,
+                            debtorId: split.g[guestIndex].uid
+                        )
+                    )
                 } label: {
                     Label("Request", systemImage: "bell.fill")
                         .font(.system(size: 15, weight: .semibold))
@@ -383,68 +520,185 @@ struct SplitsSummaryView: View {
         }
     }
 
-    var body: some View {
-        Group {
-            if isTabReceipt && tabMembershipState == .notMember {
-                VStack(spacing: 16) {
-                    Spacer()
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.secondary)
-                    VStack(spacing: 6) {
-                        Text("You are not a part of this tab.")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Request an invite to join.")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
+    @ViewBuilder
+    private var sharedHeader: some View {
+        ZStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(headerTitle)
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(headerPrimaryStyle)
+
+                Text(headerDateText)
+                    .font(.subheadline)
+                    .foregroundStyle(headerSecondaryStyle)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+
+            HStack(spacing: 8) {
+                Button {
+                    handleHeaderNavButtonTap()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: headerNavButtonIcon)
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(headerNavButtonTitle)
+                            .font(.system(size: 15, weight: .semibold))
                     }
-                    .multilineTextAlignment(.center)
-                    Spacer()
+                    .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
+                    .padding(.horizontal, 12)
+                    .frame(height: 36)
+                    .frame(minWidth: 108)
+                    .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding()
-            } else if isTabReceipt && tabMembershipState == .loading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                let included = includedIndices
-                let count = included.count
-                // nil = no arc selected (show total); non-nil = index into `included`
-                let selectedGuestIndex: Int? = selectedIndex
-                    .map { max(0, min($0, max(0, count - 1))) }
-                    .flatMap { count > 0 ? included[$0] : nil }
+                .buttonStyle(.plain)
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        selectedSection = selectedSection == .splits ? .receipt : .splits
+                    }
+                } label: {
+                    Image(systemName: selectedSection == .splits ? "doc.text" : "chart.pie.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(height: 130)
+        .background(headerBackgroundColor)
+    }
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-
-                // Edit Split button
-                if canEdit {
-                    HStack {
-                        Spacer()
-                        Button(action: { onEditSplit?() }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "pencil")
-                                    .font(.system(size: 13))
-                                Text("Edit Split")
-                                    .font(.system(size: 13, weight: .semibold))
+    @ViewBuilder
+    private var receiptDetailsSection: some View {
+        if let receipt {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(spacing: 0) {
+                        if uiModel.itemsLoadingState.isLoading {
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                    .scaleEffect(0.9)
+                                Text("Loading items...")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.blue.opacity(0.15))
-                            .foregroundStyle(Color.blue)
-                            .clipShape(Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-//                    .padding(.horizontal, 16)
-                }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else if receipt.items.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.secondary)
+                                Text("No items")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            ForEach(receipt.items) { item in
+                                HStack(alignment: .center, spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.label)
+                                            .font(.system(size: 16, weight: .semibold))
+                                            .lineLimit(1)
 
-                // Donut chart — tapping an arc selects it; tapping anywhere else deselects.
-                // The ZStack's DragGesture takes child-priority over this onTapGesture.
+                                        Text(ReceiptDisplay.money(item.priceCents))
+                                            .font(.system(size: 13, weight: .regular))
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer(minLength: 8)
+
+                                    HStack(spacing: 6) {
+                                        ForEach(item.responsible, id: \.slotIndex) { who in
+                                            ColoredCircleBadge(
+                                                text: who.badgeText,
+                                                color: BadgeColors.color(for: who.slotIndex)
+                                            )
+                                        }
+                                    }
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 12)
+
+                                if item.id != receipt.items.last?.id {
+                                    Divider().padding(.leading, 14)
+                                }
+                            }
+                        }
+                    }
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 16)
+
+                    TotalsBox(receipt: receipt)
+                        .padding(.horizontal, 16)
+
+                    VStack(spacing: 10) {
+                        if canEdit {
+                            Button {
+                                onEditReceipt?()
+                            } label: {
+                                Label("Edit Receipt", systemImage: "pencil")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if captureImage != nil {
+                            Button {
+                                showCapture = true
+                            } label: {
+                                Label("View Receipt Capture", systemImage: "doc.viewfinder")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 90)
+                }
+                .padding(.top, 20)
+            }
+        } else {
+            ProgressView("Loading…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var splitDetailsSection: some View {
+        let included = includedIndices
+        let count = included.count
+        let selectedGuestIndex: Int? = selectedIndex
+            .map { max(0, min($0, max(0, count - 1))) }
+            .flatMap { count > 0 ? included[$0] : nil }
+
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
                 GeometryReader { geo in
                     let size = min(geo.size.width, 230)
                     let lineW: CGFloat = 30
                     let dimmer = Color(white: 0.55)
+                    let seamNudgeDegrees = 1.0
 
                     ZStack {
                         Circle()
@@ -452,7 +706,6 @@ struct SplitsSummaryView: View {
                                     style: .init(lineWidth: lineW, lineCap: .round))
                             .frame(width: size, height: size)
 
-                        // Reversed so last arc renders on top at the 12 o'clock seam
                         ForEach((0..<count).reversed(), id: \.self) { i in
                             if safeTotal > 0 {
                                 let gi = included[i]
@@ -470,20 +723,36 @@ struct SplitsSummaryView: View {
                             }
                         }
 
-                        // Dot at 12 o'clock — last guest's color sits on top of the seam
                         if count > 0, safeTotal > 0 {
                             let lastI = count - 1
                             let lastGi = included[lastI]
                             Circle()
                                 .fill(colorForSlot(lastGi))
                                 .frame(width: lineW, height: lineW)
-                                .offset(y: -size / 2)
+                                .offset(
+                                    x: cos(Angle.degrees(-90 - seamNudgeDegrees).radians) * (size / 2),
+                                    y: sin(Angle.degrees(-90 - seamNudgeDegrees).radians) * (size / 2)
+                                )
                                 .colorMultiply(selectedIndex == nil || selectedIndex == lastI ? .white : dimmer)
+                        }
+
+                        if let selectedIndex, count > 0, safeTotal > 0, selectedIndex < count {
+                            let gi = included[selectedIndex]
+                            let start = Double(sumBeforeIncludedSlot(selectedIndex)) / Double(safeTotal)
+                            let startAngle = Angle.degrees(start * 360 - 90 + seamNudgeDegrees)
+                            let radius = size / 2
+                            Circle()
+                                .fill(colorForSlot(gi))
+                                .frame(width: lineW, height: lineW)
+                                .offset(
+                                    x: cos(startAngle.radians) * radius,
+                                    y: sin(startAngle.radians) * radius
+                                )
                         }
 
                         VStack(spacing: 6) {
                             if let gi = selectedGuestIndex {
-                                Text("\(displayName(for: gi)) owes")
+                                Text(displayName(for: gi))
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -519,7 +788,6 @@ struct SplitsSummaryView: View {
                             return
                         }
 
-                        // Convert to [0, 1) fraction from 12 o'clock, clockwise
                         var angle = atan2(dy, dx) / (2 * .pi) + 0.25
                         if angle < 0 { angle += 1 }
                         if angle >= 1 { angle -= 1 }
@@ -535,213 +803,248 @@ struct SplitsSummaryView: View {
                     })
                 }
                 .frame(height: 240)
+                .padding(.top, 40)
 
-                // MARK: "You" section
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("You")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
+                splitPeopleSection(included: included, count: count)
 
-                    switch billState {
-                    case .joined:
-                        if let myIdx = myIncludedIndex {
-                            let myGi = included[myIdx]
-
-                            // Your card — no transaction arrows for tab receipts
-                            Button {
-                                selectedIndex = myIdx
-                            } label: {
-                                guestRow(
-                                    includedIdx: myIdx,
-                                    guestIdx: myGi,
-                                    showTransactions: !isTabReceipt,
-                                    included: included
-                                )
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(Color(.secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
-                            if isTabReceipt {
-                                let displayTab = uiModel.receiptTab ?? uiModel.activeTab
-                                TabSettleUpCard(
-                                    tabId: uiModel.openedMessagePayload?.tid ?? "",
-                                    colorHex: displayTab?.colorHex,
-                                    tabName: displayTab?.name,
-                                    showViewTabButton: true,
-                                    onViewTab: {
-                                        // Make sure activeTab matches this receipt's tab before navigating.
-                                        if let rt = uiModel.receiptTab {
-                                            uiModel.activeTab = rt
-                                        }
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            uiModel.currentScreen = .tabview
-                                        }
-                                    },
-                                    onSendSettlementCard: uiModel.sendSettlementCard,
-                                    onSendRequestCard: uiModel.sendRequestCard,
-                                    openInSafari: uiModel.openInSafari
-                                )
-                            } else {
-                                // Leave button — hidden if the current user is the payer
-                                let myUid = KeychainHelper.getOrCreateUserId()
-                                let iAmPayer = split.g[split.pi].uid == myUid
-                                if !iAmPayer {
-                                    Button {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                            unclaimSlot()
-                                            billState = .choosing
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                                .font(.system(size: 12, weight: .semibold))
-                                            Text("Leave this bill")
-                                                .font(.system(size: 13, weight: .medium))
-                                        }
-                                        .foregroundStyle(.red)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(Color.red.opacity(0.08))
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                    case .choosing:
-                        // Prompt to pick a guest
-                        VStack(spacing: 10) {
-                            VStack(spacing: 4) {
-                                Text("Which one are you?")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("Tap a guest below to claim your spot")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    billState = .notInBill
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "xmark.circle")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("I'm not in this bill")
-                                        .font(.system(size: 13, weight: .medium))
-                                }
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color(.tertiarySystemFill))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(14)
-                        .background(Color.blue.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                    case .notInBill:
-                        // Not in bill — option to rejoin
-                        VStack(spacing: 10) {
-                            Text("You're not in this bill")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(.secondary)
-
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    billState = .choosing
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "person.badge.plus")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("I'm in this bill")
-                                        .font(.system(size: 13, weight: .medium))
-                                }
+                if canEdit {
+                    HStack(spacing: 10) {
+                        Button {
+                            onEditSplit?()
+                        } label: {
+                            Text("Edit Splits")
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.blue)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.blue.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .padding(.vertical, 12)
+                                .background(Color(.tertiarySystemFill))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+
+                        if isTabReceipt {
+                            Button {
+                                onRemoveFromTab?()
+                            } label: {
+                                Text("Remove From Tab")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.red)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.red.opacity(0.08))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
                             }
                             .buttonStyle(.plain)
-                            .padding(.horizontal, 8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                }
-                .padding(.top, 15)
-
-                // MARK: Others list
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(billState == .joined ? "Others" : "Guests")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-
-                    VStack(spacing: 10) {
-                        ForEach(0..<count, id: \.self) { i in
-                            // Skip "me" if joined — already shown above
-                            if billState != .joined || i != myIncludedIndex {
-                                let gi = included[i]
-                                let isUnclaimed = split.g[gi].uid == nil
-
-                                Button {
-                                    if billState == .choosing && isUnclaimed {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                            claimSlot(at: gi)
-                                        }
-                                    }
-                                    selectedIndex = i
-                                } label: {
-                                    guestRow(
-                                        includedIdx: i,
-                                        guestIdx: gi,
-                                        showTransactions: false,
-                                        included: included
-                                    )
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
-                                    .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                                    .overlay(
-                                        billState == .choosing && isUnclaimed
-                                            ? RoundedRectangle(cornerRadius: 14)
-                                                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                                                .foregroundStyle(Color.blue.opacity(0.5))
-                                            : nil
-                                    )
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
                         }
                     }
+                    .padding(.top, 8)
                 }
-                .padding(.top, 8)
 
                 Spacer().frame(height: 60)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 20)
             .contentShape(Rectangle())
             .onTapGesture { selectedIndex = nil }
         }
-        } // else
-        } // Group
+    }
+
+    @ViewBuilder
+    private func splitPeopleSection(included: [Int], count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch billState {
+            case .joined:
+                if let myIdx = myIncludedIndex {
+                    let myGi = included[myIdx]
+
+                    Button {
+                        selectedIndex = myIdx
+                    } label: {
+                        guestRow(
+                            includedIdx: myIdx,
+                            guestIdx: myGi,
+                            showTransactions: !isTabReceipt,
+                            included: included
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if !isTabReceipt {
+                        let myUid = KeychainHelper.getOrCreateUserId()
+                        let iAmPayer = split.g[split.pi].uid == myUid
+                        if !iAmPayer {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    unclaimSlot()
+                                    billState = .choosing
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Leave this bill")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.red.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+            case .choosing:
+                VStack(spacing: 10) {
+                    VStack(spacing: 4) {
+                        Text("Which one are you?")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Tap a guest below to claim your spot")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            billState = .notInBill
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("I'm not in this bill")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(14)
+                .background(Color.blue.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            case .notInBill:
+                VStack(spacing: 10) {
+                    Text("You're not in this bill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            billState = .choosing
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("I'm in this bill")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundStyle(.blue)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.blue.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .padding(.top, 15)
+
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 10) {
+                ForEach(0..<count, id: \.self) { i in
+                    if billState != .joined || i != myIncludedIndex {
+                        let gi = included[i]
+                        let isUnclaimed = split.g[gi].uid == nil
+
+                        Button {
+                            if billState == .choosing && isUnclaimed {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    claimSlot(at: gi)
+                                }
+                            }
+                            selectedIndex = i
+                        } label: {
+                            guestRow(
+                                includedIdx: i,
+                                guestIdx: gi,
+                                showTransactions: false,
+                                included: included
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                billState == .choosing && isUnclaimed
+                                    ? RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                                        .foregroundStyle(Color.blue.opacity(0.5))
+                                    : nil
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    var body: some View {
+        Group {
+            if isTabReceipt && tabMembershipState == .notMember {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    VStack(spacing: 6) {
+                        Text("You are not a part of this tab.")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Request an invite to join.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+            } else if isTabReceipt && tabMembershipState == .loading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                VStack(spacing: 0) {
+                    sharedHeader
+                    if selectedSection == .splits {
+                        splitDetailsSection
+                    } else {
+                        receiptDetailsSection
+                    }
+                }
+            }
+        }
         .onAppear {
             let myUid = KeychainHelper.getOrCreateUserId()
             let alreadyClaimed = split.g.contains { $0.uid == myUid }
@@ -805,6 +1108,9 @@ struct SplitsSummaryView: View {
                 split = newSplit
             }
         }
+        .onChange(of: payerPaymentMethods) { _, _ in
+            presentPendingRequestIfPossible()
+        }
         .sheet(item: $paySheetInfo) { info in
             let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
             let sendSettlement = uiModel.sendSettlementCard
@@ -842,6 +1148,69 @@ struct SplitsSummaryView: View {
                 }
             )
         }
+        .sheet(isPresented: $showCapture) {
+            CapturePreviewView(image: captureImage) {
+                showCapture = false
+            }
+        }
+        .onAppear {
+            presentPendingRequestIfPossible()
+        }
     }
 }
 
+// MARK: - Totals box
+
+struct TotalsBox: View {
+    let receipt: ReceiptDisplay
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if receipt.shouldShowOnlyTotal {
+                TotalsRow(label: "Total", value: receipt.totalCents)
+            } else {
+                TotalsRow(label: "Subtotal", value: receipt.subtotalCents)
+
+                if receipt.lineItems.isEmpty {
+                    if receipt.feesCents != 0 {
+                        TotalsRow(label: receipt.feesCents < 0 ? "Discount" : "Fees", value: receipt.feesCents)
+                    }
+                    if receipt.taxCents != 0 {
+                        TotalsRow(label: "Tax", value: receipt.taxCents)
+                    }
+                } else {
+                    ForEach(receipt.lineItems) { line in
+                        TotalsRow(label: line.label, value: line.cents)
+                    }
+                }
+
+                if receipt.tipCents != 0 {
+                    TotalsRow(label: "Tip", value: receipt.tipCents)
+                }
+
+                Divider()
+
+                TotalsRow(label: "Total", value: receipt.totalCents, bold: true)
+            }
+        }
+        .padding(14)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct TotalsRow: View {
+    let label: String
+    let value: Int
+    var bold: Bool = false
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 15, weight: bold ? .semibold : .regular))
+            Spacer()
+            Text(ReceiptDisplay.money(value))
+                .font(.system(size: 15, weight: bold ? .semibold : .regular))
+        }
+    }
+}

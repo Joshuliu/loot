@@ -19,17 +19,16 @@ struct RootContainerView: View {
     @State private var splitDraft: SplitDraft? = nil
     @State private var amountString: String = "0"
     @State private var tipAmount: String = ""
-    @State private var returnScreen: AppScreen = .tabview
     @Namespace private var titleNamespace
     
-    // Computed total: subtotal + tax + fees - discounts + tip
+    // Computed total: subtotal + tax + fees (signed) + tip
     private var totalAmount: String {
         // If we have a receipt with breakdown, use its total (includes tax, fees, discounts, tip)
         if let receipt = uiModel.currentReceipt {
             return String(format: "%.2f", Double(receipt.totalCents) / 100.0)
         }
         
-        // Otherwise, calculate from manual entry (subtotal + tip only, no tax/fees/discounts in manual flow)
+        // Otherwise, calculate from manual entry (subtotal + tip only, no tax/fees in manual flow)
         guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
             return amountString
         }
@@ -118,7 +117,6 @@ struct RootContainerView: View {
             feesCents: 0,
             taxCents: 0,
             tipCents: tipCents,
-            discountCents: 0,
             totalCents: totalCents,
             items: []
         )
@@ -278,7 +276,6 @@ struct RootContainerView: View {
                         feesCents: 0,
                         taxCents: 0,
                         tipCents: 0,
-                        discountCents: 0,
                         totalCents: total,
                         items: []  // Empty - loading
                     )
@@ -307,7 +304,6 @@ struct RootContainerView: View {
                             tax_cents: phase2.tax_cents,
                             tip_cents: phase2.tip_cents,
                             fees_cents: phase2.fees_cents,
-                            discount_cents: phase2.discount_cents,
                             items: phase2.items.map { ParsedReceipt.Item(label: $0.label, qty: $0.qty, cents: $0.cents) },
                             issues: phase2.issues
                         )
@@ -315,7 +311,7 @@ struct RootContainerView: View {
 
                         // Extract breakdown
                         let breakdown = fullParsed.breakdownDefaults()
-                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees - breakdown.tip + breakdown.discount))
+                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees - breakdown.tip))
 
                         // Check if user already added a tip manually (don't overwrite it)
                         let userAddedTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
@@ -348,8 +344,7 @@ struct RootContainerView: View {
                             feesCents: breakdown.fees,
                             taxCents: breakdown.tax,
                             tipCents: finalTipCents,
-                            discountCents: breakdown.discount,
-                            totalCents: subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents,
+                            totalCents: subtotal + breakdown.tax + breakdown.fees + finalTipCents,
                             items: fullParsed.toDisplayItems()
                         )
 
@@ -411,7 +406,6 @@ struct RootContainerView: View {
         draft.feesCents = receipt.feesCents
         draft.taxCents = receipt.taxCents
         draft.tipCents = receipt.tipCents
-        draft.discountCents = receipt.discountCents
 
         // For default "split evenly", keep per-guest amounts aligned with the live total.
         if draft.mode == .equally {
@@ -500,7 +494,6 @@ struct RootContainerView: View {
                 - effectiveDraft.feesCents
                 - effectiveDraft.taxCents
                 - effectiveDraft.tipCents
-                + effectiveDraft.discountCents
         )
         let resolvedSubtotalCents: Int = {
             // Manual input commonly has no line items; preserve existing/draft-derived subtotal.
@@ -518,7 +511,6 @@ struct RootContainerView: View {
             feesCents: effectiveDraft.feesCents,
             taxCents: effectiveDraft.taxCents,
             tipCents: effectiveDraft.tipCents,
-            discountCents: effectiveDraft.discountCents,
             totalCents: effectiveDraft.totalCents,
             items: updatedItems
         )
@@ -706,7 +698,6 @@ struct RootContainerView: View {
         case .fill:                 fillContent.transition(.opacity)
         case .tipview:              tipContent.transition(.opacity)
         case .confirmation:         confirmationContent.transition(.opacity)
-        case .receipt:              receiptContent
         case .messageViewer:        messageViewerContent
         case .newTab:               newTabContent.transition(.opacity)
         case .tabInviteConfirmation: tabInviteContent.transition(.opacity)
@@ -829,6 +820,11 @@ struct RootContainerView: View {
             onSendSettlementCard: uiModel.sendSettlementCard,
             onSendRequestCard: uiModel.sendRequestCard,
             openInSafari: uiModel.openInSafari,
+            pendingPayRequest: uiModel.pendingPayRequest,
+            onConsumePendingPayRequest: {
+                uiModel.pendingPayRequest = nil
+            },
+            paymentsRefreshNonce: uiModel.tabReceiptsRefreshNonce,
             onRequestCollapse: onCollapse
         )
     }
@@ -872,7 +868,6 @@ struct RootContainerView: View {
         let preTip = stringToCents(amountString)
             + (uiModel.currentReceipt?.taxCents ?? 0)
             + (uiModel.currentReceipt?.feesCents ?? 0)
-            - (uiModel.currentReceipt?.discountCents ?? 0)
         TipPanelView(
             preTipTotalCents: preTip,
             existingTipCents: uiModel.currentReceipt?.tipCents ?? 0,
@@ -894,8 +889,7 @@ struct RootContainerView: View {
                         feesCents: receipt.feesCents,
                         taxCents: receipt.taxCents,
                         tipCents: tipCentsValue,
-                        discountCents: receipt.discountCents,
-                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents + tipCentsValue,
+                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents + tipCentsValue,
                         items: receipt.items
                     )
                 } else {
@@ -958,12 +952,6 @@ struct RootContainerView: View {
                     analyzeError = nil
                 }
             },
-            onPreviewReceipt: {
-                returnScreen = .confirmation
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .receipt
-                }
-            },
             onDeleteToLanding: {
                 uiModel.resetForNewReceipt()
                 pendingTranscriptTask?.cancel()
@@ -995,8 +983,7 @@ struct RootContainerView: View {
                         feesCents: receipt.feesCents,
                         taxCents: receipt.taxCents,
                         tipCents: tipCentsValue,
-                        discountCents: receipt.discountCents,
-                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents + tipCentsValue,
+                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents + tipCentsValue,
                         items: receipt.items
                     )
                 }
@@ -1034,8 +1021,7 @@ struct RootContainerView: View {
                         items: [],
                         feesCents: uiModel.currentReceipt?.feesCents ?? 0,
                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
-                        tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount),
-                        discountCents: uiModel.currentReceipt?.discountCents ?? 0
+                        tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount)
                     )
                     splitDraft = newDraft
                     uiModel.currentSplitDraft = newDraft
@@ -1057,8 +1043,7 @@ struct RootContainerView: View {
                         items: [],
                         feesCents: uiModel.currentReceipt?.feesCents ?? 0,
                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
-                        tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount),
-                        discountCents: uiModel.currentReceipt?.discountCents ?? 0
+                        tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount)
                     )
                     splitDraft = newDraft
                     uiModel.currentSplitDraft = newDraft
@@ -1067,20 +1052,6 @@ struct RootContainerView: View {
             onRequestCollapse: onCollapse,
             onRequestExpand: onExpand
         )
-    }
-
-    @ViewBuilder
-    private var receiptContent: some View {
-        if let receipt = uiModel.currentReceipt {
-            ReceiptView(uiModel: uiModel, receipt: receipt) {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = returnScreen
-                }
-            }
-            .ignoresSafeArea(edges: .bottom)
-        } else {
-            ProgressView("Loading…")
-        }
     }
 
     @ViewBuilder
@@ -1095,7 +1066,8 @@ struct RootContainerView: View {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         uiModel.currentScreen = .tabview
                     }
-                }
+                },
+                onRequestCollapse: onCollapse
             )
             .ignoresSafeArea(edges: .bottom)
         } else if uiModel.messageLoadingState.isLoading {

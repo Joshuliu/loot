@@ -117,7 +117,7 @@ struct SettlementCardView: View {
         HStack(alignment: .center, spacing: 0) {
             // Left col: SENT/REQUESTED + amount
             VStack(alignment: .leading, spacing: 2) {
-                Text(isRequest ? "REQUESTED" : "SENT")
+                Text(isRequest ? "REQUESTING" : "SENDING")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundColor(sub)
                 Text(ReceiptDisplay.money(amountCents))
@@ -136,11 +136,11 @@ struct SettlementCardView: View {
 
             // Right col: via/from _ / to ___
             VStack(alignment: .leading, spacing: 2) {
-                Text(isRequest ? "from" : "via \(methodName)")
+                Text(isRequest ? "from" : "via \(methodName) to")
                     .font(.system(size: 11))
                     .foregroundColor(sub)
                     .lineLimit(1)
-                Text(isRequest ? fromName : toName)
+                Text(toName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(fg)
                     .lineLimit(1)

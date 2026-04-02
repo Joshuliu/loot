@@ -1,9 +1,7 @@
 import SwiftUI
 
-// MARK: - TipPanelView
 // Shared tip UI used both as an inline panel in ConfirmationView and as the
 // standalone .tipview screen reached from ManualInputView.
-
 struct TipPanelView: View {
     let preTipTotalCents: Int
     let existingTipCents: Int
@@ -149,7 +147,6 @@ struct TipPanelView: View {
                     Spacer()
 
                     VStack(spacing: 0) {
-                        // Pre-tip total (static)
                         HStack {
                             Text("Pre-tip total")
                                 .font(.system(size: 14, weight: .regular))
@@ -160,7 +157,6 @@ struct TipPanelView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
 
-                        // Tip row — tap to enter manually
                         HStack {
                             Text("Tip (\(String(format: "%.0f", tipPercent))%)")
                                 .font(.system(size: 14, weight: .regular))
@@ -203,7 +199,6 @@ struct TipPanelView: View {
                         Divider()
                             .padding(.horizontal, 16)
 
-                        // Total row — tap to enter manually; offset from pre-tip becomes the tip
                         HStack {
                             Text("Total")
                                 .font(.system(size: 15, weight: .semibold))
@@ -252,17 +247,17 @@ struct TipPanelView: View {
                             minPercent: 0,
                             maxPercent: 100
                         )
-                            .frame(height: 60)
-                            .padding(.horizontal, 24)
-                            .onTapGesture { tipEditingField = nil }
-                            .onChange(of: tipPercent) { _, _ in
-                                guard tipEditingField == nil, !isUpdatingPercentFromManualInput else { return }
-                                guard let manualTipOverrideCents else { return }
-                                let cappedManualPercent = cappedSliderPercent(forManualTip: manualTipOverrideCents)
-                                if abs(tipPercent - cappedManualPercent) > 0.001 {
-                                    self.manualTipOverrideCents = nil
-                                }
+                        .frame(height: 60)
+                        .padding(.horizontal, 24)
+                        .onTapGesture { tipEditingField = nil }
+                        .onChange(of: tipPercent) { _, _ in
+                            guard tipEditingField == nil, !isUpdatingPercentFromManualInput else { return }
+                            guard let manualTipOverrideCents else { return }
+                            let cappedManualPercent = cappedSliderPercent(forManualTip: manualTipOverrideCents)
+                            if abs(tipPercent - cappedManualPercent) > 0.001 {
+                                self.manualTipOverrideCents = nil
                             }
+                        }
 
                         if isExpanded {
                             Text(tipEditingField == nil ? "Scroll to adjust • Tap a % to jump" : "Tap amount again to edit")
@@ -337,8 +332,6 @@ struct TipPanelView: View {
         }
     }
 }
-
-// MARK: - PercentageSlider
 
 struct PercentageSlider: View {
     @Binding var percent: Double

@@ -120,6 +120,17 @@ final class SharedReceiptService {
         print("[SharedReceiptService] updated doc: \(docId)")
     }
 
+    /// Removes tab-linkage fields from a shared receipt so it no longer belongs to any tab.
+    func clearTabAssociation(docId: String) async throws {
+        try await ensureAnonymousAuth()
+        try await db.collection(collection).document(docId).updateData([
+            "tid": FieldValue.delete(),
+            "trid": FieldValue.delete(),
+            "tab": FieldValue.delete()
+        ])
+        print("[SharedReceiptService] cleared tab association: \(docId)")
+    }
+
     // MARK: - Image compression
 
     private func compressForSharing(_ image: UIImage) -> String? {

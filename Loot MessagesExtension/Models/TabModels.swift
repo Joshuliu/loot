@@ -194,8 +194,8 @@ struct TabReceipt: Codable, Identifiable {
     var subtotalCents: Int
     var taxCents: Int
     var tipCents: Int
-    var feesCents: Int
-    var discountCents: Int
+    var feesCents: Int  // signed: negative = discount
+    var discountCents: Int?  // legacy Firestore field — folded into feesCents on read
     var splitMode: SplitMode
     var payerMemberId: String
     var splits: [ReceiptSplit]
@@ -291,12 +291,13 @@ extension TabReceipt {
         return TabReceipt(
             title: receipt.t,
             createdBy: myId,
+            createdAt: Timestamp(date: Date(timeIntervalSince1970: receipt.c)),
             totalCents: receipt.tot,
             subtotalCents: receipt.sub,
             taxCents: receipt.tx,
             tipCents: receipt.tip,
-            feesCents: receipt.f,
-            discountCents: receipt.d,
+            feesCents: receipt.f,  // already signed (discount folded in at ReceiptPayload decode)
+            discountCents: nil,
             splitMode: splitMode,
             payerMemberId: payerMemberId,
             splits: splits,
