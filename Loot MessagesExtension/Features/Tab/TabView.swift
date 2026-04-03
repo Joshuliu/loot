@@ -142,6 +142,9 @@ struct LootTabView: View {
         }
         .onChange(of: isExpanded) { _, newValue in
             if !newValue { showingAddReceiptPanel = false }
+            if newValue, activeTab?.id != nil {
+                Task { await loadPayments() }
+            }
         }
         .task(id: "\(activeTab?.id ?? "none")-\(paymentsRefreshNonce)") {
             await loadPayments()
@@ -317,8 +320,7 @@ struct LootTabView: View {
             if selectedSegment == 0 {
                 paymentsSection
             } else {
-                membersList(for: tab)
-                inviteMembersButton
+                membersSection(for: tab)
             }
         } else if activeTab == nil && userTabs.isEmpty {
             VStack(alignment: .leading, spacing: 16) {
@@ -539,6 +541,17 @@ struct LootTabView: View {
             }
             .background(Color(UIColor.secondarySystemBackground))
             .cornerRadius(14)
+        }
+    }
+
+    @ViewBuilder
+    private func membersSection(for tab: LootTab) -> some View {
+        if paymentsLoading {
+            HStack { Spacer(); ProgressView(); Spacer() }
+                .padding(.vertical, 24)
+        } else {
+            membersList(for: tab)
+            inviteMembersButton
         }
     }
 
