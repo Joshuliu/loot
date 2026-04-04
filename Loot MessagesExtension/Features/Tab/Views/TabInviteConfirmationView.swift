@@ -13,6 +13,8 @@ struct TabInviteConfirmationView: View {
     let tabColor: String
     let tabId: String
     let creatorName: String
+    let joinedCount: Int
+    let targetCount: Int
 
     let onBack: () -> Void
     let onSend: (String, String, String) -> Void  // (tabName, tabColorHex, tabId)
@@ -77,7 +79,9 @@ struct TabInviteConfirmationView: View {
                     TabInviteCardView(
                         tabName: tabName,
                         tabColorHex: tabColor,
-                        creatorName: creatorName
+                        creatorName: creatorName,
+                        joinedCount: joinedCount,
+                        targetCount: targetCount
                     )
                     .cardPhysics(isDragging: isDragging)
                     .offset(cardOffset)

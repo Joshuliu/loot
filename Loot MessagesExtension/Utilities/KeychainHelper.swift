@@ -11,13 +11,19 @@ enum KeychainHelper {
     private static let service = "me.plsloot.loot"
     private static let account = "user_id"
 
+    /// In-memory cache so transcript bubble instances skip Keychain I/O.
+    private static var cachedUserId: String?
+
     /// Returns the stable user ID from Keychain, creating one if needed.
     static func getOrCreateUserId() -> String {
+        if let cached = cachedUserId { return cached }
         if let existing = read() {
+            cachedUserId = existing
             return existing
         }
         let newId = UUID().uuidString
         save(newId)
+        cachedUserId = newId
         return newId
     }
 

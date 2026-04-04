@@ -5,8 +5,19 @@ struct TabInviteCardView: View {
     let tabName: String
     let tabColorHex: String
     let creatorName: String
+    let joinedCount: Int
+    let targetCount: Int
 
     private var isDarkMode: Bool { colorScheme == .dark }
+
+    private var progressText: String {
+        let safeJoined = max(0, joinedCount)
+        let safeTarget = max(1, targetCount)
+        if safeJoined >= safeTarget {
+            return "\(safeJoined) member\(safeJoined == 1 ? "" : "s") joined"
+        }
+        return "\(safeJoined)/\(safeTarget) joined"
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -27,7 +38,7 @@ struct TabInviteCardView: View {
                 .foregroundColor(.white)
                 .lineLimit(1)
 
-            Text("Tap to join")
+            Text(progressText)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundColor(.white)
         }

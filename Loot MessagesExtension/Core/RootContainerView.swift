@@ -1153,6 +1153,8 @@ struct RootContainerView: View {
             tabColor: pendingTabColor,
             tabId: pendingTabId,
             creatorName: myName.isEmpty ? "Me" : myName,
+            joinedCount: max(1, uiModel.activeTab?.members.filter(\.isActive).count ?? 1),
+            targetCount: max(1, participantCount),
             onBack: {
                 if tabInviteCameFromTabView {
                     onExpand()

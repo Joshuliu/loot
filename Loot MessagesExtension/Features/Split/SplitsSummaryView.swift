@@ -51,6 +51,7 @@ struct SplitsSummaryView: View {
     @State private var paySheetInfo: PaySheetInfo? = nil
     @State private var selectedSection: DetailSection = .splits
     @State private var showCapture: Bool = false
+    @State private var headerScrollOffset: CGFloat = 0
 
     @Environment(\.openURL) private var openURL
 
@@ -58,6 +59,10 @@ struct SplitsSummaryView: View {
         case splits
         case receipt
     }
+
+    private let expandedHeaderHeight: CGFloat = 130
+    private let collapsedHeaderHeight: CGFloat = 76
+    private let headerCollapseRange: CGFloat = 60
 
     init(
         uiModel: LootUIModel,
@@ -153,6 +158,106 @@ struct SplitsSummaryView: View {
                 uiModel.currentScreen = .tabview
             }
         }
+    }
+
+    private var headerCollapseProgress: CGFloat {
+        min(max(headerScrollOffset / headerCollapseRange, 0), 1)
+    }
+
+    private var currentHeaderHeight: CGFloat {
+        expandedHeaderHeight - ((expandedHeaderHeight - collapsedHeaderHeight) * headerCollapseProgress)
+    }
+
+    private func lerp(_ from: CGFloat, _ to: CGFloat, progress: CGFloat) -> CGFloat {
+        from + ((to - from) * progress)
+    }
+
+    @ViewBuilder
+    private var headerDateLabel: some View {
+        Text(headerDateText)
+            .font(.system(size: 15))
+            .foregroundStyle(headerSecondaryStyle)
+            .opacity(max(0, 1 - Double(headerCollapseProgress * 1.8)))
+            .offset(y: -headerCollapseProgress * 8)
+    }
+
+    @ViewBuilder
+    private var headerTitleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(headerTitle)
+                .font(.system(size: lerp(28, 21, progress: headerCollapseProgress), weight: .bold))
+                .foregroundStyle(headerPrimaryStyle)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            headerDateLabel
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+    }
+
+    private var headerNavLabelWidth: CGFloat {
+        lerp(72, 0, progress: headerCollapseProgress)
+    }
+
+    private var headerNavMinWidth: CGFloat {
+        lerp(108, 44, progress: headerCollapseProgress)
+    }
+
+    private var headerNavTitleOpacity: Double {
+        max(0, 1 - Double(headerCollapseProgress * 2.2))
+    }
+
+    @ViewBuilder
+    private var headerNavButton: some View {
+        Button {
+            handleHeaderNavButtonTap()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: headerNavButtonIcon)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(headerNavButtonTitle)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                    .opacity(headerNavTitleOpacity)
+                    .frame(width: headerNavLabelWidth, alignment: .leading)
+                    .clipped()
+            }
+            .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .frame(minWidth: headerNavMinWidth)
+            .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var headerSectionToggleButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                selectedSection = selectedSection == .splits ? .receipt : .splits
+            }
+        } label: {
+            Image(systemName: selectedSection == .splits ? "doc.text" : "chart.pie.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var headerActions: some View {
+        HStack(spacing: 8) {
+            headerNavButton
+            headerSectionToggleButton
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
 
     private func presentPendingRequestIfPossible() {
@@ -523,64 +628,34 @@ struct SplitsSummaryView: View {
     @ViewBuilder
     private var sharedHeader: some View {
         ZStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(headerTitle)
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundStyle(headerPrimaryStyle)
-
-                Text(headerDateText)
-                    .font(.subheadline)
-                    .foregroundStyle(headerSecondaryStyle)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-
-            HStack(spacing: 8) {
-                Button {
-                    handleHeaderNavButtonTap()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: headerNavButtonIcon)
-                            .font(.system(size: 15, weight: .semibold))
-                        Text(headerNavButtonTitle)
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
-                    .padding(.horizontal, 12)
-                    .frame(height: 36)
-                    .frame(minWidth: 108)
-                    .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        selectedSection = selectedSection == .splits ? .receipt : .splits
-                    }
-                } label: {
-                    Image(systemName: selectedSection == .splits ? "doc.text" : "chart.pie.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 8)
-                        .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            headerTitleBlock
+            headerActions
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .frame(height: 130)
+        .frame(height: currentHeaderHeight)
         .background(headerBackgroundColor)
+    }
+
+    private var scrollHeaderSpacer: some View {
+        Color.clear
+            .frame(height: currentHeaderHeight)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .preference(
+                            key: SplitsSummaryScrollOffsetKey.self,
+                            value: max(0, -geo.frame(in: .named("summaryScroll")).minY)
+                        )
+                }
+            )
     }
 
     @ViewBuilder
     private var receiptDetailsSection: some View {
         if let receipt {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(spacing: 0) {
                         if uiModel.itemsLoadingState.isLoading {
                             VStack(spacing: 12) {
                                 ProgressView()
@@ -672,11 +747,9 @@ struct SplitsSummaryView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 90)
                 }
-                .padding(.top, 20)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 90)
             }
         } else {
             ProgressView("Loading…")
@@ -692,9 +765,8 @@ struct SplitsSummaryView: View {
             .map { max(0, min($0, max(0, count - 1))) }
             .flatMap { count > 0 ? included[$0] : nil }
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                GeometryReader { geo in
+        VStack(alignment: .leading, spacing: 16) {
+            GeometryReader { geo in
                     let size = min(geo.size.width, 230)
                     let lineW: CGFloat = 30
                     let dimmer = Color(white: 0.55)
@@ -801,51 +873,50 @@ struct SplitsSummaryView: View {
                             }
                         }
                     })
-                }
-                .frame(height: 240)
-                .padding(.top, 40)
+            }
+            .frame(height: 240)
 
-                splitPeopleSection(included: included, count: count)
+            splitPeopleSection(included: included, count: count)
 
-                if canEdit {
-                    HStack(spacing: 10) {
+            if canEdit {
+                HStack(spacing: 10) {
+                    Button {
+                        onEditSplit?()
+                    } label: {
+                        Text("Edit Splits")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+
+                    if isTabReceipt {
                         Button {
-                            onEditSplit?()
+                            onRemoveFromTab?()
                         } label: {
-                            Text("Edit Splits")
+                            Text("Remove From Tab")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(.red)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .background(Color(.tertiarySystemFill))
+                                .background(Color.red.opacity(0.08))
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
                         .buttonStyle(.plain)
-
-                        if isTabReceipt {
-                            Button {
-                                onRemoveFromTab?()
-                            } label: {
-                                Text("Remove From Tab")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.red)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color.red.opacity(0.08))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                        }
                     }
-                    .padding(.top, 8)
                 }
-
-                Spacer().frame(height: 60)
+                .padding(.top, 8)
             }
-            .padding(.horizontal, 16)
-            .contentShape(Rectangle())
-            .onTapGesture { selectedIndex = nil }
+
+            Spacer().frame(height: 60)
         }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedIndex = nil }
     }
 
     @ViewBuilder
@@ -1035,14 +1106,23 @@ struct SplitsSummaryView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                VStack(spacing: 0) {
-                    sharedHeader
-                    if selectedSection == .splits {
-                        splitDetailsSection
-                    } else {
-                        receiptDetailsSection
+                ZStack(alignment: .top) {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            scrollHeaderSpacer
+
+                            if selectedSection == .splits {
+                                splitDetailsSection
+                            } else {
+                                receiptDetailsSection
+                            }
+                        }
                     }
+                    .coordinateSpace(name: "summaryScroll")
+
+                    sharedHeader
                 }
+                .onPreferenceChange(SplitsSummaryScrollOffsetKey.self) { headerScrollOffset = $0 }
             }
         }
         .onAppear {
@@ -1212,5 +1292,13 @@ private struct TotalsRow: View {
             Text(ReceiptDisplay.money(value))
                 .font(.system(size: 15, weight: bold ? .semibold : .regular))
         }
+    }
+}
+
+private struct SplitsSummaryScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }

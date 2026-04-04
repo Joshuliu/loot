@@ -600,10 +600,14 @@ extension MessagesViewController {
         guard let conversation = activeConversation else { return }
 
         // Render invite card image
+        let joinedCount = max(1, uiModel.activeTab?.members.filter(\.isActive).count ?? 1)
+        let targetCount = max(1, (activeConversation?.remoteParticipantIdentifiers.count ?? 0) + 1)
         let card = TabInviteCardView(
             tabName: tabName,
             tabColorHex: tabColorHex,
-            creatorName: myDisplayNameFromDefaults()
+            creatorName: myDisplayNameFromDefaults(),
+            joinedCount: joinedCount,
+            targetCount: targetCount
         )
         let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
 

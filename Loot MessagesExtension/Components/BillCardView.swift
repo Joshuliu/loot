@@ -21,6 +21,10 @@ struct BillCardView: View {
     let totalCents: Int?      // Total in cents
     var tabName: String? = nil
     var tabColorHex: String? = nil
+    /// Passed to the ring center; when set, shown above the amount (swapped layout).
+    var centerTopLabel: String? = nil
+    /// Dims all ring arcs except this slot.
+    var highlightedSlot: Int? = nil
 
     private var hasTabColor: Bool { tabColorHex != nil }
     private var primaryFg: Color { hasTabColor ? .white : .primary }
@@ -70,7 +74,9 @@ struct BillCardView: View {
                     owedAmounts: owedAmounts,
                     totalCents: totalCents,
                     displayAmount: displayAmount,
-                    tabColorHex: tabColorHex
+                    tabColorHex: tabColorHex,
+                    centerTopLabel: centerTopLabel,
+                    highlightedSlot: highlightedSlot
                 )
                 .frame(width: 120, height: 110, alignment: .center)
             }
@@ -159,13 +165,20 @@ struct SettlementCardView: View {
 
 // MARK: - Split Ring Component
 
-private struct SplitRingView: View {
+struct SplitRingView: View {
     let participantCount: Int
     let owedAmounts: [Int]
     let totalCents: Int
     let displayAmount: String
     var tabColorHex: String? = nil
-    
+    /// When set, shown above the amount (e.g. "You spent") replacing "Split X ways".
+    var centerTopLabel: String? = nil
+    /// When set, dims all arcs except this slot index.
+    var highlightedSlot: Int? = nil
+
+    private var dimmer: Color { Color(white: 0.55) }
+    @State private var pulsePhase: Bool = false
+
     private var safeTotal: Int {
         max(1, totalCents)  // Avoid division by zero
     }
@@ -207,19 +220,24 @@ private struct SplitRingView: View {
                 ForEach(0..<owedAmounts.count, id: \.self) { i in
                     let start = Double(sumBefore(i)) / Double(safeTotal)
                     let end = Double(sumThrough(i)) / Double(safeTotal)
+                    let isDimmed = highlightedSlot != nil && i != highlightedSlot
 
                     if end > start {
+                        let isHighlighted = highlightedSlot != nil && i == highlightedSlot
+                        let tint = isDimmed ? dimmer : (isHighlighted && pulsePhase ? dimmer : .white)
+                        let arcWidth = isHighlighted ? (pulsePhase ? lineW : lineW + 2) : lineW
                         Circle()
                             .trim(from: start, to: end)
                             .stroke(BadgeColors.color(for: i),
-                                    style: .init(lineWidth: lineW, lineCap: .round))
-                            .opacity(1)
+                                    style: .init(lineWidth: arcWidth, lineCap: .round))
+                            .colorMultiply(tint)
                             .rotationEffect(.degrees(-90))
                             .frame(width: size, height: size)
                     }
 
                     // Segment dividers (small circles)
-                    if i > 0 {
+                    // Skip if this boundary touches the highlighted arc
+                    if i > 0, !(highlightedSlot == i || highlightedSlot == i - 1) {
                         let ang = -(.pi / 1.99) + (start * 2 * .pi)
                         let hx = center.x + handleRadius * cos(ang)
                         let hy = center.y + handleRadius * sin(ang)
@@ -230,27 +248,73 @@ private struct SplitRingView: View {
                                 .overlay(
                                     Circle().stroke(BadgeColors.color(for: colorIdx), lineWidth: 0.05)
                                 )
+                                .colorMultiply(highlightedSlot != nil && colorIdx != highlightedSlot ? dimmer : .white)
                                 .frame(width: 16, height: 16)
                                 .position(x: hx, y: hy)
                         }
                     }
                 }
 
-                // Center text - Total amount
-                VStack(spacing: 2) {
-                    Text(displayAmount)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(tabColorHex != nil ? .white : .primary)
-                        .minimumScaleFactor(0.6)
-                        .lineLimit(1)
+                // Highlighted slot endpoint dots
+                if let hl = highlightedSlot, owedAmounts.indices.contains(hl) {
+                    let start = Double(sumBefore(hl)) / Double(safeTotal)
+                    let end = Double(sumThrough(hl)) / Double(safeTotal)
+                    if end > start {
+                        let nudge = Angle.degrees(1).radians
+                        let dotTint: Color = pulsePhase ? dimmer : .white
+                        let dotSize: CGFloat = pulsePhase ? lineW : lineW + 2
+                        let startAng = -(.pi / 2) + (start * 2 * .pi) + nudge
+                        let endAng = -(.pi / 2) + (end * 2 * .pi) - nudge
+                        Circle()
+                            .fill(BadgeColors.color(for: hl))
+                            .colorMultiply(dotTint)
+                            .frame(width: dotSize, height: dotSize)
+                            .position(
+                                x: center.x + handleRadius * cos(startAng),
+                                y: center.y + handleRadius * sin(startAng)
+                            )
+                        Circle()
+                            .fill(BadgeColors.color(for: hl))
+                            .colorMultiply(dotTint)
+                            .frame(width: dotSize, height: dotSize)
+                            .position(
+                                x: center.x + handleRadius * cos(endAng),
+                                y: center.y + handleRadius * sin(endAng)
+                            )
+                    }
+                }
 
+                // Center text
+                VStack(spacing: 2) {
+                    if let topLabel = centerTopLabel {
+                        Text(topLabel)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(tabColorHex != nil ? .white.opacity(0.7) : .secondary)
+                        Text(displayAmount)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(tabColorHex != nil ? .white : .primary)
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
+                    } else {
+                        Text(displayAmount)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(tabColorHex != nil ? .white : .primary)
+                            .minimumScaleFactor(0.6)
+                            .lineLimit(1)
                         Text("Split \(participantCount) \(participantCount == 1 ? "way" : "ways")")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(tabColorHex != nil ? .white.opacity(0.7) : .secondary)
+                    }
                 }
                 .frame(width: size - lineW * 2)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                guard highlightedSlot != nil else { return }
+                withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
+                    pulsePhase = true
+                }
+            }
         }
     }
 }

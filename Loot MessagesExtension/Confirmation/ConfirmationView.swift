@@ -73,6 +73,7 @@ struct ConfirmationView: View {
     @State var splitModesExpanded: Bool = false
     @State var splitSnapshot: (mode: SplitDraft.Mode, guests: [SplitGuest], payerGuestId: UUID, guestAmountsCents: [Int])? = nil
     @State private var keyboardHeight: CGFloat = 0
+    @State private var sendHintAnimating: Bool = false
 
 
     private enum DragIntent { case none, up, left, right, down }
@@ -96,6 +97,19 @@ struct ConfirmationView: View {
 
     var buttonBase: Color { Color(.secondarySystemBackground) }
     private var gold: Color { Color(hex: "#DAA806") }
+
+    private var shouldShowSendCue: Bool {
+        dragIntent == .none && !uiModel.isLoadingReceipt && !isLoadingItems && !hasSent
+    }
+
+    private var guidanceText: String {
+        if dragIntent == .left { return "Swipe left to delete" }
+        if dragIntent == .right { return "Swipe right to tip" }
+        if dragIntent == .down { return "Swipe down for split options" }
+        if uiModel.isLoadingReceipt { return "Swipe left to delete" }
+        if isLoadingItems { return "Swipe up to send without items" }
+        return "To send, swipe the receipt card up"
+    }
 
     private var buttonsOpacity: Double {
         if dragIntent == .up { return Double(1 - upProgress) }
@@ -454,16 +468,17 @@ struct ConfirmationView: View {
                 Spacer(minLength: 0)
                 Spacer(minLength: 0)
             }
-            Text(dragIntent == .left ? "Swipe left to delete" :
-                dragIntent == .right ? "Swipe right to tip" :
-                dragIntent == .down ? "Swipe down for split options" :
-                uiModel.isLoadingReceipt ? "Swipe left to delete" :
-                isLoadingItems ? "Swipe up to send without items" : "Swipe card up to send")
-            .font(.system(size: 14, weight: .regular))
-            .foregroundColor(.secondary)
-            .padding(.top, 10)
+            Text(guidanceText)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
+                .padding(.top, 10)
 
-            Color.clear.frame(height: 18)
+            if shouldShowSendCue {
+                sendCueView()
+                    .padding(.top, 10)
+            } else {
+                Color.clear.frame(height: 28)
+            }
 
             // Card with long arrow hints whose shafts disappear behind the card
             ZStack(alignment: .center) {
@@ -700,6 +715,35 @@ struct ConfirmationView: View {
         }
     }
 
+    @ViewBuilder
+    private func sendCueView() -> some View {
+        ZStack(alignment: .bottom) {
+            Image(systemName: "arrow.up")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color(hex: "#06A77D"))
+                .offset(y: sendHintAnimating ? -6 : 0)
+
+            Circle()
+                .fill(Color.white.opacity(0.95))
+                .frame(width: 5, height: 5)
+                .offset(x: -16, y: sendHintAnimating ? -22 : -8)
+                .opacity(sendHintAnimating ? 0 : 0.9)
+
+            Circle()
+                .fill(Color.white.opacity(0.95))
+                .frame(width: 4, height: 4)
+                .offset(x: 0, y: sendHintAnimating ? -30 : -12)
+                .opacity(sendHintAnimating ? 0.1 : 0.85)
+
+            Circle()
+                .fill(Color.white.opacity(0.95))
+                .frame(width: 3.5, height: 3.5)
+                .offset(x: 14, y: sendHintAnimating ? -18 : -6)
+                .opacity(sendHintAnimating ? 0 : 0.75)
+        }
+        .frame(height: 28)
+    }
+
     @ViewBuilder private var panelViews: some View {
         // Donut panel (equally / custom)
         if uiModel.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
@@ -841,6 +885,10 @@ struct ConfirmationView: View {
             cardRotation = 0
             hasSent = false
             showSuccess = false
+            sendHintAnimating = false
+            withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
+                sendHintAnimating = true
+            }
 
             // Reset loading animation state each time screen appears.
             // For manual entry, skip loading card immediately.
