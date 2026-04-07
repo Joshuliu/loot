@@ -11,7 +11,6 @@ import SwiftUI
 
 final class MessagesViewController: MSMessagesAppViewController {
 
-    private let uiModel = LootUIModel()
     // Lazy so transcript bubble instances never allocate these
     private lazy var uiModel = LootUIModel()
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
