@@ -618,6 +618,9 @@ struct SplitsSummaryView: View {
         Task {
             do {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
+                await MainActor.run {
+                    uiModel.sendBillUpdate?(payload, docId)
+                }
                 print("[SplitsSummaryView] Split persisted to \(docId)")
             } catch {
                 print("[SplitsSummaryView] Failed to persist split: \(error)")

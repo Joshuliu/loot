@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import UIKit
+import Messages
 
 // MARK: - Loading State for async operations
 
@@ -157,6 +158,9 @@ final class LootUIModel: ObservableObject {
     // Firestore doc ID of the opened message (needed for updates like slot claims)
     @Published var openedMessageDocId: String? = nil
 
+    // Active iMessage session for the currently opened receipt bubble.
+    @Published var activeMessageSession: MSSession? = nil
+
     // Firestore message loading state
     @Published var messageLoadingState: LoadingState<LootMessagePayload> = .idle
 
@@ -200,6 +204,10 @@ final class LootUIModel: ObservableObject {
     /// Args: (creditorName, debtorName, amountCents, tabColorHex, request metadata)
     var sendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)?
 
+    /// Sends an updated live receipt card on the current session so Messages replaces the bubble in place.
+    /// Args: (payload, Firestore docId)
+    var sendBillUpdate: ((LootMessagePayload, String) -> Void)?
+
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
         phase2Task?.cancel()
@@ -217,6 +225,8 @@ final class LootUIModel: ObservableObject {
         currentSplitDraft = nil
         preTipTotalOverrideCents = nil
         openedMessagePayload = nil
+        openedMessageDocId = nil
+        activeMessageSession = nil
         receiptTab = nil
         pendingPayRequest = nil
         messageLoadingState = .idle

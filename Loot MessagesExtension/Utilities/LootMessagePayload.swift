@@ -308,10 +308,163 @@ private extension Data {
         var base = s
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")
-        
+
         let pad = 4 - (base.count % 4)
         if pad < 4 { base += String(repeating: "=", count: pad) }
-        
+
         self.init(base64Encoded: base)
+    }
+}
+
+// MARK: - Payload → ReceiptDisplay
+
+extension LootMessagePayload {
+    func toReceiptDisplay() -> ReceiptDisplay {
+        let receiptData = r
+        let splitData = s
+
+        let items: [ReceiptDisplay.Item] = receiptData.i.map { it in
+            let responsible: [ReceiptDisplay.Responsible] = it.rs.map { slot in
+                let nm: String = {
+                    guard splitData.g.indices.contains(slot) else { return "Guest \(slot + 1)" }
+                    let g = splitData.g[slot]
+                    let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !t.isEmpty { return t }
+                    return g.uid == KeychainHelper.getOrCreateUserId() ? "Me" : "Guest \(slot + 1)"
+                }()
+                return ReceiptDisplay.Responsible(slotIndex: slot, displayName: nm)
+            }
+            .sorted(by: { $0.slotIndex < $1.slotIndex })
+
+            return ReceiptDisplay.Item(
+                id: it.id,
+                label: it.l,
+                priceCents: it.p,
+                responsible: responsible
+            )
+        }
+
+        let lineItems: [ReceiptDisplay.LineItem] = (receiptData.li ?? []).map {
+            ReceiptDisplay.LineItem(id: $0.id, label: $0.l, cents: $0.c)
+        }
+
+        return ReceiptDisplay(
+            id: receiptData.id,
+            title: receiptData.t,
+            createdAt: Date(timeIntervalSince1970: receiptData.c),
+            subtotalCents: receiptData.sub,
+            feesCents: receiptData.f,
+            taxCents: receiptData.tx,
+            tipCents: receiptData.tip,
+            totalCents: receiptData.tot,
+            items: items,
+            lineItems: lineItems
+        )
+    }
+}
+
+// MARK: - Build SplitPayload from SplitDraft
+
+extension SplitPayload {
+    static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
+        let guests: [Guest] = {
+            if let d = draft, !d.guests.isEmpty {
+                return d.guests.map { Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid) }
+            }
+            var out: [Guest] = [Guest(n: myDisplayNameFromDefaults(), inc: true, uid: KeychainHelper.getOrCreateUserId())]
+            if participantCount > 1 {
+                for _ in 1..<participantCount {
+                    out.append(Guest(n: "", inc: true, uid: nil))
+                }
+            }
+            return out
+        }()
+
+        let payerIndex: Int = {
+            guard let d = draft else { return 0 }
+            return d.guests.firstIndex(where: { $0.id == d.payerGuestId }) ?? 0
+        }()
+
+        let mode: Mode = {
+            guard let d = draft else { return .equally }
+            switch d.mode {
+            case .equally: return .equally
+            case .custom: return .custom
+            case .byItems: return .byItems
+            }
+        }()
+
+        let fees = draft?.feesCents ?? 0
+        let tax = draft?.taxCents ?? 0
+        let tip = draft?.tipCents ?? 0
+
+        let itemsForMath: [(label: String, priceCents: Int, assignedSlots: [Int])] = {
+            guard let d = draft, d.mode == .byItems else { return [] }
+            let slotIndexByUUID: [UUID: Int] = Dictionary(uniqueKeysWithValues:
+                d.guests.enumerated().map { ($0.element.id, $0.offset) })
+            return d.items.map { it in
+                let slots = it.assignedGuestIds.compactMap { slotIndexByUUID[$0] }.sorted()
+                return (label: it.label, priceCents: it.priceCents, assignedSlots: slots)
+            }
+        }()
+
+        let owed = SplitMath.computeOwedCents(
+            mode: mode,
+            guests: guests,
+            payerIndex: payerIndex,
+            totalCents: totalCents,
+            perGuestActive: draft?.perGuestCents,
+            items: itemsForMath,
+            feesCents: fees,
+            taxCents: tax,
+            tipCents: tip
+        )
+
+        return SplitPayload(
+            m: mode,
+            g: guests,
+            pi: payerIndex,
+            o: owed,
+            f: fees == 0 ? nil : fees,
+            tx: tax == 0 ? nil : tax,
+            tip: tip == 0 ? nil : tip,
+            tot: totalCents
+        )
+    }
+}
+
+// MARK: - Build ReceiptPayload from ReceiptDisplay
+
+extension ReceiptPayload {
+    static func from(receipt: ReceiptDisplay, split: SplitPayload) -> ReceiptPayload {
+        let isByItems = (split.m == .byItems)
+
+        let items: [ReceiptItemPayload] = {
+            return receipt.items.map { it in
+                let slots = isByItems ? it.responsible.map { $0.slotIndex }.sorted() : []
+                return ReceiptItemPayload(
+                    id: it.id,
+                    l: it.label,
+                    p: it.priceCents,
+                    rs: slots
+                )
+            }
+        }()
+
+        let lineItems: [ReceiptLineItemPayload]? = receipt.lineItems.isEmpty ? nil :
+            receipt.lineItems.map { ReceiptLineItemPayload(id: $0.id, l: $0.label, c: $0.cents) }
+
+        return ReceiptPayload(
+            id: receipt.id,
+            t: receipt.title,
+            c: receipt.createdAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970,
+            sub: receipt.subtotalCents,
+            f: receipt.feesCents,
+            tx: receipt.taxCents,
+            tip: receipt.tipCents,
+            tot: receipt.totalCents,
+            i: items,
+            li: lineItems
+        )
     }
 }

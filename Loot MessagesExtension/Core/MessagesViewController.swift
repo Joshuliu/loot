@@ -12,11 +12,22 @@ import SwiftUI
 final class MessagesViewController: MSMessagesAppViewController {
 
     private let uiModel = LootUIModel()
+    // Lazy so transcript bubble instances never allocate these
+    private lazy var uiModel = LootUIModel()
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
     private var hasSetupRootView = false
+    private var isTranscript = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
+        // Transcript bubbles get a lightweight render path — no Firebase, no auth.
+        if presentationContext == .media || presentationStyle == .transcript {
+            isTranscript = true
+            configureAsTranscript()
+            return
+        }
+
         SharedReceiptService.configureFirebaseIfNeeded()
 
         // Establish anonymous auth immediately so Firestore's WebSocket stream
@@ -57,12 +68,25 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func willBecomeActive(with conversation: MSConversation) {
         super.willBecomeActive(with: conversation)
+
+        // Transcript bubbles: render lightweight UIKit card and bail
+        if isTranscript {
+            renderTranscriptBubble(from: conversation)
+            return
+        }
+
         applyMessage(conversation.selectedMessage, conversation: conversation)
         setupRootView(conversation: conversation)
     }
 
+    override func contentSizeThatFits(_ size: CGSize) -> CGSize {
+        if isTranscript { return CGSize(width: min(size.width, 260), height: 160) }
+        return super.contentSizeThatFits(size)
+    }
+
     override func didTransition(to presentationStyle: MSMessagesAppPresentationStyle) {
         super.didTransition(to: presentationStyle)
+        guard !isTranscript else { return }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
             uiModel.isExpanded = (presentationStyle == .expanded)
         }
@@ -72,9 +96,10 @@ final class MessagesViewController: MSMessagesAppViewController {
         hostingController.view.setNeedsLayout()
         hostingController.view.layoutIfNeeded()
     }
-    
+
     override func didSelect(_ message: MSMessage, conversation: MSConversation) {
         super.didSelect(message, conversation: conversation)
+        guard !isTranscript else { return }
         // Use the message parameter directly, not conversation.selectedMessage
         applyMessage(message, conversation: conversation)
     }
@@ -96,6 +121,134 @@ final class MessagesViewController: MSMessagesAppViewController {
         }
 
         uiModel.activeTab = tab
+    }
+
+    // MARK: - Transcript (lightweight UIKit-only path)
+
+    @objc private func transcriptTapped() {
+        requestPresentationStyle(.expanded)
+    }
+
+    private func configureAsTranscript() {
+        view.isOpaque = false
+        view.backgroundColor = .clear
+        let tap = UITapGestureRecognizer(target: self, action: #selector(transcriptTapped))
+        view.addGestureRecognizer(tap)
+    }
+
+    private func renderTranscriptBubble(from conversation: MSConversation) {
+        // Remove any previous bubble (willBecomeActive can fire multiple times)
+        view.subviews.forEach { $0.removeFromSuperview() }
+        children.forEach { $0.removeFromParent() }
+
+        guard let msg = conversation.selectedMessage, let url = msg.url else {
+            embedTranscriptCard(AnyView(Text("Loot").font(.headline).foregroundColor(.white)))
+            return
+        }
+
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+
+        // Bill card — extract full payload for a 1:1 BillCardView
+        if let payload = LootMessageCodec.payload(from: url) {
+            let split = payload.s
+            let owedAmounts: [Int] = split.g.indices.map { idx in
+                split.g[idx].inc && split.o.indices.contains(idx) ? max(0, split.o[idx]) : 0
+            }
+            let splitLabel: String = {
+                switch split.m {
+                case .byItems: return "Split by items"
+                case .custom: return "Custom split"
+                case .equally: return "Split evenly"
+                }
+            }()
+            let senderName: String = {
+                if let pi = split.g.indices.contains(split.pi) ? split.g[split.pi].n : nil,
+                   !pi.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    return pi
+                }
+                return myDisplayNameFromDefaults()
+            }()
+
+            // Find the viewer's slot to highlight + pulse
+            let myUid = KeychainHelper.getOrCreateUserId()
+            let mySlot: Int? = split.g.firstIndex(where: { $0.uid == myUid })
+            let myOwed: String? = {
+                guard let slot = mySlot, owedAmounts.indices.contains(slot), owedAmounts[slot] > 0 else { return nil }
+                return ReceiptDisplay.money(owedAmounts[slot])
+            }()
+
+            let card = BillCardView(
+                receiptName: payload.r.t,
+                displayAmount: myOwed ?? ReceiptDisplay.money(payload.r.tot),
+                displayName: senderName,
+                splitLabel: splitLabel,
+                owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,
+                totalCents: split.tot,
+                tabName: payload.tab?.n,
+                tabColorHex: payload.tab?.c,
+                centerTopLabel: mySlot != nil ? "You spent" : nil,
+                highlightedSlot: mySlot
+            )
+            embedTranscriptCard(AnyView(card))
+            return
+        }
+
+        // Tab invite card
+        if let tabId = comps?.queryItems?.first(where: { $0.name == "tabInvite" })?.value,
+           !tabId.isEmpty {
+            let tabName = comps?.queryItems?.first(where: { $0.name == "tn" })?.value ?? "Tab"
+            let tabColorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
+            let card = TabInviteCardView(
+                tabName: tabName,
+                tabColorHex: tabColorHex ?? "#007AFF",
+                creatorName: "",
+                joinedCount: 0,
+                targetCount: 0
+            )
+            embedTranscriptCard(AnyView(card))
+            return
+        }
+
+        // Settlement / request card
+        if comps?.queryItems?.contains(where: { $0.name == "tabId" }) == true {
+            let tabColorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
+            let isRequest = comps?.queryItems?.contains(where: { $0.name == "rq" && $0.value == "1" }) == true
+            let creditorName = comps?.queryItems?.first(where: { $0.name == "cn" })?.value ?? ""
+            let debtorName = comps?.queryItems?.first(where: { $0.name == "dn" })?.value ?? ""
+            let amountCents = Int(comps?.queryItems?.first(where: { $0.name == "amt" })?.value ?? "") ?? 0
+
+            if isRequest || amountCents > 0 {
+                let card = SettlementCardView(
+                    fromName: creditorName,
+                    toName: debtorName,
+                    amountCents: amountCents,
+                    methodName: "",
+                    tabColorHex: tabColorHex,
+                    isRequest: isRequest
+                )
+                embedTranscriptCard(AnyView(card))
+                return
+            }
+        }
+
+        // Fallback
+        embedTranscriptCard(AnyView(Text("Loot").font(.headline).foregroundColor(.white)))
+    }
+
+    private func embedTranscriptCard(_ cardView: AnyView) {
+        let host = UIHostingController(rootView: cardView)
+        host.view.backgroundColor = .clear
+        host.view.isUserInteractionEnabled = false
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        addChild(host)
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        host.didMove(toParent: self)
     }
 }
 
@@ -439,8 +592,6 @@ extension MessagesViewController {
         message.layout = layout
         message.url = components.url
 
-        // Changed from insert to send directly
-        //conversation.insert(message) { error in
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
         }
@@ -556,15 +707,15 @@ extension MessagesViewController {
         // even if the Firestore upload never completes (e.g. no internet at send time).
         LootMessageCodec.writePayload(into: &components, payload: payload)
 
-        let layout = MSMessageTemplateLayout()
-        layout.image = cardImage
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+
+        let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let message = MSMessage(session: MSSession())
         message.layout = layout
         message.url = components.url
 
-        // Changed from insert to send directly
-        //conversation.insert(message) { error in
         conversation.send(message) { error in
             if let error { print("Error inserting message: \(error)") }
         }
@@ -621,8 +772,6 @@ extension MessagesViewController {
         message.layout = layout
         message.url = components.url
 
-        // Changed from insert to send directly
-        //conversation.insert(message) { error in
         conversation.send(message) { error in
             if let error { print("Error inserting tab invite: \(error)") }
         }
@@ -630,276 +779,4 @@ extension MessagesViewController {
         requestPresentationStyle(.compact)
     }
 
-}
-
-// MARK: - Payload -> ReceiptDisplay (✅ UPDATED for new field names)
-
-extension LootMessagePayload {
-    func toReceiptDisplay() -> ReceiptDisplay {
-        let receiptData = r
-        let splitData = s
-        
-        let items: [ReceiptDisplay.Item] = receiptData.i.map { it in
-            let responsible: [ReceiptDisplay.Responsible] = it.rs.map { slot in
-                let nm: String = {
-                    guard splitData.g.indices.contains(slot) else { return "Guest \(slot + 1)" }
-                    let g = splitData.g[slot]
-                    let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !t.isEmpty { return t }
-                    return g.uid == KeychainHelper.getOrCreateUserId() ? "Me" : "Guest \(slot + 1)"
-                }()
-                return ReceiptDisplay.Responsible(slotIndex: slot, displayName: nm)
-            }
-            .sorted(by: { $0.slotIndex < $1.slotIndex })
-
-            return ReceiptDisplay.Item(
-                id: it.id,
-                label: it.l,
-                priceCents: it.p,
-                responsible: responsible
-            )
-        }
-
-        let lineItems: [ReceiptDisplay.LineItem] = (receiptData.li ?? []).map {
-            ReceiptDisplay.LineItem(id: $0.id, label: $0.l, cents: $0.c)
-        }
-
-        return ReceiptDisplay(
-            id: receiptData.id,
-            title: receiptData.t,
-            createdAt: Date(timeIntervalSince1970: receiptData.c),
-            subtotalCents: receiptData.sub,
-            feesCents: receiptData.f,
-            taxCents: receiptData.tx,
-            tipCents: receiptData.tip,
-            totalCents: receiptData.tot,
-            items: items,
-            lineItems: lineItems
-        )
-    }
-}
-
-// MARK: - Build SplitPayload / ReceiptPayload
-
-extension SplitPayload {
-    static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
-        // Seed guests if no draft
-        let guests: [Guest] = {
-            if let d = draft, !d.guests.isEmpty {
-                return d.guests.map { Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid) }
-            }
-            // default: me + N-1 unnamed
-            var out: [Guest] = [Guest(n: myDisplayNameFromDefaults(), inc: true, uid: KeychainHelper.getOrCreateUserId())]
-            if participantCount > 1 {
-                for _ in 1..<participantCount {
-                    out.append(Guest(n: "", inc: true, uid: nil))
-                }
-            }
-            return out
-        }()
-
-        let payerIndex: Int = {
-            guard let d = draft else { return 0 }
-            return d.guests.firstIndex(where: { $0.id == d.payerGuestId }) ?? 0
-        }()
-
-        let mode: Mode = {
-            guard let d = draft else { return .equally }
-            switch d.mode {
-            case .equally: return .equally
-            case .custom: return .custom
-            case .byItems: return .byItems
-            }
-        }()
-
-        let fees = draft?.feesCents ?? 0
-        let tax = draft?.taxCents ?? 0
-        let tip = draft?.tipCents ?? 0
-
-        // ✅ Convert draft items to tuples for SplitMath (no longer creating SplitPayload.Item array)
-        let itemsForMath: [(label: String, priceCents: Int, assignedSlots: [Int])] = {
-            guard let d = draft, d.mode == .byItems else { return [] }
-            let slotIndexByUUID: [UUID: Int] = Dictionary(uniqueKeysWithValues:
-                d.guests.enumerated().map { ($0.element.id, $0.offset) })
-            return d.items.map { it in
-                let slots = it.assignedGuestIds.compactMap { slotIndexByUUID[$0] }.sorted()
-                return (label: it.label, priceCents: it.priceCents, assignedSlots: slots)
-            }
-        }()
-
-        // Compute owed (always) and force sum to total by adjusting payer
-        let owed = SplitMath.computeOwedCents(
-            mode: mode,
-            guests: guests,
-            payerIndex: payerIndex,
-            totalCents: totalCents,
-            perGuestActive: draft?.perGuestCents,
-            items: itemsForMath,
-            feesCents: fees,
-            taxCents: tax,
-            tipCents: tip
-        )
-
-        return SplitPayload(
-            m: mode,
-            g: guests,
-            pi: payerIndex,
-            o: owed,
-            f: fees == 0 ? nil : fees,
-            tx: tax == 0 ? nil : tax,
-            tip: tip == 0 ? nil : tip,
-            tot: totalCents
-        )
-    }
-}
-
-extension ReceiptPayload {
-    static func from(receipt: ReceiptDisplay, split: SplitPayload) -> ReceiptPayload {
-        let isByItems = (split.m == .byItems)
-
-        let items: [ReceiptItemPayload] = {
-            // ✅ Always use receipt items, add assignments for by-items mode
-            return receipt.items.map { it in
-                let slots = isByItems ? it.responsible.map { $0.slotIndex }.sorted() : []
-                return ReceiptItemPayload(
-                    id: it.id,
-                    l: it.label,
-                    p: it.priceCents,
-                    rs: slots
-                )
-            }
-        }()
-
-        let lineItems: [ReceiptLineItemPayload]? = receipt.lineItems.isEmpty ? nil :
-            receipt.lineItems.map { ReceiptLineItemPayload(id: $0.id, l: $0.label, c: $0.cents) }
-
-        return ReceiptPayload(
-            id: receipt.id,
-            t: receipt.title,
-            c: receipt.createdAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970,
-            sub: receipt.subtotalCents,
-            f: receipt.feesCents,
-            tx: receipt.taxCents,
-            tip: receipt.tipCents,
-            tot: receipt.totalCents,
-            i: items,
-            li: lineItems
-        )
-    }
-}
-
-// MARK: - Math (equal/custom/by-items) with stable cents (✅ UPDATED signature)
-
-enum SplitMath {
-    static func computeOwedCents(
-        mode: SplitPayload.Mode,
-        guests: [SplitPayload.Guest],
-        payerIndex: Int,
-        totalCents: Int,
-        perGuestActive: [Int]?,
-        items: [(label: String, priceCents: Int, assignedSlots: [Int])],
-        feesCents: Int,  // signed: negative = discount
-        taxCents: Int,
-        tipCents: Int
-    ) -> [Int] {
-
-        let included = guests.indices.filter { guests[$0].inc }  // ✅ Changed from .included
-        guard !included.isEmpty else { return Array(repeating: 0, count: guests.count) }
-
-        let safePayer = included.contains(payerIndex) ? payerIndex : (included.first ?? 0)
-
-        // Start with all zeros for full guest list
-        var owed = Array(repeating: 0, count: guests.count)
-
-        switch mode {
-        case .equally:
-            let shares = splitEvenly(total: totalCents, count: included.count)
-            for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
-            return owed
-
-        case .custom:
-            // custom comes as active-only in your app; map in order of included guests
-            if let perGuestActive, perGuestActive.count == included.count {
-                for (i, idx) in included.enumerated() { owed[idx] = max(0, perGuestActive[i]) }
-            } else {
-                let shares = splitEvenly(total: totalCents, count: included.count)
-                for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
-            }
-            return owed
-
-        case .byItems:
-            // 1) subtotal from items (split shared items evenly among assigned)
-            var subtotals = Array(repeating: 0, count: guests.count)
-
-            for it in items {
-                let assigned = it.assignedSlots.filter { guests.indices.contains($0) && guests[$0].inc }
-                let targets = assigned.isEmpty ? [safePayer] : assigned.sorted()
-                let parts = splitEvenly(total: max(0, it.priceCents), count: targets.count)
-                for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
-            }
-
-            // 2) allocate extras (fees+tax+tip) proportional to subtotal (fees is signed so discounts reduce it)
-            let extras = feesCents + max(0, taxCents) + max(0, tipCents)
-            let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
-
-            for idx in included {
-                owed[idx] = max(0, subtotals[idx] + extrasAlloc[idx])
-            }
-
-            return owed
-        }
-    }
-
-    private static func splitEvenly(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) { out[i] += 1 }
-        }
-        return out
-    }
-
-    private static func allocateProportional(total: Int, base: [Int], included: [Int]) -> [Int] {
-        var out = Array(repeating: 0, count: base.count)
-        guard total != 0 else { return out }
-
-        let sumBase = included.reduce(0) { $0 + max(0, base[$1]) }
-        if sumBase <= 0 {
-            // evenly across included
-            let shares = splitEvenly(total: total, count: included.count)
-            for (i, idx) in included.enumerated() { out[idx] = shares[i] }
-            return out
-        }
-
-        // proportional with remainder distribution by fractional part
-        var floors: [Int] = []
-        var fracs: [(idx: Int, frac: Double)] = []
-
-        var used = 0
-        for idx in included {
-            let b = Double(max(0, base[idx]))
-            let raw = (Double(total) * b) / Double(sumBase)
-            let f = Int(floor(raw))
-            floors.append(f)
-            used += f
-            fracs.append((idx: idx, frac: raw - Double(f)))
-        }
-
-        for (i, idx) in included.enumerated() {
-            out[idx] = floors[i]
-        }
-
-        var rem = total - used
-        if rem > 0 {
-            fracs.sort { $0.frac > $1.frac }
-            var j = 0
-            while rem > 0 && !fracs.isEmpty {
-                out[fracs[j % fracs.count].idx] += 1
-                rem -= 1
-                j += 1
-            }
-        }
-        return out
-    }
 }

@@ -55,3 +55,113 @@ func signedStringToCents(_ raw: String) -> Int {
     }
     return isNegative ? -value : value
 }
+
+// MARK: - Split Math (equal/custom/by-items)
+
+enum SplitMath {
+    static func computeOwedCents(
+        mode: SplitPayload.Mode,
+        guests: [SplitPayload.Guest],
+        payerIndex: Int,
+        totalCents: Int,
+        perGuestActive: [Int]?,
+        items: [(label: String, priceCents: Int, assignedSlots: [Int])],
+        feesCents: Int,
+        taxCents: Int,
+        tipCents: Int
+    ) -> [Int] {
+
+        let included = guests.indices.filter { guests[$0].inc }
+        guard !included.isEmpty else { return Array(repeating: 0, count: guests.count) }
+
+        let safePayer = included.contains(payerIndex) ? payerIndex : (included.first ?? 0)
+
+        var owed = Array(repeating: 0, count: guests.count)
+
+        switch mode {
+        case .equally:
+            let shares = splitEvenly(total: totalCents, count: included.count)
+            for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
+            return owed
+
+        case .custom:
+            if let perGuestActive, perGuestActive.count == included.count {
+                for (i, idx) in included.enumerated() { owed[idx] = max(0, perGuestActive[i]) }
+            } else {
+                let shares = splitEvenly(total: totalCents, count: included.count)
+                for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
+            }
+            return owed
+
+        case .byItems:
+            var subtotals = Array(repeating: 0, count: guests.count)
+
+            for it in items {
+                let assigned = it.assignedSlots.filter { guests.indices.contains($0) && guests[$0].inc }
+                let targets = assigned.isEmpty ? [safePayer] : assigned.sorted()
+                let parts = splitEvenly(total: max(0, it.priceCents), count: targets.count)
+                for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
+            }
+
+            let extras = feesCents + max(0, taxCents) + max(0, tipCents)
+            let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
+
+            for idx in included {
+                owed[idx] = max(0, subtotals[idx] + extrasAlloc[idx])
+            }
+
+            return owed
+        }
+    }
+
+    private static func splitEvenly(total: Int, count: Int) -> [Int] {
+        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
+        var out = Array(repeating: total / count, count: count)
+        let remainder = total - out.reduce(0, +)
+        if remainder > 0 {
+            for i in 0..<min(remainder, count) { out[i] += 1 }
+        }
+        return out
+    }
+
+    private static func allocateProportional(total: Int, base: [Int], included: [Int]) -> [Int] {
+        var out = Array(repeating: 0, count: base.count)
+        guard total != 0 else { return out }
+
+        let sumBase = included.reduce(0) { $0 + max(0, base[$1]) }
+        if sumBase <= 0 {
+            let shares = splitEvenly(total: total, count: included.count)
+            for (i, idx) in included.enumerated() { out[idx] = shares[i] }
+            return out
+        }
+
+        var floors: [Int] = []
+        var fracs: [(idx: Int, frac: Double)] = []
+
+        var used = 0
+        for idx in included {
+            let b = Double(max(0, base[idx]))
+            let raw = (Double(total) * b) / Double(sumBase)
+            let f = Int(floor(raw))
+            floors.append(f)
+            used += f
+            fracs.append((idx: idx, frac: raw - Double(f)))
+        }
+
+        for (i, idx) in included.enumerated() {
+            out[idx] = floors[i]
+        }
+
+        var rem = total - used
+        if rem > 0 {
+            fracs.sort { $0.frac > $1.frac }
+            var j = 0
+            while rem > 0 && !fracs.isEmpty {
+                out[fracs[j % fracs.count].idx] += 1
+                rem -= 1
+                j += 1
+            }
+        }
+        return out
+    }
+}

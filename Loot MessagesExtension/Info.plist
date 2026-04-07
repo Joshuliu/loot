@@ -14,6 +14,11 @@
 		<string>MainInterface</string>
 		<key>NSExtensionPointIdentifier</key>
 		<string>com.apple.message-payload-provider</string>
+		<key>MSSupportedPresentationContexts</key>
+		<array>
+			<string>MSMessagesAppPresentationContextMessages</string>
+			<string>MSMessagesAppPresentationContextMedia</string>
+		</array>
 	</dict>
 </dict>
 </plist>
