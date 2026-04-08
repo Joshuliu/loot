@@ -49,6 +49,10 @@ final class MessagesViewController: MSMessagesAppViewController {
                                      metadata: metadata)
         }
 
+        uiModel.sendBillUpdate = { [weak self] payload, docId in
+            self?.sendBillUpdate(payload: payload, docId: docId)
+        }
+
         view.isOpaque = true
         view.backgroundColor = .systemBackground
         addChild(hostingController)
@@ -193,7 +197,10 @@ final class MessagesViewController: MSMessagesAppViewController {
         }
 
         // Tab invite card
-        if let tabId = comps?.queryItems?.first(where: { $0.name == "tabInvite" })?.value,
+        let inviteTabId =
+            comps?.queryItems?.first(where: { $0.name == "tabInvite" })?.value ??
+            comps?.queryItems?.first(where: { $0.name == "tabInviteUpdate" })?.value
+        if let tabId = inviteTabId,
            !tabId.isEmpty {
             let tabName = comps?.queryItems?.first(where: { $0.name == "tn" })?.value ?? "Tab"
             let tabColorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
@@ -319,8 +326,11 @@ extension MessagesViewController {
             return
         }
 
-        // Tab invite path: ?tabInvite=<tabId>
-        if let tabId = comps?.queryItems?.first(where: { $0.name == "tabInvite" })?.value,
+        // Tab invite path: ?tabInvite=<tabId> or ?tabInviteUpdate=<tabId>
+        let inviteTabId =
+            comps?.queryItems?.first(where: { $0.name == "tabInvite" })?.value ??
+            comps?.queryItems?.first(where: { $0.name == "tabInviteUpdate" })?.value
+        if let tabId = inviteTabId,
            !tabId.isEmpty {
             // Navigate immediately so the screen change is synchronous —
             // avoids race with didTransition when re-tapping the same invite.
@@ -497,6 +507,9 @@ extension MessagesViewController {
             },
             onSendTabInvite: { [weak self] tabName, tabColorHex, tabId in
                 self?.sendTabInvite(tabName: tabName, tabColorHex: tabColorHex, tabId: tabId)
+            },
+            onSendTabInviteUpdate: { [weak self] tabId in
+                self?.sendTabInviteUpdate(tabId: tabId)
             }
         )
     }
@@ -746,12 +759,55 @@ extension MessagesViewController {
         }
     }
 
-    func sendTabInvite(tabName: String, tabColorHex: String, tabId: String) {
+    func sendBillUpdate(payload: LootMessagePayload, docId: String) {
+        guard let conversation = activeConversation else { return }
+        guard let selectedMessage = conversation.selectedMessage else {
+            print("[sendBillUpdate] No selected message session to update for doc: \(docId)")
+            return
+        }
+
+        let splitPayload = payload.s
+        let participantCount = max(1, splitPayload.g.count)
+
+        let cardImage = renderCardImage(
+            receiptName: payload.r.t,
+            displayAmount: ReceiptDisplay.money(payload.r.tot),
+            participantCount: participantCount,
+            splitPayload: splitPayload,
+            tabName: payload.tab?.n,
+            tabColorHex: payload.tab?.c
+        )
+
+        var components = lootURLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: docId)]
+        LootMessageCodec.writePayload(into: &components, payload: payload)
+
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+
+        let session = selectedMessage.session ?? MSSession()
+        let message = MSMessage(session: session)
+        message.layout = layout
+        message.url = components.url
+
+        conversation.send(message) { error in
+            if let error {
+                print("[sendBillUpdate] Failed to send updated bill message: \(error)")
+            }
+        }
+    }
+
+    private func sendTabInviteMessage(
+        tabName: String,
+        tabColorHex: String,
+        tabId: String,
+        joinedCount: Int,
+        queryItemName: String
+    ) {
         guard let conversation = activeConversation else { return }
 
-        // Render invite card image
-        let joinedCount = max(1, uiModel.activeTab?.members.filter(\.isActive).count ?? 1)
-        let targetCount = max(1, (activeConversation?.remoteParticipantIdentifiers.count ?? 0) + 1)
+        let targetCount = max(1, conversation.remoteParticipantIdentifiers.count + 1)
         let card = TabInviteCardView(
             tabName: tabName,
             tabColorHex: tabColorHex,
@@ -762,7 +818,12 @@ extension MessagesViewController {
         let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
 
         var components = lootURLComponents()
-        components.queryItems = [URLQueryItem(name: "tabInvite", value: tabId)]
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: queryItemName, value: tabId),
+            URLQueryItem(name: "tn", value: tabName),
+            URLQueryItem(name: "tc", value: tabColorHex)
+        ]
+        components.queryItems = queryItems
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -772,10 +833,68 @@ extension MessagesViewController {
         message.url = components.url
 
         conversation.send(message) { error in
-            if let error { print("Error inserting tab invite: \(error)") }
+            if let error { print("[\(queryItemName)] send failed: \(error)") }
         }
+    }
+
+    func sendTabInvite(tabName: String, tabColorHex: String, tabId: String) {
+        let joinedCount = max(1, uiModel.activeTab?.members.filter(\.isActive).count ?? 1)
+        sendTabInviteMessage(
+            tabName: tabName,
+            tabColorHex: tabColorHex,
+            tabId: tabId,
+            joinedCount: joinedCount,
+            queryItemName: "tabInvite"
+        )
 
         requestPresentationStyle(.compact)
+    }
+
+    func sendTabInviteUpdate(tabId: String) {
+        guard !tabId.isEmpty else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            do {
+                guard let refreshedTab = try await TabService.shared.fetchTab(id: tabId) else {
+                    print("[tabInviteUpdate] Tab not found: \(tabId)")
+                    return
+                }
+
+                setActiveTabIfChanged(refreshedTab)
+                uiModel.conversationMemberIds = Set(refreshedTab.memberIds)
+                if let index = uiModel.userTabs.firstIndex(where: { $0.id == refreshedTab.id }) {
+                    uiModel.userTabs[index] = refreshedTab
+                } else {
+                    uiModel.userTabs.append(refreshedTab)
+                }
+
+                if let convKey = uiModel.conversationKey {
+                    TabService.shared.cacheTab(refreshedTab, for: convKey)
+                    do {
+                        try await TabService.shared.associateConversation(
+                            tabId: tabId,
+                            conversationKey: convKey
+                        )
+                    } catch {
+                        print("[tabInviteUpdate] associateConversation failed: \(error)")
+                    }
+                }
+
+                let joinedCount = max(1, refreshedTab.members.filter(\.isActive).count)
+                let tabColor = refreshedTab.colorHex ?? TabColorOptions.defaultHex
+                sendTabInviteMessage(
+                    tabName: refreshedTab.name,
+                    tabColorHex: tabColor,
+                    tabId: tabId,
+                    joinedCount: joinedCount,
+                    queryItemName: "tabInviteUpdate"
+                )
+            } catch {
+                print("[tabInviteUpdate] Failed to refresh tab \(tabId): \(error)")
+            }
+        }
     }
 
 }

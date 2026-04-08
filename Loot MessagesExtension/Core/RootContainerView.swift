@@ -44,6 +44,7 @@ struct RootContainerView: View {
     let onCollapse: () -> Void
     let onSendBill: (String, String) -> Void
     let onSendTabInvite: ((String, String, String) -> Void)?  // (tabName, tabColorHex, tabId)
+    let onSendTabInviteUpdate: ((String) -> Void)?  // tabId
 
     // Tab creation state
     @State private var pendingTabName: String = ""
@@ -82,6 +83,7 @@ struct RootContainerView: View {
         self.onCollapse = {}
         self.onSendBill = { _, _ in }
         self.onSendTabInvite = nil
+        self.onSendTabInviteUpdate = nil
     }
 
     init(
@@ -91,7 +93,8 @@ struct RootContainerView: View {
         onExpand: @escaping () -> Void,
         onCollapse: @escaping () -> Void,
         onSendBill: @escaping (String, String) -> Void,
-        onSendTabInvite: ((String, String, String) -> Void)? = nil
+        onSendTabInvite: ((String, String, String) -> Void)? = nil,
+        onSendTabInviteUpdate: ((String) -> Void)? = nil
     ) {
         self.uiModel = uiModel
         self.participantCount = participantCount
@@ -100,6 +103,7 @@ struct RootContainerView: View {
         self.onCollapse = onCollapse
         self.onSendBill = onSendBill
         self.onSendTabInvite = onSendTabInvite
+        self.onSendTabInviteUpdate = onSendTabInviteUpdate
     }
 
     private func makePreviewReceipt() -> ReceiptDisplay {
@@ -1228,6 +1232,9 @@ struct RootContainerView: View {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .tabview
                 }
+            },
+            onSendTabInviteUpdate: { tabId in
+                onSendTabInviteUpdate?(tabId)
             },
             onAccountTapped: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {

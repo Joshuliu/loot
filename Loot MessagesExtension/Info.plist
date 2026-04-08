@@ -10,15 +10,15 @@
 	<string>iMessage App Icon</string>
 	<key>NSExtension</key>
 	<dict>
-		<key>NSExtensionMainStoryboard</key>
-		<string>MainInterface</string>
-		<key>NSExtensionPointIdentifier</key>
-		<string>com.apple.message-payload-provider</string>
 		<key>MSSupportedPresentationContexts</key>
 		<array>
 			<string>MSMessagesAppPresentationContextMessages</string>
 			<string>MSMessagesAppPresentationContextMedia</string>
 		</array>
+		<key>NSExtensionMainStoryboard</key>
+		<string>MainInterface</string>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.message-payload-provider</string>
 	</dict>
 </dict>
 </plist>

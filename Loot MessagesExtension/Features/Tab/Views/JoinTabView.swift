@@ -12,6 +12,7 @@ struct JoinTabView: View {
     let onRequestExpand: () -> Void
     let onBack: () -> Void
     let onJoined: (LootTab) -> Void
+    var onSendTabInviteUpdate: ((String) -> Void)? = nil
     var onAccountTapped: (() -> Void)? = nil
 
     @AppStorage(DefaultsKeys.myDisplayName) private var myDisplayName: String = ""
@@ -235,7 +236,17 @@ struct JoinTabView: View {
                     tabId: tab.id ?? "",
                     conversationKey: uiModel.conversationKey ?? ""
                 )
+                self.tab = joined
                 uiModel.activeTab = joined
+                uiModel.conversationMemberIds = Set(joined.memberIds)
+                if let index = uiModel.userTabs.firstIndex(where: { $0.id == joined.id }) {
+                    uiModel.userTabs[index] = joined
+                } else {
+                    uiModel.userTabs.append(joined)
+                }
+                if let tabId = joined.id, !tabId.isEmpty {
+                    onSendTabInviteUpdate?(tabId)
+                }
                 onJoined(joined)
             } catch {
                 errorMessage = error.localizedDescription
