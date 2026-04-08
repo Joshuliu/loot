@@ -803,7 +803,8 @@ extension MessagesViewController {
         tabColorHex: String,
         tabId: String,
         joinedCount: Int,
-        queryItemName: String
+        queryItemName: String,
+        useSelectedMessageSession: Bool = false
     ) {
         guard let conversation = activeConversation else { return }
 
@@ -828,7 +829,13 @@ extension MessagesViewController {
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
 
-        let message = MSMessage(session: MSSession())
+        let session: MSSession
+        if useSelectedMessageSession {
+            session = conversation.selectedMessage?.session ?? MSSession()
+        } else {
+            session = MSSession()
+        }
+        let message = MSMessage(session: session)
         message.layout = layout
         message.url = components.url
 
@@ -889,7 +896,8 @@ extension MessagesViewController {
                     tabColorHex: tabColor,
                     tabId: tabId,
                     joinedCount: joinedCount,
-                    queryItemName: "tabInviteUpdate"
+                    queryItemName: "tabInviteUpdate",
+                    useSelectedMessageSession: true
                 )
             } catch {
                 print("[tabInviteUpdate] Failed to refresh tab \(tabId): \(error)")
