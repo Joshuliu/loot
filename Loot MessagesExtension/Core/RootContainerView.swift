@@ -638,7 +638,10 @@ struct RootContainerView: View {
         .onChange(of: uiModel.currentScreen) { _, screen in
             saveSession(screen: screen)
         }
-        .onChange(of: uiModel.currentReceipt) { _, _ in
+        .onChange(of: uiModel.currentReceipt) { _, receipt in
+            if let receipt {
+                receiptName = receipt.title
+            }
             saveSession(screen: uiModel.currentScreen)
         }
         .onChange(of: uiModel.currentSplitDraft) { _, _ in
