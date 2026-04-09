@@ -722,10 +722,12 @@ extension MessagesViewController {
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
 
-        let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+        // Transitional: send as template layout so older app versions
+        // don't spin up a mini LiveLayout instance they can't handle.
+        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let message = MSMessage(session: MSSession())
-        message.layout = layout
+        message.layout = alternateLayout
         message.url = components.url
 
         conversation.send(message) { error in
@@ -784,11 +786,12 @@ extension MessagesViewController {
 
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
-        let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+        // Transitional: send as template layout (see sendBillMessage comment)
+        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let session = selectedMessage.session ?? MSSession()
         let message = MSMessage(session: session)
-        message.layout = layout
+        message.layout = alternateLayout
         message.url = components.url
 
         conversation.send(message) { error in
