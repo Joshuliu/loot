@@ -644,10 +644,24 @@ extension MessagesViewController {
             splitPayload.g[idx].inc && splitPayload.o.indices.contains(idx) ? max(0, splitPayload.o[idx]) : 0
         }
 
+        let payerDisplayName: String = {
+            guard splitPayload.g.indices.contains(splitPayload.pi) else {
+                return myDisplayNameFromDefaults()
+            }
+            let payer = splitPayload.g[splitPayload.pi]
+            let trimmed = payer.n.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+            if payer.uid == KeychainHelper.getOrCreateUserId() {
+                let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+                return me.isEmpty ? "Me" : me
+            }
+            return "Guest \(splitPayload.pi + 1)"
+        }()
+
         let card = BillCardView(
             receiptName: receiptName,
             displayAmount: displayAmount,
-            displayName: myDisplayNameFromDefaults(),
+            displayName: payerDisplayName,
             splitLabel: splitLabelFromMode(splitPayload.m),
             owedAmounts: owedAmounts.isEmpty ? nil : owedAmounts,  // Only pass if non-empty
             totalCents: splitPayload.tot,
