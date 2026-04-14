@@ -116,6 +116,17 @@ enum AppScreen {
     case joinTab
     case account
     case paymentMethods
+    case updateRequired
+}
+
+enum LootVersion {
+    /// Reads major version from MARKETING_VERSION (e.g. "1.3" → 1).
+    /// Only change the marketing version in the Xcode project to update this.
+    static let major: Int = {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        return Int(version.split(separator: ".").first ?? "1") ?? 1
+    }()
+    static let urlParamName = "mv"
 }
 
 struct PendingPayRequest: Equatable {

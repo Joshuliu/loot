@@ -176,7 +176,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             let myUid = KeychainHelper.getOrCreateUserId()
             let mySlot: Int? = split.g.firstIndex(where: { $0.uid == myUid })
             let myOwed: String? = {
-                guard let slot = mySlot, owedAmounts.indices.contains(slot), owedAmounts[slot] > 0 else { return nil }
+                guard let slot = mySlot, owedAmounts.indices.contains(slot) else { return nil }
                 return ReceiptDisplay.money(owedAmounts[slot])
             }()
 
@@ -268,6 +268,17 @@ extension MessagesViewController {
 
         guard let msg = message, let url = msg.url else { return }
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+
+        // Version gate: if the sender's major version is higher than ours,
+        // the message requires features we don't have yet.
+        if let mvString = comps?.queryItems?.first(where: { $0.name == LootVersion.urlParamName })?.value,
+           let senderMajor = Int(mvString),
+           senderMajor > LootVersion.major {
+            requestPresentationStyle(.expanded)
+            uiModel.currentScreen = .updateRequired
+            return
+        }
+
         let pendingRequest = pendingPayRequest(from: comps)
         uiModel.pendingPayRequest = pendingRequest
         if pendingRequest != nil {
@@ -536,12 +547,15 @@ extension MessagesViewController {
         components.scheme = "https"
         components.host = "plsloot.me"
         components.path = "/loot"
+        var items: [URLQueryItem] = [
+            URLQueryItem(name: LootVersion.urlParamName, value: String(LootVersion.major))
+        ]
         if let tab, let tabId = tab.id {
-            var items: [URLQueryItem] = [URLQueryItem(name: "tabId", value: tabId)]
+            items.append(URLQueryItem(name: "tabId", value: tabId))
             items.append(URLQueryItem(name: "tn", value: tab.name))
             if let hex = tab.colorHex, !hex.isEmpty { items.append(URLQueryItem(name: "tc", value: hex)) }
-            components.queryItems = items
         }
+        components.queryItems = items
         return components
     }
 

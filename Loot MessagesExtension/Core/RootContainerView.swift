@@ -711,6 +711,7 @@ struct RootContainerView: View {
         case .joinTab:              joinTabContent.transition(.opacity)
         case .account:              accountContent.transition(.opacity)
         case .paymentMethods:       paymentMethodsContent.transition(.opacity)
+        case .updateRequired:       updateRequiredContent.transition(.opacity)
         }
     }
 
@@ -1281,5 +1282,37 @@ struct RootContainerView: View {
             },
             isPostSendPrompt: paymentMethodsIsPostSend
         )
+    }
+
+    @ViewBuilder
+    private var updateRequiredContent: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "arrow.up.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.blue)
+            Text("Update Required")
+                .font(.title2.bold())
+            Text("This message was sent from a newer version of Loot. Please update to view it.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            UpdateLootButton()
+            Spacer()
+        }
+    }
+}
+
+private struct UpdateLootButton: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        Button("Update Loot") {
+            if let url = URL(string: "https://apps.apple.com/app/id6757330604") {
+                openURL(url)
+            }
+        }
+        .buttonStyle(.borderedProminent)
     }
 }
