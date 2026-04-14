@@ -32,6 +32,7 @@ struct EditSplitView: View {
     @FocusState private var isAmountFieldFocused: Bool
     @State private var editingGuestNameId: UUID? = nil
     @FocusState private var guestNameFocusedId: UUID?
+    @State private var uidDisplayNames: [String: String] = [:]
 
     init(payload: LootMessagePayload, docId: String, onSave: @escaping (LootMessagePayload) -> Void, onCancel: @escaping () -> Void) {
         self.payload = payload
@@ -137,6 +138,9 @@ struct EditSplitView: View {
                         .fontWeight(.semibold)
                 }
             }
+        }
+        .task(id: guestUIDsTaskKey) {
+            await loadUIDDisplayNamesIfNeeded()
         }
     }
 
@@ -287,7 +291,7 @@ struct EditSplitView: View {
                     )
 
                     // Name
-                    if editingGuestNameId == gid && !guest.isMe {
+                    if editingGuestNameId == gid && canEditName(for: guest) {
                         TextField("Guest name", text: Binding(
                             get: { guests.first(where: { $0.id == gid })?.name ?? "" },
                             set: { newValue in
@@ -306,7 +310,7 @@ struct EditSplitView: View {
                             .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
                             .foregroundColor(guest.trimmedName.isEmpty && !guest.isMe ? .secondary : .primary)
                             .onTapGesture {
-                                if !guest.isMe {
+                                if canEditName(for: guest) {
                                     editingGuestNameId = gid
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                                         guestNameFocusedId = gid
@@ -493,6 +497,11 @@ struct EditSplitView: View {
 
     // MARK: - Helpers
 
+    private func canEditName(for guest: SplitGuest) -> Bool {
+        let uid = guest.uid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return uid.isEmpty
+    }
+
     private func displayName(for guest: SplitGuest) -> String {
         let t = guest.trimmedName
         if !t.isEmpty { return t }
@@ -504,6 +513,44 @@ struct EditSplitView: View {
             return "Guest \(idx + 1)"
         }
         return "Guest"
+    }
+
+    private var guestUIDsTaskKey: String {
+        guests.compactMap(\.uid)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .sorted()
+            .joined(separator: "|")
+    }
+
+    private func loadUIDDisplayNamesIfNeeded() async {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let uids = Set(
+            guests.compactMap(\.uid)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && $0 != myUid }
+        )
+        guard !uids.isEmpty else { return }
+
+        for uid in uids where uidDisplayNames[uid] == nil {
+            do {
+                if let name = try await TabService.shared.fetchUserDisplayName(userId: uid),
+                   !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    await MainActor.run {
+                        uidDisplayNames[uid] = name
+                        // Match tab-style display behavior: known users carry a concrete name value.
+                        for idx in guests.indices {
+                            guard guests[idx].uid == uid else { continue }
+                            if guests[idx].trimmedName.isEmpty {
+                                guests[idx].name = name
+                            }
+                        }
+                    }
+                }
+            } catch {
+                print("[EditSplitView] Failed to fetch name for \(uid): \(error)")
+            }
+        }
     }
 
     private func payerDisplayName() -> String {
