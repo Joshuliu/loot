@@ -55,9 +55,11 @@ struct RootContainerView: View {
     // DEBUG: Set to true to only run VisionKit OCR and print JSON (no Gemini)
     private let DEBUG_OCR_ONLY = false
     // DEBUG: Set to true to copy OCR transcript to clipboard after each scan
-    private let DEBUG_COPY_TRANSCRIPT = false
+    private let DEBUG_COPY_TRANSCRIPT = true
     // DEBUG: Set to true to show OCR chunk images in Edit Receipt view
-    private let DEBUG_SHOW_CHUNKS = false
+    private let DEBUG_SHOW_CHUNKS = true
+    // DEBUG: Set to true to print the raw phase 2 LLM response in the console
+    private let DEBUG_PRINT_PHASE2_RESPONSE = true
     @State private var debugOCRResult: OCRResult? = nil
     @State private var debugOriginalImage: UIImage? = nil
 
@@ -298,6 +300,10 @@ struct RootContainerView: View {
                             transcript: transcript,
                             knownTotalCents: knownTotal
                         )
+                        let resolvedLineItems = LLMClient.shared.lastPhase2LineItems
+                        if DEBUG_PRINT_PHASE2_RESPONSE {
+                            print("[Scan] Phase 2 raw response:\n\(LLMClient.shared.lastRawPhase2Response ?? "<nil>")")
+                        }
                         print("[Scan] Phase 2 complete: \(phase2.items.count) items")
 
                         // Build full ParsedReceipt for compatibility
@@ -336,6 +342,17 @@ struct RootContainerView: View {
                             finalTipCents = breakdown.tip
                         }
 
+                        var displayLineItems = resolvedLineItems
+                        if finalTipCents != breakdown.tip {
+                            displayLineItems.removeAll {
+                                let normalized = $0.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                                return normalized.contains("tip") || normalized.contains("gratuity")
+                            }
+                            if finalTipCents > 0 {
+                                displayLineItems.append(.init(label: "Tip", cents: finalTipCents))
+                            }
+                        }
+
                         // Update subtotal field
                         amountString = String(format: "%.2f", Double(subtotal) / 100.0)
 
@@ -349,7 +366,8 @@ struct RootContainerView: View {
                             taxCents: breakdown.tax,
                             tipCents: finalTipCents,
                             totalCents: subtotal + breakdown.tax + breakdown.fees + finalTipCents,
-                            items: fullParsed.toDisplayItems()
+                            items: fullParsed.toDisplayItems(),
+                            lineItems: displayLineItems
                         )
 
                         uiModel.itemsLoadingState = .loaded(phase2)
