@@ -90,6 +90,33 @@ struct SplitsSummaryView: View {
         uiModel.scanImageCropped ?? uiModel.scanImageOriginal
     }
 
+    private var currentBillId: String? {
+        uiModel.openedMessageDocId ?? uiModel.openedMessagePayload?.r.id
+    }
+
+    private var hasIgnoredListForBill: Bool {
+        uiModel.hasIgnoredUUIDsList(for: currentBillId)
+    }
+
+    private var hasClaimableSlots: Bool {
+        includedIndices.contains { split.g.indices.contains($0) && split.g[$0].uid == nil }
+    }
+
+    private func addCurrentUserToIgnored() {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        uiModel.addIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    private func removeCurrentUserFromIgnoredIfPresent() {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        uiModel.removeIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    private func isCurrentUserIgnored() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        return uiModel.isIgnoredUUID(myUid, for: currentBillId)
+    }
+
     private var headerTitle: String {
         receipt?.title ?? uiModel.openedMessagePayload?.r.t ?? "Receipt"
     }
@@ -589,6 +616,7 @@ struct SplitsSummaryView: View {
     private func claimSlot(at guestIndex: Int) {
         let myUid = KeychainHelper.getOrCreateUserId()
         split.g[guestIndex].uid = myUid
+        removeCurrentUserFromIgnoredIfPresent()
         // Don't overwrite .n — that's the bill creator's manually-entered name.
         // Display name is resolved from uid via displayName(for:).
         billState = .joined
@@ -605,6 +633,7 @@ struct SplitsSummaryView: View {
         if let gi = split.g.firstIndex(where: { $0.uid == myUid }) {
             split.g[gi].uid = nil
         }
+        addCurrentUserToIgnored()
         persistSplit()
     }
 
@@ -954,7 +983,8 @@ struct SplitsSummaryView: View {
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                     unclaimSlot()
-                                    billState = .choosing
+                                    billState = .notInBill
+                                    selectedIndex = nil
                                 }
                             } label: {
                                 HStack(spacing: 6) {
@@ -986,6 +1016,8 @@ struct SplitsSummaryView: View {
 
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            addCurrentUserToIgnored()
+                            selectedIndex = nil
                             billState = .notInBill
                         }
                     } label: {
@@ -1017,7 +1049,9 @@ struct SplitsSummaryView: View {
 
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            billState = .choosing
+                            if hasClaimableSlots {
+                                billState = .choosing
+                            }
                         }
                     } label: {
                         HStack(spacing: 6) {
@@ -1026,13 +1060,14 @@ struct SplitsSummaryView: View {
                             Text("I'm in this bill")
                                 .font(.system(size: 13, weight: .medium))
                         }
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(hasClaimableSlots ? .blue : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(Color.blue.opacity(0.08))
+                        .background((hasClaimableSlots ? Color.blue.opacity(0.08) : Color(.tertiarySystemFill)))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
+                    .disabled(!hasClaimableSlots)
                     .padding(.horizontal, 8)
                 }
                 .frame(maxWidth: .infinity)
@@ -1132,24 +1167,54 @@ struct SplitsSummaryView: View {
             let myUid = KeychainHelper.getOrCreateUserId()
             let alreadyClaimed = split.g.contains { $0.uid == myUid }
 
-            if alreadyClaimed {
-                billState = .joined
-                if let myIdx = myIncludedIndex {
-                    selectedIndex = myIdx
-                }
-            } else {
-                // Not yet claimed — try auto-claim
-                if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                    claimSlot(at: i)
-                } else if split.m != .equally {
-                    let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-                    if freeSlots.count == 1 {
-                        claimSlot(at: freeSlots[0])
+            if hasIgnoredListForBill {
+                if isCurrentUserIgnored() {
+                    billState = .notInBill
+                    selectedIndex = nil
+                } else if alreadyClaimed {
+                    billState = .joined
+                    if let myIdx = myIncludedIndex {
+                        selectedIndex = myIdx
+                    }
+                } else if hasClaimableSlots {
+                    // Not yet claimed — preserve existing auto-claim behavior.
+                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+                        claimSlot(at: i)
+                    } else if split.m != .equally {
+                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+                        if freeSlots.count == 1 {
+                            claimSlot(at: freeSlots[0])
+                        } else {
+                            billState = .choosing
+                        }
                     } else {
                         billState = .choosing
                     }
                 } else {
-                    billState = .choosing
+                    billState = .notInBill
+                    selectedIndex = nil
+                }
+            } else {
+                // Legacy behavior (messages without ignoredUUIDs list)
+                if alreadyClaimed {
+                    billState = .joined
+                    if let myIdx = myIncludedIndex {
+                        selectedIndex = myIdx
+                    }
+                } else {
+                    // Not yet claimed — try auto-claim
+                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+                        claimSlot(at: i)
+                    } else if split.m != .equally {
+                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+                        if freeSlots.count == 1 {
+                            claimSlot(at: freeSlots[0])
+                        } else {
+                            billState = .choosing
+                        }
+                    } else {
+                        billState = .choosing
+                    }
                 }
             }
         }

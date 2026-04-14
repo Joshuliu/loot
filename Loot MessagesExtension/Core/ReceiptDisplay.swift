@@ -198,6 +198,10 @@ final class LootUIModel: ObservableObject {
     @Published var userTabs: [LootTab] = []
     @Published var localParticipantId: String? = nil
     @Published var conversationKey: String? = nil
+    /// Bill-scoped ignored Keychain UUIDs from inline payload envelope (or local session edits).
+    @Published var ignoredUUIDsByBill: [String: [String]] = [:]
+    /// Tracks whether a bill had an explicit ignoredUUIDs list in the inline payload envelope.
+    @Published var hasIgnoredUUIDsListByBill: [String: Bool] = [:]
     @Published var pendingTabInviteId: String? = nil
     @Published var pendingPayRequest: PendingPayRequest? = nil
     /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
@@ -219,6 +223,70 @@ final class LootUIModel: ObservableObject {
     /// Args: (payload, Firestore docId)
     var sendBillUpdate: ((LootMessagePayload, String) -> Void)?
 
+    func hasIgnoredUUIDsList(for billId: String?) -> Bool {
+        guard let billId else { return false }
+        return hasIgnoredUUIDsListByBill[billId] == true
+    }
+
+    func ignoredUUIDs(for billId: String?) -> [String] {
+        guard let billId else { return [] }
+        return ignoredUUIDsByBill[billId] ?? []
+    }
+
+    func setInlineIgnoredState(ignoredUUIDs: [String], hasList: Bool, for billId: String?) {
+        guard let billId else { return }
+        if hasList {
+            hasIgnoredUUIDsListByBill[billId] = true
+            ignoredUUIDsByBill[billId] = Self.normalizedUUIDs(ignoredUUIDs)
+        } else {
+            hasIgnoredUUIDsListByBill[billId] = false
+            ignoredUUIDsByBill.removeValue(forKey: billId)
+        }
+    }
+
+    func addIgnoredUUID(_ uuid: String, for billId: String?) {
+        guard let billId else { return }
+        let trimmed = uuid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        hasIgnoredUUIDsListByBill[billId] = true
+        var current = ignoredUUIDsByBill[billId] ?? []
+        if !current.contains(trimmed) {
+            current.append(trimmed)
+            ignoredUUIDsByBill[billId] = current
+        }
+    }
+
+    func removeIgnoredUUID(_ uuid: String, for billId: String?) {
+        guard let billId else { return }
+        let trimmed = uuid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        guard hasIgnoredUUIDsList(for: billId) else { return }
+        guard var current = ignoredUUIDsByBill[billId] else { return }
+        current.removeAll { $0 == trimmed }
+        ignoredUUIDsByBill[billId] = current
+    }
+
+    func isIgnoredUUID(_ uuid: String, for billId: String?) -> Bool {
+        let trimmed = uuid.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return ignoredUUIDs(for: billId).contains(trimmed)
+    }
+
+    private static func normalizedUUIDs(_ uuids: [String]) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
+        for raw in uuids {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if seen.insert(trimmed).inserted {
+                out.append(trimmed)
+            }
+        }
+        return out
+    }
+
     func resetForNewReceipt() {
         // Cancel any running phase 2 task
         phase2Task?.cancel()
@@ -237,6 +305,8 @@ final class LootUIModel: ObservableObject {
         preTipTotalOverrideCents = nil
         openedMessagePayload = nil
         openedMessageDocId = nil
+        ignoredUUIDsByBill = [:]
+        hasIgnoredUUIDsListByBill = [:]
         activeMessageSession = nil
         receiptTab = nil
         pendingPayRequest = nil

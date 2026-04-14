@@ -233,15 +233,43 @@ extension LootMessagePayload {
 
 // MARK: - Base64URL + Codec
 
+struct InlineMessageEnvelope: Codable, Equatable {
+    var payload: LootMessagePayload
+    var ignoredUUIDs: [String]?
+}
+
 enum LootMessageCodec {
+    struct DecodedInlinePayload: Equatable {
+        var payload: LootMessagePayload
+        var ignoredUUIDs: [String]
+        var hasIgnoredUUIDsList: Bool
+    }
+
     private static let payloadKey = "p"  // shortened from "payload"
-    
-    static func encodeToQueryValue(_ payload: LootMessagePayload) -> String? {
+
+    private static func normalizedIgnoredUUIDs(_ uuids: [String]) -> [String] {
+        var seen: Set<String> = []
+        var out: [String] = []
+        for raw in uuids {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            if seen.insert(trimmed).inserted {
+                out.append(trimmed)
+            }
+        }
+        return out
+    }
+
+    static func encodeToQueryValue(_ envelope: InlineMessageEnvelope) -> String? {
         do {
             let encoder = JSONEncoder()
             // ✅ Don't include nil values to save space
             encoder.outputFormatting = []
-            let data = try encoder.encode(payload)
+            let normalized = InlineMessageEnvelope(
+                payload: envelope.payload,
+                ignoredUUIDs: envelope.ignoredUUIDs.map(normalizedIgnoredUUIDs)
+            )
+            let data = try encoder.encode(normalized)
             
             // ✅ Add compression for large payloads
             let compressed = try? (data as NSData).compressed(using: .lzfse) as Data
@@ -256,22 +284,37 @@ enum LootMessageCodec {
             return nil
         }
     }
-    
-    static func decodeFromQueryValue(_ s: String) -> LootMessagePayload? {
+
+    static func decodeFromQueryValue(_ s: String) -> DecodedInlinePayload? {
         guard let data = Data(base64URLEncoded: s) else { return nil }
         
         // ✅ Try decompression first
         let decompressed = (try? (data as NSData).decompressed(using: .lzfse) as Data) ?? data
         
         do {
-            return try JSONDecoder().decode(LootMessagePayload.self, from: decompressed)
+            let envelope = try JSONDecoder().decode(InlineMessageEnvelope.self, from: decompressed)
+            let list = normalizedIgnoredUUIDs(envelope.ignoredUUIDs ?? [])
+            return DecodedInlinePayload(
+                payload: envelope.payload,
+                ignoredUUIDs: list,
+                hasIgnoredUUIDsList: envelope.ignoredUUIDs != nil
+            )
         } catch {
-            print("[LootMessageCodec] decode failed: \(error)")
-            return nil
+            do {
+                let legacyPayload = try JSONDecoder().decode(LootMessagePayload.self, from: decompressed)
+                return DecodedInlinePayload(
+                    payload: legacyPayload,
+                    ignoredUUIDs: [],
+                    hasIgnoredUUIDsList: false
+                )
+            } catch {
+                print("[LootMessageCodec] decode failed: \(error)")
+                return nil
+            }
         }
     }
-    
-    static func payload(from url: URL) -> LootMessagePayload? {
+
+    static func decodedInlinePayload(from url: URL) -> DecodedInlinePayload? {
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let item = comps.queryItems?.first(where: { $0.name == payloadKey }),
               let value = item.value,
@@ -280,12 +323,21 @@ enum LootMessageCodec {
         
         return decodeFromQueryValue(value)
     }
-    
-    static func writePayload(into components: inout URLComponents, payload: LootMessagePayload) {
+
+    static func payload(from url: URL) -> LootMessagePayload? {
+        decodedInlinePayload(from: url)?.payload
+    }
+
+    static func writePayload(
+        into components: inout URLComponents,
+        payload: LootMessagePayload,
+        ignoredUUIDs: [String]? = nil
+    ) {
         var items = components.queryItems ?? []
         items.removeAll(where: { $0.name == payloadKey })
-        
-        if let encoded = encodeToQueryValue(payload) {
+
+        let envelope = InlineMessageEnvelope(payload: payload, ignoredUUIDs: ignoredUUIDs)
+        if let encoded = encodeToQueryValue(envelope) {
             items.append(URLQueryItem(name: payloadKey, value: encoded))
         }
         components.queryItems = items

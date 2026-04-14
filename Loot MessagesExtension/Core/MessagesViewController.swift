@@ -297,7 +297,17 @@ extension MessagesViewController {
 
             // Extract inline fallback payload embedded at send time.
             // Present on every card sent with the current app version.
-            let inlinePayload = LootMessageCodec.payload(from: url)
+            let decodedInline = LootMessageCodec.decodedInlinePayload(from: url)
+            let inlinePayload = decodedInline?.payload
+            if let decodedInline {
+                uiModel.setInlineIgnoredState(
+                    ignoredUUIDs: decodedInline.ignoredUUIDs,
+                    hasList: decodedInline.hasIgnoredUUIDsList,
+                    for: docId
+                )
+            } else {
+                uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
+            }
 
             Task { @MainActor in
                 do {
@@ -376,9 +386,16 @@ extension MessagesViewController {
         }
 
         // Legacy path: inline payload
-        if let payload = LootMessageCodec.payload(from: url) {
+        if let decodedInline = LootMessageCodec.decodedInlinePayload(from: url) {
+            let payload = decodedInline.payload
+            let billId = payload.r.id
+            uiModel.setInlineIgnoredState(
+                ignoredUUIDs: decodedInline.ignoredUUIDs,
+                hasList: decodedInline.hasIgnoredUUIDsList,
+                for: billId
+            )
             uiModel.openedMessagePayload = payload
-            uiModel.openedMessageDocId = payload.r.id
+            uiModel.openedMessageDocId = billId
             uiModel.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
             if let tabData = payload.tab { Task { @MainActor in await self.applyTabData(tabData) } }
@@ -740,12 +757,17 @@ extension MessagesViewController {
 
         // Pre-generate a Firestore doc ID (local, no network)
         let docId = SharedReceiptService.shared.generateDocId()
+        uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: true, for: docId)
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
         // Embed the full payload inline (compressed) so the card is readable
         // even if the Firestore upload never completes (e.g. no internet at send time).
-        LootMessageCodec.writePayload(into: &components, payload: payload)
+        LootMessageCodec.writePayload(
+            into: &components,
+            payload: payload,
+            ignoredUUIDs: uiModel.ignoredUUIDs(for: docId)
+        )
 
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
@@ -810,7 +832,14 @@ extension MessagesViewController {
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
-        LootMessageCodec.writePayload(into: &components, payload: payload)
+        let ignoredToWrite: [String]? = uiModel.hasIgnoredUUIDsList(for: docId)
+            ? uiModel.ignoredUUIDs(for: docId)
+            : nil
+        LootMessageCodec.writePayload(
+            into: &components,
+            payload: payload,
+            ignoredUUIDs: ignoredToWrite
+        )
 
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
