@@ -16,6 +16,9 @@ final class MessagesViewController: MSMessagesAppViewController {
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
     private var hasSetupRootView = false
     private var isTranscript = false
+    private var billUpdateSessionByDocId: [String: MSSession] = [:]
+    private var pendingBillUpdateByDocId: [String: LootMessagePayload] = [:]
+    private var lastSentSplitSignatureByDocId: [String: String] = [:]
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -262,6 +265,119 @@ final class MessagesViewController: MSMessagesAppViewController {
 
 extension MessagesViewController {
 
+    private func messageDocId(from url: URL?) -> String? {
+        guard let url else { return nil }
+        let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        guard let docId = comps?.queryItems?.first(where: { $0.name == "id" })?.value,
+              !docId.isEmpty
+        else { return nil }
+        return docId
+    }
+
+    private func splitSignature(for split: SplitPayload) -> String {
+        guard let data = try? JSONEncoder().encode(split) else { return "" }
+        return data.base64EncodedString()
+    }
+
+    private func bindBillUpdateAnchor(from message: MSMessage, docId: String, conversation: MSConversation) {
+        guard let session = message.session else { return }
+        billUpdateSessionByDocId[docId] = session
+        flushPendingBillUpdateIfNeeded(for: docId, conversation: conversation)
+    }
+
+    private func flushPendingBillUpdateIfNeeded(for docId: String, conversation: MSConversation) {
+        guard let pending = pendingBillUpdateByDocId.removeValue(forKey: docId) else { return }
+        sendBillUpdate(payload: pending, docId: docId, conversation: conversation)
+    }
+
+    private func sendBillUpdate(payload: LootMessagePayload, docId: String, conversation: MSConversation) {
+        let signature = splitSignature(for: payload.s)
+        if !signature.isEmpty, lastSentSplitSignatureByDocId[docId] == signature {
+            return
+        }
+
+        if let anchoredSession = billUpdateSessionByDocId[docId] {
+            sendBillUpdateMessage(
+                payload: payload,
+                docId: docId,
+                signature: signature,
+                session: anchoredSession,
+                conversation: conversation
+            )
+            return
+        }
+
+        if let selected = conversation.selectedMessage,
+           messageDocId(from: selected.url) == docId,
+           let selectedSession = selected.session {
+            billUpdateSessionByDocId[docId] = selectedSession
+            sendBillUpdateMessage(
+                payload: payload,
+                docId: docId,
+                signature: signature,
+                session: selectedSession,
+                conversation: conversation
+            )
+            return
+        }
+
+        pendingBillUpdateByDocId[docId] = payload
+        print("[sendBillUpdate] Deferring update until anchored session is available for doc: \(docId)")
+    }
+
+    private func sendBillUpdateMessage(
+        payload: LootMessagePayload,
+        docId: String,
+        signature: String,
+        session: MSSession,
+        conversation: MSConversation
+    ) {
+        let splitPayload = payload.s
+        let participantCount = max(1, splitPayload.g.count)
+
+        let cardImage = renderCardImage(
+            receiptName: payload.r.t,
+            displayAmount: ReceiptDisplay.money(payload.r.tot),
+            participantCount: participantCount,
+            splitPayload: splitPayload,
+            tabName: payload.tab?.n,
+            tabColorHex: payload.tab?.c
+        )
+
+        var components = lootURLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: docId)]
+        let ignoredToWrite: [String]? = uiModel.hasIgnoredUUIDsList(for: docId)
+            ? uiModel.ignoredUUIDs(for: docId)
+            : nil
+        LootMessageCodec.writePayload(
+            into: &components,
+            payload: payload,
+            ignoredUUIDs: ignoredToWrite
+        )
+
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        // Transitional: send as template layout (see sendBillMessage comment)
+        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+
+        if !signature.isEmpty {
+            lastSentSplitSignatureByDocId[docId] = signature
+        }
+
+        let message = MSMessage(session: session)
+        message.layout = alternateLayout
+        message.url = components.url
+
+        conversation.send(message) { [weak self] error in
+            if let error {
+                if !signature.isEmpty, self?.lastSentSplitSignatureByDocId[docId] == signature {
+                    self?.lastSentSplitSignatureByDocId.removeValue(forKey: docId)
+                }
+                print("[sendBillUpdate] Failed to send updated bill message: \(error)")
+            }
+        }
+    }
+
     private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
         // expansion state
         uiModel.isExpanded = (presentationStyle == .expanded)
@@ -288,6 +404,8 @@ extension MessagesViewController {
         // New path: Firestore doc ID
         if let docId = comps?.queryItems?.first(where: { $0.name == "id" })?.value,
            !docId.isEmpty {
+            bindBillUpdateAnchor(from: msg, docId: docId, conversation: conversation)
+
             // Clear old payload first so MessageReceiptViewer unmounts,
             // then remounts fresh once the new payload arrives.
             uiModel.openedMessagePayload = nil
@@ -389,6 +507,7 @@ extension MessagesViewController {
         if let decodedInline = LootMessageCodec.decodedInlinePayload(from: url) {
             let payload = decodedInline.payload
             let billId = payload.r.id
+            bindBillUpdateAnchor(from: msg, docId: billId, conversation: conversation)
             uiModel.setInlineIgnoredState(
                 ignoredUUIDs: decodedInline.ignoredUUIDs,
                 hasList: decodedInline.hasIgnoredUUIDsList,
@@ -813,49 +932,7 @@ extension MessagesViewController {
 
     func sendBillUpdate(payload: LootMessagePayload, docId: String) {
         guard let conversation = activeConversation else { return }
-        guard let selectedMessage = conversation.selectedMessage else {
-            print("[sendBillUpdate] No selected message session to update for doc: \(docId)")
-            return
-        }
-
-        let splitPayload = payload.s
-        let participantCount = max(1, splitPayload.g.count)
-
-        let cardImage = renderCardImage(
-            receiptName: payload.r.t,
-            displayAmount: ReceiptDisplay.money(payload.r.tot),
-            participantCount: participantCount,
-            splitPayload: splitPayload,
-            tabName: payload.tab?.n,
-            tabColorHex: payload.tab?.c
-        )
-
-        var components = lootURLComponents()
-        components.queryItems = [URLQueryItem(name: "id", value: docId)]
-        let ignoredToWrite: [String]? = uiModel.hasIgnoredUUIDsList(for: docId)
-            ? uiModel.ignoredUUIDs(for: docId)
-            : nil
-        LootMessageCodec.writePayload(
-            into: &components,
-            payload: payload,
-            ignoredUUIDs: ignoredToWrite
-        )
-
-        let alternateLayout = MSMessageTemplateLayout()
-        alternateLayout.image = cardImage
-        // Transitional: send as template layout (see sendBillMessage comment)
-        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
-
-        let session = selectedMessage.session ?? MSSession()
-        let message = MSMessage(session: session)
-        message.layout = alternateLayout
-        message.url = components.url
-
-        conversation.send(message) { error in
-            if let error {
-                print("[sendBillUpdate] Failed to send updated bill message: \(error)")
-            }
-        }
+        sendBillUpdate(payload: payload, docId: docId, conversation: conversation)
     }
 
     private func sendTabInviteMessage(

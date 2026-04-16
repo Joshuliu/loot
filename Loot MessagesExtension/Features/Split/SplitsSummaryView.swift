@@ -52,6 +52,7 @@ struct SplitsSummaryView: View {
     @State private var selectedSection: DetailSection = .splits
     @State private var showCapture: Bool = false
     @State private var headerScrollOffset: CGFloat = 0
+    @State private var initializedClaimStateBillId: String? = nil
 
     @Environment(\.openURL) private var openURL
 
@@ -1164,6 +1165,10 @@ struct SplitsSummaryView: View {
             }
         }
         .onAppear {
+            let initBillId = currentBillId ?? "__legacy__"
+            guard initializedClaimStateBillId != initBillId else { return }
+            initializedClaimStateBillId = initBillId
+
             let myUid = KeychainHelper.getOrCreateUserId()
             let alreadyClaimed = split.g.contains { $0.uid == myUid }
 
