@@ -1070,6 +1070,7 @@ struct RootContainerView: View {
                 payload: payload,
                 onClose: {
                     uiModel.openedMessagePayload = nil
+                    uiModel.openedMessageDocId = nil
                     uiModel.messageLoadingState = .idle
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         uiModel.currentScreen = .tabview
@@ -1105,6 +1106,7 @@ struct RootContainerView: View {
                 Button("Go Back") {
                     uiModel.messageLoadingState = .idle
                     uiModel.openedMessagePayload = nil
+                    uiModel.openedMessageDocId = nil
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         uiModel.currentScreen = .tabview
                     }

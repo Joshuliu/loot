@@ -16,6 +16,7 @@ struct SplitsSummaryView: View {
     let onEditSplit: (() -> Void)?
     let onEditReceipt: (() -> Void)?
     let onRemoveFromTab: (() -> Void)?
+    let onClose: (() -> Void)?
     let onRequestCollapse: (() -> Void)?
 
     private var canEdit: Bool {
@@ -72,6 +73,7 @@ struct SplitsSummaryView: View {
         onEditSplit: (() -> Void)? = nil,
         onEditReceipt: (() -> Void)? = nil,
         onRemoveFromTab: (() -> Void)? = nil,
+        onClose: (() -> Void)? = nil,
         onRequestCollapse: (() -> Void)? = nil
     ) {
         self.uiModel = uiModel
@@ -80,6 +82,7 @@ struct SplitsSummaryView: View {
         self.onEditSplit = onEditSplit
         self.onEditReceipt = onEditReceipt
         self.onRemoveFromTab = onRemoveFromTab
+        self.onClose = onClose
         self.onRequestCollapse = onRequestCollapse
     }
 
@@ -158,9 +161,7 @@ struct SplitsSummaryView: View {
         if let associatedTab {
             uiModel.activeTab = associatedTab
         }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            uiModel.currentScreen = .tabview
-        }
+        onClose?()
     }
 
     private var headerNavButtonTitle: String {
@@ -182,9 +183,7 @@ struct SplitsSummaryView: View {
             openAssociatedTab()
         } else {
             onRequestCollapse?()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                uiModel.currentScreen = .tabview
-            }
+            onClose?()
         }
     }
 

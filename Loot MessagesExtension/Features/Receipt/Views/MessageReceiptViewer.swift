@@ -40,6 +40,9 @@ struct MessageReceiptViewer: View {
                     removeFromTab()
                 }
             },
+            onClose: {
+                onClose()
+            },
             onRequestCollapse: {
                 onRequestCollapse()
             }
