@@ -1,0 +1,65 @@
+{
+  "capturedAt" : "2026-04-19T01:30:05Z",
+  "caseID" : "img_5112",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 3943,
+    "breakdown" : 1,
+    "expectedTotalCents" : 6943,
+    "itemValues" : 0.6666666666666666,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.39999999999999997,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -3000,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 255,
+        "label" : "CA Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Grossmont",
+      "total_cents" : 6943
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Subtotal",
+        "Unclassified priced row: Total",
+        "Unclassified priced row: Debit Payment",
+        "Resolved rows differ from known total by 3000 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 2099,
+          "label" : "Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1589,
+          "label" : "Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 6688,
+      "tax_cents" : 255
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Item|2099\nITEM|Item|1589\nUNKNOWN|Subtotal|3000\nTAX|CA Tax|255\nUNKNOWN|Total|255\nUNKNOWN|Debit Payment|6943\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6197500228881836,
+      "phase2Seconds" : 15.688063025474548,
+      "totalWorkflowSeconds" : 22.214259028434753,
+      "transcriptSeconds" : 5.906440019607544,
+      "transcriptToPhase1Seconds" : 0.6197500228881836,
+      "transcriptToPhase2Seconds" : 16.30781900882721,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr La Mesa, California 91942-3015 01\/30\/2026 02:00 PM NF $20.99 NF $15.89 $30.00 SUBTOTAL T = CA TAX 8.50000 on $30.00 $66.88 $2.55 TOTAL $69.43 *4435 DEBIT TOTAL PAYMENT $69.43 AID: A0000000980840 US DEBIT AUTH CODE: 079603 WHEN YOU RETURN ANY ITEM, YOUR RETURN CREDIT WILL NOT INCLUDE ANY PROMOTIONAL DISCOUNT OR COUPON APPLIED TO THE ORIGINAL ORDER. VOTICE: Some furniture products can expose you to chemicals known to the State of lifornia to cause cancer, birth derects or ther reproductive harm. Please check on- warning inormation REC#2-6030-0997-0173-8749-7 ----------. Help make your Target Run better.\nGROCERY 055070114 GHIRARDELLI 055020991 GHIRARDELLI PATIO & OUTDOOR DECOR 344020038 GLG product label for"
+  },
+  "sourceFilename" : "IMG_5112.jpeg",
+  "variantID" : "current"
+}

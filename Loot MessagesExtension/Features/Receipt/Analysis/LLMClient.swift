@@ -38,7 +38,8 @@ struct Phase2Result: Codable, Equatable {
     let subtotal_cents: Int?
     let tax_cents: Int?
     let tip_cents: Int?
-    let fees_cents: Int?  // signed: negative = discount
+    let fees_cents: Int?
+    let discount_cents: Int?
     let items: [Item]
     let issues: [String]
 }
@@ -669,6 +670,7 @@ final class LLMClient {
             let taxCents: Int
             let tipCents: Int
             let feesCents: Int
+            let discountCents: Int
             let issues: [String]
             let discountModes: [Int: DiscountResolutionMode]
             let score: Int
@@ -685,6 +687,7 @@ final class LLMClient {
         var taxCents = 0
         var tipCents = 0
         var feesCents = 0
+        var discountCents = 0
         var issues: [String] = []
         var discountCandidates: [DiscountCandidate] = []
 
@@ -724,12 +727,13 @@ final class LLMClient {
 
         func total(of items: [Phase2Result.Item], feesCents: Int) -> Int {
             let itemTotal = items.reduce(0) { $0 + max(0, $1.cents ?? 0) }
-            return itemTotal + taxCents + tipCents + feesCents
+            return itemTotal + taxCents + tipCents + feesCents - discountCents
         }
 
         func apply(_ candidate: DiscountCandidate, mode: DiscountResolutionMode, to state: ResolutionState) -> ResolutionState {
             var nextItems = state.items
             var nextFees = state.feesCents
+            var nextDiscount = state.discountCents
             var nextIssues = state.issues
             var nextDiscountModes = state.discountModes
             var nextScore = state.score
@@ -737,7 +741,7 @@ final class LLMClient {
             switch mode {
             case .billWide:
                 if let cents = candidate.row.cents {
-                    nextFees += cents
+                    nextDiscount += abs(cents)
                     nextDiscountModes[candidate.row.index] = mode
                 } else {
                     nextIssues.append("Missing amount for discount row: \(candidate.row.label)")
@@ -748,12 +752,12 @@ final class LLMClient {
                 guard itemIndex >= 0, itemIndex < nextItems.count else {
                     nextIssues.append("Discount could not attach to previous item: \(candidate.row.label)")
                     nextScore += 500
-                    return ResolutionState(items: nextItems, taxCents: state.taxCents, tipCents: state.tipCents, feesCents: nextFees, issues: nextIssues, discountModes: nextDiscountModes, score: nextScore)
+                    return ResolutionState(items: nextItems, taxCents: state.taxCents, tipCents: state.tipCents, feesCents: nextFees, discountCents: nextDiscount, issues: nextIssues, discountModes: nextDiscountModes, score: nextScore)
                 }
                 guard let cents = candidate.row.cents else {
                     nextIssues.append("Missing amount for discount row: \(candidate.row.label)")
                     nextScore += 200
-                    return ResolutionState(items: nextItems, taxCents: state.taxCents, tipCents: state.tipCents, feesCents: nextFees, issues: nextIssues, discountModes: nextDiscountModes, score: nextScore)
+                    return ResolutionState(items: nextItems, taxCents: state.taxCents, tipCents: state.tipCents, feesCents: nextFees, discountCents: nextDiscount, issues: nextIssues, discountModes: nextDiscountModes, score: nextScore)
                 }
 
                 let current = nextItems[itemIndex]
@@ -775,6 +779,7 @@ final class LLMClient {
                 taxCents: state.taxCents,
                 tipCents: state.tipCents,
                 feesCents: nextFees,
+                discountCents: nextDiscount,
                 issues: nextIssues,
                 discountModes: nextDiscountModes,
                 score: nextScore
@@ -796,7 +801,7 @@ final class LLMClient {
             for mode in modes {
                 let next = apply(candidate, mode: mode, to: state)
                 let resolved = resolveDiscounts(index + 1, state: next)
-                let diff = abs(knownTotalCents - total(of: resolved.items, feesCents: resolved.feesCents))
+                let diff = abs(knownTotalCents - (resolved.items.reduce(0) { $0 + max(0, $1.cents ?? 0) } + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents))
 
                 if let currentBestDiff = bestDiff, let currentBest = bestState {
                     if diff < currentBestDiff || (diff == currentBestDiff && resolved.score < currentBest.score) {
@@ -817,6 +822,7 @@ final class LLMClient {
             taxCents: taxCents,
             tipCents: tipCents,
             feesCents: feesCents,
+            discountCents: discountCents,
             issues: issues,
             discountModes: [:],
             score: 0
@@ -827,7 +833,7 @@ final class LLMClient {
             guard let cents = item.cents else { return true }
             return cents != 0
         }
-        let derivedSubtotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents
+        let derivedSubtotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents + resolved.discountCents
         let subtotal = max(0, derivedSubtotal)
 
         var finalIssues = resolved.issues
@@ -835,7 +841,7 @@ final class LLMClient {
             finalIssues.append("Derived subtotal was negative; clamped to zero")
         }
 
-        let resolvedTotal = total(of: resolved.items, feesCents: resolved.feesCents)
+        let resolvedTotal = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) } + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
         if resolvedTotal != knownTotalCents {
             finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - resolvedTotal)) cents")
         }
@@ -859,6 +865,7 @@ final class LLMClient {
                 tax_cents: resolved.taxCents == 0 ? nil : resolved.taxCents,
                 tip_cents: resolved.tipCents == 0 ? nil : resolved.tipCents,
                 fees_cents: resolved.feesCents == 0 ? nil : resolved.feesCents,
+                discount_cents: resolved.discountCents == 0 ? nil : resolved.discountCents,
                 items: filteredItems,
                 issues: finalIssues
             ),
@@ -986,7 +993,8 @@ extension LLMClient {
         ]
 
         let resolved = resolveExtractedRows(rows, knownTotalCents: 1430)
-        assert(resolved.phase2.fees_cents == -300, "Expected bill-wide discount in fees")
+        assert(resolved.phase2.fees_cents == nil, "Expected no fees for bill-wide discount")
+        assert(resolved.phase2.discount_cents == 300, "Expected bill-wide discount stored separately")
         assert(resolved.lineItems.contains(where: { $0.label == "Birthday Discount" && $0.cents == -300 }),
                "Expected bill-wide discount line item")
     }
@@ -1001,6 +1009,7 @@ extension LLMClient {
         let resolved = resolveExtractedRows(rows, knownTotalCents: 1400)
         assert(resolved.phase2.items.first?.cents == 1300, "Expected discount attached to item")
         assert(resolved.phase2.fees_cents == nil, "Expected no bill-wide fees after attachment")
+        assert(resolved.phase2.discount_cents == nil, "Expected no bill-wide discount after attachment")
         assert(!resolved.lineItems.contains(where: { $0.label == "Promo" }),
                "Attached discount should not remain a footer line item")
     }
@@ -1015,6 +1024,7 @@ extension LLMClient {
         let resolved = resolveExtractedRows(rows, knownTotalCents: 1400)
         assert(resolved.phase2.items.first?.cents == 1300, "Expected already-included discount to be ignored")
         assert(resolved.phase2.fees_cents == nil, "Expected ignored discount not to change fees")
+        assert(resolved.phase2.discount_cents == nil, "Expected ignored discount not to change bill-wide discount")
         assert(resolved.phase2.issues.contains(where: { $0.contains("Ignored discount row: Promo") }),
                "Expected ignored-discount issue")
     }

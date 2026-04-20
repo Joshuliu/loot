@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-04-19T01:17:45Z",
+  "caseID" : "64072025180__dd32f62b-d7f8-4117-a0f5-0da248be7708",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2892,
+    "breakdown" : 1,
+    "expectedTotalCents" : 2892,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 242,
+        "label" : "County Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "LOS GATOS CAFE",
+      "total_cents" : 2892
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 750,
+          "label" : "Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Sunnyside Up",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 2650,
+      "tax_cents" : 242
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Item|750\nITEM|Item|300\nITEM|Scramble|0\nITEM|Sunnyside Up|1600\nITEM|Sourdough Toast|0\nTAX|County Tax|242\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5679529905319214,
+      "phase2Seconds" : 19.860320925712585,
+      "totalWorkflowSeconds" : 24.48178994655609,
+      "transcriptSeconds" : 4.053511023521423,
+      "transcriptToPhase1Seconds" : 0.5679529905319214,
+      "transcriptToPhase2Seconds" : 20.428278923034668,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "LOS GATOS CAFE 340 N SANTA CRUZ LOS GATOS, CA 95030 4083544647 ORDER: patio saturday S4 Dine In $7.50 $3.00 Egg Style: Scramble $0.00 $16.00 Egg Style: Sunnyside Up $0.00 Toast Options: Sourdough $0.00 $26.50 $2.42 $28.92\nCashier: Sandra 21-Apr-2021 10:18:42A S Flank Steak Two Eggs Flank Steak Subtotal Santa Clara County9.125% Total 42BPYJV4DNEZT Order 42BPYJV4DNEZT"
+  },
+  "sourceFilename" : "64072025180__DD32F62B-D7F8-4117-A0F5-0DA248BE7708.jpeg",
+  "variantID" : "current"
+}

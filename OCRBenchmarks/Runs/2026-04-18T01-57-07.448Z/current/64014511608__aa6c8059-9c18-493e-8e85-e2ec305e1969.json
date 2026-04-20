@@ -1,0 +1,57 @@
+{
+  "capturedAt" : "2026-04-18T01:59:20Z",
+  "caseID" : "64014511608__aa6c8059-9c18-493e-8e85-e2ec305e1969",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 1303,
+    "breakdown" : 1,
+    "expectedTotalCents" : 1303,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 108,
+        "label" : "Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "sweetgreen",
+      "total_cents" : 1303
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 1195,
+          "label" : "Kale Caesar",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 1195,
+      "tax_cents" : 108
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Kale Caesar|1195\nTAX|Sales Tax|108\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5048370361328125,
+      "phase2Seconds" : 2.7160511016845703,
+      "totalWorkflowSeconds" : 9.471618056297302,
+      "transcriptSeconds" : 6.250725984573364,
+      "transcriptToPhase1Seconds" : 0.5048370361328125,
+      "transcriptToPhase2Seconds" : 3.220892071723938,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "sweetgreen\n300 W El Camino Real\nSunnyvale, CA 94087\nPhone (415) 737-9900\nDuplicate Receipt #4\n4\/14\/2021 6:46:07 PM\nOrder Id: AAAZGJ2NAECN\n391 - In Store\nEmployee: Arnold A\n1 Kale Caesar $11.95\nSub Total $11.95\nSales Tax $1.08\nOrder Total $13.03\nVisa $13.03\nCard#: **** ***4582\nAuthorization: 164751\n→- Reprint #4 <--\nCARD NAME: CARDHOLDER VISA\nAPPROVAL: 164751\nPOS REF: 2\nCCT REF: 2\nAID: A0000000031010\nTVR:\nTSI:\nAPP LABEL:\nBATCH #: 104001\nENTRY METHOD: NFC Entry"
+  },
+  "sourceFilename" : "64014511608__AA6C8059-9C18-493E-8E85-E2EC305E1969.jpeg",
+  "variantID" : "current"
+}

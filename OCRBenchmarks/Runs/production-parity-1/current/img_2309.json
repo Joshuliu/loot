@@ -1,0 +1,98 @@
+{
+  "capturedAt" : "2026-04-19T01:26:03Z",
+  "caseID" : "img_2309",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 17580,
+    "breakdown" : 0.4,
+    "expectedTotalCents" : 37942,
+    "itemValues" : 0.6,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.28,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -20362,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 5300,
+        "label" : "Tip"
+      },
+      {
+        "cents" : 126,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Ti'an Bistro",
+      "total_cents" : 37942
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Subtotal",
+        "Resolved rows differ from known total by 20362 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 1760,
+          "label" : "Duck Set 2 Beijing Roast",
+          "qty" : 1
+        },
+        {
+          "cents" : 1499,
+          "label" : "Soy Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "Vegetable Stir-Fried Noodles",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Steamed Lamb & Carrot Dumplings 12pcs",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "String Beans (Dry-Fried\/Garlic)",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "String Beans (Dry-Fried\/Garlic)",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "Bottled Iced Tea",
+          "qty" : 1
+        },
+        {
+          "cents" : 1599,
+          "label" : "Wong Lo Kat Herbal",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 32516,
+      "tax_cents" : 126,
+      "tip_cents" : 5300
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Duck Set 2 Beijing Roast|1760\nITEM|Soy Fried Rice|1499\nITEM|Vegetable Stir-Fried Noodles|1399\nITEM|Steamed Lamb & Carrot Dumplings 12pcs|1700\nITEM|String Beans (Dry-Fried\/Garlic)|1399\nITEM|String Beans (Dry-Fried\/Garlic)|1399\nITEM|Bottled Iced Tea|1399\nITEM|Wong Lo Kat Herbal|1599\nUNKNOWN|Subtotal|897\nTIP|Tip|5300\nTAX|Tax|126\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4334830045700073,
+      "phase2Seconds" : 18.15459907054901,
+      "totalWorkflowSeconds" : 28.268338084220886,
+      "transcriptSeconds" : 9.680252075195312,
+      "transcriptToPhase1Seconds" : 0.4334830045700073,
+      "transcriptToPhase2Seconds" : 18.588086009025574,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Evanston, IL 60201 810 Grove Street Ti'an Bistro\nCheck #90 Server: Server 1\nGuest Count: 13 Table 12\nOrdered: 2\/1\/26 7:40 PM\nDuck Set 2 (Whole) Beijing Roast\n5176.00\n40. Soy Fried Rice\n(Choice of\nPork\/Beef\/Chicken\/Shrimp)\n) $14.99\nShrimp diF\n1 35. Vegetable Stir-Fried\nNoodles SKID $13.99\n1 12. Steamed Lamb & Carrot\nDumplings 12pcs\n-99 TD NEix 12pcs$17\n1 74. String Beans\n(Dry-Fried\/Garlic)\nPUS0T0N\/s**) $13.99 Dry-Fried (Spicy Level:\nMild) FAd\n1 74. String Beans\n(Dry-Fried\/Garlic)\nP4350T00\/xx2) $13.99 Dry-Fried (Spicy Level:\nSubtotal Tea 05 - in (Sweetened) Bottled Iced Zhajiang Level\nTİP Tax Can- Wong Lo Kat Hearbal $13.99 $15.99\notal $8-97\n$295.88 $30 $5.98\nPUt Тyре $379-42 $53 1-26 -28\nit Mastercard C (EMU Chip Read)\nxxXxxxxx0327\nction ТУРе 8: 58 PM\nSale\nApproued"
+  },
+  "sourceFilename" : "IMG_2309.heic",
+  "variantID" : "current"
+}

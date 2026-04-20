@@ -27,7 +27,8 @@ struct SplitDraft: Equatable, Codable {
     var totalCents: Int
     var perGuestCents: [Int]
     var items: [Item]
-    var feesCents: Int  // signed: negative = discount
+    var feesCents: Int
+    var discountCents: Int
     var taxCents: Int
     var tipCents: Int
 
@@ -523,6 +524,7 @@ extension ConfirmationView {
             perGuestCents: guestAmountsCents,
             items: items,
             feesCents: stringToCents(feesString),
+            discountCents: uiModel.currentReceipt?.discountCents ?? 0,
             taxCents: stringToCents(taxString),
             tipCents: stringToCents(tipString)
         )

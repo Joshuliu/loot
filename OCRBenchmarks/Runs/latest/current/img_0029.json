@@ -1,0 +1,118 @@
+{
+  "capturedAt" : "2026-04-18T02:33:25Z",
+  "caseID" : "img_0029",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 0,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 23618,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.23,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -23618,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Store 919",
+      "total_cents" : 23618
+    },
+    "phase2" : {
+      "issues" : [
+        "Discount row missing amount: Associate Savings",
+        "Ignored discount row: Unknown",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Resolved rows differ from known total by 23618 cents"
+      ],
+      "items" : [
+        {
+          "label" : "JELLO RASPBERRY",
+          "qty" : 1
+        },
+        {
+          "label" : "HORIZON MLK STRUBR 29 CRYSTL GYR Alpine 2e CRV SFTDK 35PK NTX",
+          "qty" : 1
+        },
+        {
+          "label" : "LF TORTILLA LIGHT BUMBLE BEE 50Z",
+          "qty" : 1
+        },
+        {
+          "label" : "LACTAID MILK RF",
+          "qty" : 1
+        },
+        {
+          "label" : "LACTAID 2% PROTEIN KERNS NECTAR MANGO",
+          "qty" : 1
+        },
+        {
+          "label" : "CLOVER MILK GEN MERCHANDISE MONDAY SMOOTH CUCUMBER & MINT EUCALYPTUS & MINT METHOD BODY WASH",
+          "qty" : 1
+        },
+        {
+          "label" : "BF PORTERHOUSE STK",
+          "qty" : 1
+        },
+        {
+          "label" : "BF RIBEYE STK BNLS",
+          "qty" : 1
+        },
+        {
+          "label" : "BF RIBEYE STK BNLS",
+          "qty" : 1
+        },
+        {
+          "label" : "WFB SALMON NOVA",
+          "qty" : 1
+        },
+        {
+          "label" : "OPN NAT SNOW CRAB",
+          "qty" : 1
+        },
+        {
+          "label" : "PINEAPPLE GOLD WATERMELON SDLS",
+          "qty" : 1
+        },
+        {
+          "label" : "ORG GIRL BABY SPIN PEACHES WHITE",
+          "qty" : 1
+        },
+        {
+          "label" : "BOK CHOY BBY ORGNC",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 23618
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nDISCOUNT|Unknown|663\nITEM|JELLO RASPBERRY|\nDISCOUNT|Member Savings|29\nITEM|HORIZON MLK STRUBR 29 CRYSTL GYR Alpine 2e CRV SFTDK 35PK NTX|\nDISCOUNT|Member Savings|300\nITEM|LF TORTILLA LIGHT BUMBLE BEE 50Z|\nDISCOUNT|Member Savings|50\nITEM|LACTAID MILK RF|\nDISCOUNT|Member Savings|50\nITEM|LACTAID 2% PROTEIN KERNS NECTAR MANGO|\nDISCOUNT|Member Savings|30\nITEM|CLOVER MILK GEN MERCHANDISE MONDAY SMOOTH CUCUMBER & MINT EUCALYPTUS & MINT METHOD BODY WASH|\nITEM|BF PORTERHOUSE STK|\nITEM|BF RIBEYE STK BNLS|\nDISCOUNT|Associate Savings|264\nITEM|BF RIBEYE STK BNLS|\nDISCOUNT|Associate Savings|212\nITEM|WFB SALMON NOVA|\nDISCOUNT|Associate Savings|160\nITEM|OPN NAT SNOW CRAB|\nDISCOUNT|Associate Savings|180\nDISCOUNT|Member Savings|700\nITEM|PINEAPPLE GOLD WATERMELON SDLS|\nDISCOUNT|Member Savings|100\nITEM|ORG GIRL BABY SPIN PEACHES WHITE|\nDISCOUNT|Member Savings|226\nITEM|BOK CHOY BBY ORGNC|\nITEM|TOV TOMATOES ORGNC|\nFEE|RCYCBLE BAG CHARGE|\nDISCOUNT|Associate Savings|\nTAX|TAX|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5310330390930176,
+      "phase2Seconds" : 70.56106901168823,
+      "totalWorkflowSeconds" : 79.81590294837952,
+      "transcriptSeconds" : 8.723793983459473,
+      "transcriptToPhase1Seconds" : 0.531033992767334,
+      "transcriptToPhase2Seconds" : 71.09210896492004,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "You Pay 2.00 S 1.79 S 11.98 S 3.50 S 5.49 S 2.49 S 6.99 S 5.49 S 4.49 S 16.98 S 8.99 T 10.99 T 10.99 T 9.99 T 29.25 S 23.75 S 18.99 S 14.39 S 16.19 S 3.99 6.99 5.99 S 6.76 S 2.23 S 8.08 S 0.30 -6.63 3.74 236.18\nStore 919 Dir Abel Garcia Main: (408) 867-0180 12876 Saratoga\/Sunnyvale Rd SARATOGA CA 95070 00091900303362407290103 YOUR CASHIER TODAY WAS David Price 2.29 1.79 14.98 3.50 5.49 2.99 7.49 5.49 4.79 16.98 8.99 10.99 10.99 9.99 29.25 26.39 21.11 15.99 24.99 3.99 7.99 5.99 9.02 2.23 8.08 0.30 236.18 0.00 14.85 14.79 29.64 11%\nJELLO RASPBERRY Member Savings -0.29 74236520865 HORIZON MLK STRUBR 29 CRYSTL GYR ALPINE 2e CRV SFTDK 35PK NTX Member Savings -3.00 LF TORTILLA LIGHT BUMBLE BEE 50Z Member Savings -0.50 LACTAID MILK RF Member Savings -0.50 LACTAID 2% PROTEIN KERNS NECTAR MANGO Member Savings -0.30 29 CLOVER MILK GEN MERCHANDISE MONDAY SMOOTH CUCUMBER & MINT EUCALYPTUS & MINT METHOD BODY WASH BF PORTERHOUSE STK BF RIBEYE STK BNLS Associate Savings -2.64 BF RIBEYE STK BNLS Associate Savings -2.12 WFB SALMON NOVA Associate Savings -1.60 OPN NAT SNOW CRAB Associate Savings -1.80 Member Savings -7.00 505037211700 PINEAPPLE GOLD WATERMELON SDLS Hember Savings -1.00 89520300116 ORG GIRL BABY SPIN PEACHES WHITE 2.26 lb @ $2.99 \/1b Menber Savings -2.26 BOK CHOY BBY ORGNC 0.56 1b @ $3.99 \/16 TOV TOMATOES ORGNC 1.62 lb @ $4.99\/1b 3@ RCYCBLE BAG CHARGE Assoclate Savings TAX **** BALANCE 07\/29\/24 01:03 CARD #************3578 REF: 780325435780 AUTH: 0006564D 236.18 AID A0000000031010 YOUR SAVINGS sociate Savings tal Savings Value\nGROCERY 4300020002 7514035001 9435 7885852044 8660000055 REFRIG\/FROZEN 4138309072 4410015766 5385908571 7085200020 81000541445 81215403330 81215403332 81793901858 MEAT 20215900000 20750200000 20750200000 SEAFOOD 2113012703 7989315930 PRODUCE 61002011100 89646000208 94544 94664 MISCELLANEOUS ADDITIONAL DISCOUNTS Credit Purchase PAYMENT AMOUNT AL VISA CREDIT TVR 0000000000 TSI 0000 Visa CHANGE ember Savings\n22147 tal"
+  },
+  "sourceFilename" : "IMG_0029.jpeg",
+  "variantID" : "current"
+}

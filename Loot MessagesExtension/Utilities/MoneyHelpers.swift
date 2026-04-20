@@ -67,6 +67,7 @@ enum SplitMath {
         perGuestActive: [Int]?,
         items: [(label: String, priceCents: Int, assignedSlots: [Int])],
         feesCents: Int,
+        discountCents: Int,
         taxCents: Int,
         tipCents: Int
     ) -> [Int] {
@@ -103,7 +104,7 @@ enum SplitMath {
                 for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
             }
 
-            let extras = feesCents + max(0, taxCents) + max(0, tipCents)
+            let extras = feesCents - max(0, discountCents) + max(0, taxCents) + max(0, tipCents)
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {

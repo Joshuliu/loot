@@ -1,0 +1,124 @@
+{
+  "capturedAt" : "2026-04-19T01:28:46Z",
+  "caseID" : "img_5023",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 16837,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 10632,
+    "itemValues" : 0.6111111111111112,
+    "lineItemValues" : 0.5,
+    "merchant" : 0,
+    "overall" : 0.3466666666666667,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 6205,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      },
+      {
+        "cents" : 0,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "MARY FARMS MED",
+      "total_cents" : 10632
+    },
+    "phase2" : {
+      "fees_cents" : 10,
+      "issues" : [
+        "Unclassified priced row: Unlabeled Item",
+        "Unclassified priced row: Unlabeled Item",
+        "Unclassified priced row: Subtotal?",
+        "Unclassified priced row: Unlabeled Item",
+        "Unclassified priced row: Unlabeled Item",
+        "Unclassified priced row: Subtotal",
+        "Unclassified priced row: Unlabeled Item",
+        "Unclassified priced row: Unlabeled Item",
+        "Resolved rows differ from known total by 6205 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 99,
+          "label" : "Mary Farms Med A Brown E",
+          "qty" : 1
+        },
+        {
+          "cents" : 612,
+          "label" : "Rinated All Natural Pork B",
+          "qty" : 1
+        },
+        {
+          "cents" : 548,
+          "label" : "Picy Marinated Natural Chic",
+          "qty" : 1
+        },
+        {
+          "cents" : 1131,
+          "label" : "Arinated Angus Beef Bnls S",
+          "qty" : 1
+        },
+        {
+          "cents" : 671,
+          "label" : "Marinated Angus Beef Finger",
+          "qty" : 1
+        },
+        {
+          "cents" : 1299,
+          "label" : "Marinated Natural Chicken Th",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Marinated Beef Rib Eye Bulg",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Jimmy Dean Sausage, Egg, &am",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "Nongshim Mupama Tang Myun",
+          "qty" : 1
+        },
+        {
+          "cents" : 599,
+          "label" : "Pmo Juicy Dumpling W\/ Pork &",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Pulmuone Mini Wontons 600 G",
+          "qty" : 1
+        },
+        {
+          "cents" : 9972,
+          "label" : "Simply Mango Juice 1.53 L",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 10622
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Mary Farms Med A Brown E|99\nUNKNOWN|Unlabeled Item|75\nUNKNOWN|Unlabeled Item|99\nITEM|Rinated All Natural Pork B|612\nITEM|Picy Marinated Natural Chic|548\nUNKNOWN|Subtotal?|1578\nITEM|Arinated Angus Beef Bnls S|1131\nITEM|Marinated Angus Beef Finger|671\nITEM|Marinated Natural Chicken Th|1299\nITEM|Marinated Beef Rib Eye Bulg|899\nITEM|Jimmy Dean Sausage, Egg, &am|399\nUNKNOWN|Unlabeled Item|699\nITEM|Nongshim Mupama Tang Myun|199\nITEM|Pmo Juicy Dumpling W\/ Pork &|599\nUNKNOWN|Unlabeled Item|999\nITEM|Pulmuone Mini Wontons 600 G|399\nITEM|Simply Mango Juice 1.53 L|10622\nFEE|Bottle sales|10\nUNKNOWN|Subtotal|10632\nTAX|Tax|0\nUNKNOWN|Unlabeled Item|299\nUNKNOWN|Unlabeled Item|18\nDISCOUNT|Markdown|100\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.9261339902877808,
+      "phase2Seconds" : 23.918223977088928,
+      "totalWorkflowSeconds" : 30.483098030090332,
+      "transcriptSeconds" : 5.638733983039856,
+      "transcriptToPhase1Seconds" : 0.9261350631713867,
+      "transcriptToPhase2Seconds" : 24.844364047050476,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "0071\/19\/2026 19:27:02 Young Mi 00137387 Trs#: 138073 MARY FARMS MED A BROWN E $0.99 F $0.75 F $0.99 F RINATED ALL NATURAL PORK B $6.12 F PICY MARINATED NATURAL CHIC $5.48 F $15.78 F ARINATED ANGUS BEEF BNLS S $11.31 F • MARINATED ANGUS BEEF FINGER $6.71 F MARINATED NATURAL CHICKEN TH $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F $6.99 F NONGSHIM MUPAMA TANG MYUN - $1.99 F PMO JUICY DUMPLING W\/ PORK & $5.99 F $9.99 F PULMUONE MINI WONTONS 600 G $3.99 | SIMPLY MANGO JUICE 1.53 L $106.22 $0.10 $106.32 $106.3 $106.3 $0.0\n$2.99 F $0.18 F\nkdown: $1.00 3 1b @ $0.99\/1b GHAI BOKCHOY LB ENLEAF LETTUCE 61 lb @ $0.99\/21b _LOW ONION LB RROTS 1LB 7 1LB CHOCOLATE CHIP WAFFLES Markdown: $2.00 GARLIC PK ## PК Markdown: $3.50 +Bottle sales: $0,10 Net Sales Bottle sales TOTAL SALES SUB TOTAL Visa **1407 #******** Balance"
+  },
+  "sourceFilename" : "IMG_5023.jpeg",
+  "variantID" : "current"
+}

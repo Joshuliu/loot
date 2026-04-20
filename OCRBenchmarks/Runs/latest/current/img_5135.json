@@ -1,0 +1,118 @@
+{
+  "capturedAt" : "2026-04-18T02:41:05Z",
+  "caseID" : "img_5135",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 55133,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 18829,
+    "itemValues" : 0.7,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.235,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 36304,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1354,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Teppan Khania",
+      "total_cents" : 22595
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 32538 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 850,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 675,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 5450,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 500,
+          "label" : "Amount",
+          "qty" : 1
+        },
+        {
+          "cents" : 17475,
+          "label" : "Subtotal",
+          "qty" : 1
+        },
+        {
+          "cents" : 18829,
+          "label" : "Total",
+          "qty" : 1
+        },
+        {
+          "label" : "Strawberry Colada",
+          "qty" : 1
+        },
+        {
+          "label" : "Sapporo Light",
+          "qty" : 1
+        },
+        {
+          "label" : "Rib Eye & Shrimp Fried Rice",
+          "qty" : 1
+        },
+        {
+          "label" : "Shrimp Fried Rice",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 21241,
+      "tax_cents" : 1354
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Amount|850\nITEM|Amount|675\nITEM|Amount|5450\nITEM|Amount|4550\nITEM|Amount|450\nITEM|Amount|4550\nITEM|Amount|450\nITEM|Amount|500\nITEM|Subtotal|17475\nTAX|Tax|1354\nITEM|Total|18829\nITEM|Strawberry Colada|\nITEM|Sapporo Light|\nITEM|Rib Eye & Shrimp Fried Rice|\nITEM|Shrimp Fried Rice|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6571578979492188,
+      "phase2Seconds" : 17.019420981407166,
+      "totalWorkflowSeconds" : 23.549932956695557,
+      "transcriptSeconds" : 5.873347043991089,
+      "transcriptToPhase1Seconds" : 0.6571578979492188,
+      "transcriptToPhase2Seconds" : 17.67658495903015,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "8.50 6.75 0.00 54.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting!\n. (858) 560-792123 н 30, 2026 at 3-52. 0 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz 1 Glass gyu Rib Eye & Shrimp Fried Rice w York & Colossal Shrimp Med Rare Fried Rice N York & Colossal Shrimp Med Rare Fried Rice ite ototal ggested tip amounts are provided or your convenience. Come back soon!"
+  },
+  "sourceFilename" : "IMG_5135.jpeg",
+  "variantID" : "current"
+}

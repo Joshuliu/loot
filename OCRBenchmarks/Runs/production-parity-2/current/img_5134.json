@@ -1,0 +1,82 @@
+{
+  "capturedAt" : "2026-04-19T02:16:38Z",
+  "caseID" : "img_5134",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5365,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 5365,
+    "itemValues" : 0.4444444444444444,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.8266666666666667,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 864,
+        "label" : "Ralphs Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Ralphs",
+      "total_cents" : 5365
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 119,
+          "label" : "Classico Pasta Sauce",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "Cafe Bustelo Espresso",
+          "qty" : 1
+        },
+        {
+          "cents" : 1249,
+          "label" : "Black Rifle Coffee",
+          "qty" : 1
+        },
+        {
+          "cents" : 35,
+          "label" : "Minute Maid Juice",
+          "qty" : 1
+        },
+        {
+          "cents" : 1000,
+          "label" : "Watermelon Cubes",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Unknown",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 4501,
+      "tax_cents" : 864
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Classico Pasta Sauce|199\nDISCOUNT|Ralphs Savings|80\nITEM|Cafe Bustelo Espresso|999\nITEM|Black Rifle Coffee|1249\nITEM|Minute Maid Juice|167\nDISCOUNT|Ralphs Savings|132\nITEM|Watermelon Cubes|1000\nITEM|Unknown|1099\nTAX|Ralphs Tax|864\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4878350496292114,
+      "phase2Seconds" : 19.439316987991333,
+      "totalWorkflowSeconds" : 25.765936970710754,
+      "transcriptSeconds" : 5.838779926300049,
+      "transcriptToPhase1Seconds" : 0.4878350496292114,
+      "transcriptToPhase2Seconds" : 19.927157044410706,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "FRESH FOR EVERYON 5680 Mission Center Rd. Your cashier was CHEC 553 1.99 F CLASSICO PSTA SCE RC 3.19 F RALPHS SAVED YOU 0.80 CAFE BUSTELO ESPRS 9.99 F BLACK RIFLE COFFEE 12.49 F MINUTEMAID JUICE 1.67 F RC RALPHS SAVED YOU 1.32 RC 1.67 F 1.32 RC 1.66 F 1.33 WATERMELON CUBES I 10.00 F 10.99 F RC 2.00 *******7252 0.00 53.65 REF#: 07966C TOTAL: 53.65 53.65 0.00 TOTAL NUMBER OF ITEMS SOLD = 56.6. 11 77 560 150 000009553 ....\nRalphs (619) 297-2593 BARLLA FETTUCN MINUTEMAID PUNCH RALPHS SAVED YOU MINUTEMAID PUNCH RALPHS SAVED YOU SHRIMP XL RALPHS SAVED YOU rewards CUSTOMER RALPHS TAX **** BALANCE San Diego CA 92108 VISA CREDIT Purchase ************3578 - H AID: A0000000031010 TC: 4FBA00D59D618582 VISA CHANGE RALPHS rewards SAVINGS TOTAL COUPONS\nSC SC SC SC SC"
+  },
+  "sourceFilename" : "IMG_5134.jpeg",
+  "variantID" : "current"
+}

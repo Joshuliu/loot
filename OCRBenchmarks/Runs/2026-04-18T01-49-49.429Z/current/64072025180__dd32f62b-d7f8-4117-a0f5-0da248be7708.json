@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-04-18T01:52:17Z",
+  "caseID" : "64072025180__dd32f62b-d7f8-4117-a0f5-0da248be7708",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2892,
+    "breakdown" : 1,
+    "expectedTotalCents" : 2892,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 242,
+        "label" : "Santa Clara County Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "LOS GATOS CAFE",
+      "total_cents" : 2892
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 750,
+          "label" : "S Flank Steak",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Two Eggs",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Flank Steak",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 2650,
+      "tax_cents" : 242
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|S Flank Steak|750\nITEM|Two Eggs|300\nITEM|Flank Steak|1600\nTAX|Santa Clara County Tax|242\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5901129245758057,
+      "phase2Seconds" : 4.523221969604492,
+      "totalWorkflowSeconds" : 11.594098925590515,
+      "transcriptSeconds" : 6.480759024620056,
+      "transcriptToPhase1Seconds" : 0.5901129245758057,
+      "transcriptToPhase2Seconds" : 5.113339900970459,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "LOS GATOS CAFE\n340 N SANTA CRUZ\nLOS GATOS, CA 95030\n4083544647\nORDER: patio saturday S4\nDine In\nCashier: Sandra\n21-Apr-2021 10:18:42A\n1 S Flank Steak $7.50\n1 Two Eggs $3.00\nEgg Style: Scramble $0.00\n1 Flank Steak $16.00\nEgg Style: Sunnyside Up $0.00\nToast Options: Sourdough $0.00\nSubtotal $26.50\nSanta Clara County9.125% $2.42\nTotal $28.92\n42BPYJV4DNEZT\nOrder 42BPYJV4DNEZT\nClover Privacy Policy\nhttps:\/\/clover.com\/privacy"
+  },
+  "sourceFilename" : "64072025180__DD32F62B-D7F8-4117-A0F5-0DA248BE7708.jpeg",
+  "variantID" : "current"
+}

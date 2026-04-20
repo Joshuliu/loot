@@ -159,8 +159,6 @@ struct EditSplitView: View {
                 )
             }
 
-        // Fold legacy discountCents into feesCents
-        let effectiveFees = (payload.s.f ?? 0) - (payload.s.d ?? 0)
         let draft = SplitDraft(
             guests: guests,
             payerGuestId: payerGuestId,
@@ -168,7 +166,8 @@ struct EditSplitView: View {
             totalCents: totalCents,
             perGuestCents: guestAmountsCents,
             items: items,
-            feesCents: effectiveFees,
+            feesCents: payload.s.f ?? 0,
+            discountCents: payload.s.d ?? 0,
             taxCents: payload.s.tx ?? 0,
             tipCents: payload.s.tip ?? 0
         )

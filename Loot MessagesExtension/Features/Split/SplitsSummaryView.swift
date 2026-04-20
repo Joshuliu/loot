@@ -1326,7 +1326,10 @@ struct TotalsBox: View {
 
                 if receipt.lineItems.isEmpty {
                     if receipt.feesCents != 0 {
-                        TotalsRow(label: receipt.feesCents < 0 ? "Discount" : "Fees", value: receipt.feesCents)
+                        TotalsRow(label: "Fees", value: receipt.feesCents)
+                    }
+                    if receipt.discountCents != 0 {
+                        TotalsRow(label: "Discount", value: -receipt.discountCents)
                     }
                     if receipt.taxCents != 0 {
                         TotalsRow(label: "Tax", value: receipt.taxCents)

@@ -187,6 +187,7 @@ struct ConfirmationView: View {
                 perGuestActive: draft.perGuestCents,
                 items: items,
                 feesCents: draft.feesCents,
+                discountCents: draft.discountCents,
                 taxCents: draft.taxCents,
                 tipCents: draft.tipCents
             )
@@ -1060,6 +1061,7 @@ struct ConfirmationView: View {
                     // Sync splitDraft so send doesn't overwrite edits
                     if var draft = uiModel.currentSplitDraft {
                         draft.feesCents = updatedReceipt.feesCents
+                        draft.discountCents = updatedReceipt.discountCents
                         draft.taxCents = updatedReceipt.taxCents
                         draft.tipCents = updatedReceipt.tipCents
                         draft.totalCents = updatedReceipt.totalCents

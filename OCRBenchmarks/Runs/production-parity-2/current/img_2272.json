@@ -1,0 +1,77 @@
+{
+  "capturedAt" : "2026-04-19T02:09:40Z",
+  "caseID" : "img_2272",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 3229,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 2879,
+    "itemValues" : 1,
+    "lineItemValues" : 0.75,
+    "merchant" : 1,
+    "overall" : 0.39749999999999996,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 350,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 399,
+        "label" : "Delivery Fee"
+      },
+      {
+        "cents" : 291,
+        "label" : "Service Fee"
+      },
+      {
+        "cents" : 199,
+        "label" : "Estimated Tax"
+      },
+      {
+        "cents" : 400,
+        "label" : "Dasher Tip"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Chipotle Mexican Grill",
+      "total_cents" : 2879
+    },
+    "phase2" : {
+      "fees_cents" : 690,
+      "issues" : [
+        "Ignored discount row: Refund",
+        "Resolved rows differ from known total by 350 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 1080,
+          "label" : "Burrito Bowl",
+          "qty" : 1
+        },
+        {
+          "cents" : 860,
+          "label" : "One Taco",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 1590,
+      "tax_cents" : 199,
+      "tip_cents" : 400
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Burrito Bowl|1080\nITEM|One Taco|860\nFEE|Delivery Fee|399\nFEE|Service Fee|291\nTAX|Estimated Tax|199\nTIP|Dasher Tip|400\nDISCOUNT|Refund|1353\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5179810523986816,
+      "phase2Seconds" : 8.155429005622864,
+      "totalWorkflowSeconds" : 15.017385005950928,
+      "transcriptSeconds" : 6.343969941139221,
+      "transcriptToPhase1Seconds" : 0.5179810523986816,
+      "transcriptToPhase2Seconds" : 8.673415064811707,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "8:114 •DOl\nurn St\norder, message your Dasher or tap Help.\n8 Your Dasher Faridun Add tip Rate Dasher\n^ Order details\nChipotle Mexican Grill Rate store\n3 items\n1 × Burrito Bowl\nChicken • Black Beans • White Rice •\nTomatillo-Green Chili Salsa • Fresh\nTomato Salsa • Romaine Lettuce • Cheese\n• Roasted Chili-Corn Salsa\n$10.80\n2 × One Taco\nCarnitas • Soft Flour Tortilla • Cheese •\nSour Cream • Roasted Chili-Corn Salsa •\nFresh Tomato Salsa • White Rice\n$8.60\nSubtotal $19.40\nDelivery Fee $3.99 $0.49\nService Fee i $2.91\nEstimated Tax O $1.99\nDasher Tip $4.00\nTotal $28.79\nRefund -$13.53\nPay Payment $15.26\nApple Pay...5799 • 1\/30\/26, 7:01 PM\nAddress\n560 Lincoln St, Evanston, IL 60201, USA\nReorder View store\nNORDSTROM Save on daily expenses"
+  },
+  "sourceFilename" : "IMG_2272.PNG",
+  "variantID" : "current"
+}

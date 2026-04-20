@@ -1,0 +1,72 @@
+{
+  "capturedAt" : "2026-04-18T02:38:07Z",
+  "caseID" : "img_4866",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 33614,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 30314,
+    "itemValues" : 0.23076923076923078,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.16461538461538464,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 3300,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1364,
+        "label" : "State Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Wine Food cohol",
+      "total_cents" : 28950
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 4664 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 3000,
+          "label" : "Wine",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Food",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Alcohol",
+          "qty" : 1
+        },
+        {
+          "cents" : 25950,
+          "label" : "Sub Total",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 27586,
+      "tax_cents" : 1364
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Wine|3000\nITEM|Food|1600\nITEM|Alcohol|1700\nUNKNOWN|Sub Total|25950\nTAX|State Tax|1364\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6888090372085571,
+      "phase2Seconds" : 26.492288947105408,
+      "totalWorkflowSeconds" : 31.164824962615967,
+      "transcriptSeconds" : 3.9837229251861572,
+      "transcriptToPhase1Seconds" : 0.6888090372085571,
+      "transcriptToPhase2Seconds" : 27.18110203742981,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "$30.00 $16.00 $17.00 $42.00 $20.00 $36 00 $32.00 $31.00 $19 00 $6.50 $9.00 $27.00 $4.00 $259.50 $30.00 $10 00 $289.50 $13.64\nfour Wine Food Total cohol Total count Total Sub Total I State Tax"
+  },
+  "sourceFilename" : "IMG_4866.jpeg",
+  "variantID" : "current"
+}

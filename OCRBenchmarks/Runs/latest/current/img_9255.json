@@ -1,0 +1,72 @@
+{
+  "capturedAt" : "2026-04-18T02:42:08Z",
+  "caseID" : "img_9255",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 29569,
+    "breakdown" : 1,
+    "expectedTotalCents" : 10584,
+    "itemValues" : 0.3333333333333333,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.35,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 18985,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 672,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 1512,
+        "label" : "Tip"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "TheRustyPelican.com",
+      "total_cents" : 10584
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 18985 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 8401,
+          "label" : "Turf",
+          "qty" : 1
+        },
+        {
+          "cents" : 8400,
+          "label" : "Subtotal",
+          "qty" : 1
+        },
+        {
+          "cents" : 10584,
+          "label" : "Total",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8400,
+      "tax_cents" : 672,
+      "tip_cents" : 1512
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Turf|8401\nUNKNOWN|Subtotal|8400\nTAX|Tax|672\nTIP|Tip|1512\nUNKNOWN|Total|10584\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.622533917427063,
+      "phase2Seconds" : 13.012394070625305,
+      "totalWorkflowSeconds" : 19.54258108139038,
+      "transcriptSeconds" : 5.907647013664246,
+      "transcriptToPhase1Seconds" : 0.622534990310669,
+      "transcriptToPhase2Seconds" : 13.634934067726135,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "yenbacker Cswy Kes Biscayne, FL TheRustyPelican.com 305.361,3818 Server: Valentine A Table 25 3\/17\/24 6:57 P Turf $84.01 $84.00 $6.72 $15.12 $105.84 C (EMU Chip Read) xxxxxxxx3578 7:39 PM Sale Approved 08854D wxsbrLCpdwww\nCheck #356 Guest count: 1 Ordered: Surf and Subtotal Tax Tip Total Input Type VISA CREDIT Time Transaction Type Authorization Approval Code Payment ID Application ID"
+  },
+  "sourceFilename" : "IMG_9255.jpeg",
+  "variantID" : "current"
+}

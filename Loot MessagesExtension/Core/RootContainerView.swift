@@ -280,6 +280,7 @@ struct RootContainerView: View {
                         createdAt: Date(),
                         subtotalCents: total,  // Use total as subtotal initially
                         feesCents: 0,
+                        discountCents: 0,
                         taxCents: 0,
                         tipCents: 0,
                         totalCents: total,
@@ -314,6 +315,7 @@ struct RootContainerView: View {
                             tax_cents: phase2.tax_cents,
                             tip_cents: phase2.tip_cents,
                             fees_cents: phase2.fees_cents,
+                            discount_cents: phase2.discount_cents,
                             items: phase2.items.map { ParsedReceipt.Item(label: $0.label, qty: $0.qty, cents: $0.cents) },
                             issues: phase2.issues
                         )
@@ -321,7 +323,7 @@ struct RootContainerView: View {
 
                         // Extract breakdown
                         let breakdown = fullParsed.breakdownDefaults()
-                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees - breakdown.tip))
+                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees + breakdown.discount - breakdown.tip))
 
                         // Check if user already added a tip manually (don't overwrite it)
                         let userAddedTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
@@ -363,9 +365,10 @@ struct RootContainerView: View {
                             createdAt: Date(),
                             subtotalCents: subtotal,
                             feesCents: breakdown.fees,
+                            discountCents: breakdown.discount,
                             taxCents: breakdown.tax,
                             tipCents: finalTipCents,
-                            totalCents: subtotal + breakdown.tax + breakdown.fees + finalTipCents,
+                            totalCents: subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents,
                             items: fullParsed.toDisplayItems(),
                             lineItems: displayLineItems
                         )
@@ -426,6 +429,7 @@ struct RootContainerView: View {
 
         draft.totalCents = receipt.totalCents
         draft.feesCents = receipt.feesCents
+        draft.discountCents = receipt.discountCents
         draft.taxCents = receipt.taxCents
         draft.tipCents = receipt.tipCents
 
@@ -514,6 +518,7 @@ struct RootContainerView: View {
             0,
             effectiveDraft.totalCents
                 - effectiveDraft.feesCents
+                + effectiveDraft.discountCents
                 - effectiveDraft.taxCents
                 - effectiveDraft.tipCents
         )
@@ -531,10 +536,12 @@ struct RootContainerView: View {
             createdAt: r.createdAt,
             subtotalCents: resolvedSubtotalCents,
             feesCents: effectiveDraft.feesCents,
+            discountCents: effectiveDraft.discountCents,
             taxCents: effectiveDraft.taxCents,
             tipCents: effectiveDraft.tipCents,
             totalCents: effectiveDraft.totalCents,
-            items: updatedItems
+            items: updatedItems,
+            lineItems: r.lineItems
         )
 
         // Keep both draft sources in sync so the send payload uses the same tip-adjusted values.
@@ -894,6 +901,7 @@ struct RootContainerView: View {
         let preTip = stringToCents(amountString)
             + (uiModel.currentReceipt?.taxCents ?? 0)
             + (uiModel.currentReceipt?.feesCents ?? 0)
+            - (uiModel.currentReceipt?.discountCents ?? 0)
         TipPanelView(
             preTipTotalCents: preTip,
             existingTipCents: uiModel.currentReceipt?.tipCents ?? 0,
@@ -913,10 +921,12 @@ struct RootContainerView: View {
                         createdAt: receipt.createdAt,
                         subtotalCents: receipt.subtotalCents,
                         feesCents: receipt.feesCents,
+                        discountCents: receipt.discountCents,
                         taxCents: receipt.taxCents,
                         tipCents: tipCentsValue,
-                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents + tipCentsValue,
-                        items: receipt.items
+                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents + tipCentsValue,
+                        items: receipt.items,
+                        lineItems: receipt.lineItems
                     )
                 } else {
                     uiModel.currentReceipt = makePreviewReceipt()
@@ -1007,10 +1017,12 @@ struct RootContainerView: View {
                         createdAt: receipt.createdAt,
                         subtotalCents: receipt.subtotalCents,
                         feesCents: receipt.feesCents,
+                        discountCents: receipt.discountCents,
                         taxCents: receipt.taxCents,
                         tipCents: tipCentsValue,
-                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents + tipCentsValue,
-                        items: receipt.items
+                        totalCents: receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents + tipCentsValue,
+                        items: receipt.items,
+                        lineItems: receipt.lineItems
                     )
                 }
                 if var draft = uiModel.currentSplitDraft {
@@ -1046,6 +1058,7 @@ struct RootContainerView: View {
                         perGuestCents: [],
                         items: [],
                         feesCents: uiModel.currentReceipt?.feesCents ?? 0,
+                        discountCents: uiModel.currentReceipt?.discountCents ?? 0,
                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
                         tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount)
                     )
@@ -1068,6 +1081,7 @@ struct RootContainerView: View {
                         perGuestCents: [],
                         items: [],
                         feesCents: uiModel.currentReceipt?.feesCents ?? 0,
+                        discountCents: uiModel.currentReceipt?.discountCents ?? 0,
                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
                         tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount)
                     )

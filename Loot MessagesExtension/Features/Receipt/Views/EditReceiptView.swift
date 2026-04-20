@@ -112,17 +112,57 @@ struct EditReceiptView: View {
         // and preserve each row separately. Fall back to aggregates for scanned receipts.
         var fees: [EditableLineItem] = []
         if !receipt.lineItems.isEmpty {
+            func isTipLabel(_ label: String) -> Bool {
+                let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return normalized.contains("tip") || normalized.contains("gratuity")
+            }
+
+            func isTaxLabel(_ label: String) -> Bool {
+                let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return normalized.contains("tax")
+            }
+
+            var explicitTaxCents = 0
+            var explicitFeeCents = 0
+            var explicitDiscountCents = 0
             for item in receipt.lineItems {
                 let stableId = UUID(uuidString: item.id) ?? UUID()
+                if isTipLabel(item.label) {
+                    continue
+                }
                 fees.append(EditableLineItem(id: stableId, label: item.label, amount: centsToDecimalString(item.cents)))
+                if isTaxLabel(item.label) {
+                    explicitTaxCents += item.cents
+                } else if item.cents < 0 {
+                    explicitDiscountCents += abs(item.cents)
+                } else {
+                    explicitFeeCents += item.cents
+                }
+            }
+
+            let missingTaxCents = receipt.taxCents - explicitTaxCents
+            if missingTaxCents != 0 {
+                fees.append(EditableLineItem(id: UUID(), label: "Tax", amount: centsToDecimalString(missingTaxCents)))
+            }
+
+            let missingFeeCents = receipt.feesCents - explicitFeeCents
+            if missingFeeCents != 0 {
+                let label = "Fees"
+                fees.append(EditableLineItem(id: UUID(), label: label, amount: centsToDecimalString(missingFeeCents)))
+            }
+            let missingDiscountCents = receipt.discountCents - explicitDiscountCents
+            if missingDiscountCents != 0 {
+                fees.append(EditableLineItem(id: UUID(), label: "Discount", amount: centsToDecimalString(-missingDiscountCents)))
             }
         } else {
             if receipt.taxCents != 0 {
                 fees.append(EditableLineItem(id: UUID(), label: "Tax", amount: centsToDecimalString(receipt.taxCents)))
             }
             if receipt.feesCents != 0 {
-                let label = receipt.feesCents < 0 ? "Discount" : "Fees"
-                fees.append(EditableLineItem(id: UUID(), label: label, amount: centsToDecimalString(receipt.feesCents)))
+                fees.append(EditableLineItem(id: UUID(), label: "Fees", amount: centsToDecimalString(receipt.feesCents)))
+            }
+            if receipt.discountCents != 0 {
+                fees.append(EditableLineItem(id: UUID(), label: "Discount", amount: centsToDecimalString(-receipt.discountCents)))
             }
         }
         _taxesAndFees = State(initialValue: fees)
@@ -139,7 +179,7 @@ struct EditReceiptView: View {
         // 1) Explicit override previously saved in this receipt flow (persist user intent),
         // 2) legacy fallback for no-item receipts.
         let hasItems = !receipt.items.isEmpty
-        let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents
+        let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents
 
         if let persistedOverride = uiModel.preTipTotalOverrideCents {
             _preTipTotalOverride = State(initialValue: centsToDecimalString(persistedOverride))
@@ -394,6 +434,7 @@ struct EditReceiptView: View {
         // Label containing "tax" → taxTotal; everything else → feesTotal (signed, negative = discount)
         var taxTotal = 0
         var feesTotal = 0
+        var discountTotal = 0
 
         for fee in completedFees {
             let label = fee.label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -401,13 +442,14 @@ struct EditReceiptView: View {
 
             if label.contains("tax") {
                 taxTotal += max(0, amount)  // tax is always positive
+            } else if amount < 0 {
+                discountTotal += abs(amount)
             } else {
-                feesTotal += amount  // fees/discounts are signed
+                feesTotal += amount
             }
         }
 
-        // Calculate subtotal: pre-tip total - taxes - fees (fees signed, so discount adds back)
-        let subtotal = preTipTotalCents - taxTotal - feesTotal
+        let subtotal = preTipTotalCents - taxTotal - feesTotal + discountTotal
 
         // Final total is always pre-tip + tip
         let finalTotalCents = calculatedTotalCents
@@ -431,6 +473,7 @@ struct EditReceiptView: View {
             createdAt: uiModel.currentReceipt?.createdAt ?? Date(),
             subtotalCents: subtotal,
             feesCents: feesTotal,
+            discountCents: discountTotal,
             taxCents: taxTotal,
             tipCents: tipCents,
             totalCents: finalTotalCents,
