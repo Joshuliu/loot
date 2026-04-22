@@ -1,0 +1,135 @@
+{
+  "capturedAt" : "2026-04-18T02:33:54Z",
+  "caseID" : "img_0259",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 27629,
+    "breakdown" : 0.2,
+    "expectedTotalCents" : 16329,
+    "itemValues" : 0.8888888888888888,
+    "lineItemValues" : 0.6666666666666666,
+    "merchant" : 0.2,
+    "overall" : 0.33666666666666667,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 11300,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 2520,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 1209,
+        "label" : "Gratuity"
+      },
+      {
+        "cents" : -1300,
+        "label" : "Discount"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "La Cañita",
+      "total_cents" : 16329
+    },
+    "phase2" : {
+      "discount_cents" : 1300,
+      "issues" : [
+        "Resolved rows differ from known total by 11300 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 2200,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 2300,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 1400,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 2600,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "cents" : 12600,
+          "label" : "Price",
+          "qty" : 1
+        },
+        {
+          "label" : "BURGER",
+          "qty" : 1
+        },
+        {
+          "label" : "LLA DAMM",
+          "qty" : 1
+        },
+        {
+          "label" : "LOCAL CALAMARI",
+          "qty" : 1
+        },
+        {
+          "label" : "NASADO ??",
+          "qty" : 1
+        },
+        {
+          "label" : "CHEESEBURGER",
+          "qty" : 1
+        },
+        {
+          "label" : "BUDDHA IPA",
+          "qty" : 1
+        },
+        {
+          "label" : "CAN JS",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 13900,
+      "tax_cents" : 2520,
+      "tip_cents" : 1209
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN|Price|2200\nUNKNOWN|Price|800\nUNKNOWN|Price|1700\nUNKNOWN|Price|2300\nUNKNOWN|Price|800\nUNKNOWN|Price|1400\nUNKNOWN|Price|800\nUNKNOWN|Price|2600\nUNKNOWN|Price|12600\nTAX|Tax|2520\nTIP|Gratuity|1209\nITEM|BURGER|\nITEM|LLA DAMM|\nITEM|LOCAL CALAMARI|\nITEM|NASADO ??|\nITEM|CHEESEBURGER|\nITEM|BUDDHA IPA|\nITEM|CAN JS|\nFEE|Service Charge|\nDISCOUNT|Discount|-1300\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.44101595878601074,
+      "phase2Seconds" : 20.182784914970398,
+      "totalWorkflowSeconds" : 26.257213950157166,
+      "transcriptSeconds" : 5.633407950401306,
+      "transcriptToPhase1Seconds" : 0.4410170316696167,
+      "transcriptToPhase2Seconds" : 20.62380599975586,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Table 62 3\/14\/25 1:03 PM $22.00 $8.00 $17.00 $23.00 $8.00 $14.00 $8.00 $26.00 $126.00 $25.20 $12.09 $163.29 Book Your Party with us! RATUITY IS ADDED TO EVERY PARTY THANK YOU FOR YOU VISIT!\nLa Cañita 6844 NW 169th St. Miami, FL 33015 Javier M ount: 3 BURGER LLA DAMM LOCAL CALAMARI NASADO ?? CHEESEBURGER BUDDHA IPA CAN JS Charge (20.00%)\n- 13"
+  },
+  "sourceFilename" : "IMG_0259.jpeg",
+  "variantID" : "current"
+}

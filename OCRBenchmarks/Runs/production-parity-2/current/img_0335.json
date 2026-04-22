@@ -1,0 +1,127 @@
+{
+  "capturedAt" : "2026-04-19T02:08:47Z",
+  "caseID" : "img_0335",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5281,
+    "breakdown" : 0.4,
+    "expectedTotalCents" : 8884,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0.5,
+    "merchant" : 0,
+    "overall" : 0.29000000000000004,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -3603,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 30,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 72,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "howzrecycie.niv",
+      "total_cents" : 8884
+    },
+    "phase2" : {
+      "issues" : [
+        "Missing amount for tax row: Balance Card",
+        "Ignored discount row: Card Savings",
+        "Ignored discount row: Card Savings",
+        "Ignored discount row: Card Savings",
+        "Ignored discount row: Card Savings",
+        "Ignored discount row: Card Savings",
+        "Resolved rows differ from known total by 3603 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 329,
+          "label" : "Munchies Cheese FX",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Skippy Pnt Btr Spr",
+          "qty" : 1
+        },
+        {
+          "cents" : 334,
+          "label" : "Nbc Cky Chps Ahoy",
+          "qty" : 1
+        },
+        {
+          "cents" : 439,
+          "label" : "Kodiak Oat",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Capri Sun Trop Pun",
+          "qty" : 1
+        },
+        {
+          "cents" : 349,
+          "label" : "Justins Ho",
+          "qty" : 1
+        },
+        {
+          "cents" : 747,
+          "label" : "Icelndic W",
+          "qty" : 1
+        },
+        {
+          "cents" : 898,
+          "label" : "Solo Clear",
+          "qty" : 1
+        },
+        {
+          "cents" : 358,
+          "label" : "Lifeway Or",
+          "qty" : 1
+        },
+        {
+          "cents" : 50,
+          "label" : "Lifeway Or",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "Yakult Dai",
+          "qty" : 1
+        },
+        {
+          "cents" : 558,
+          "label" : "Crv Milk 5 Pack",
+          "qty" : 1
+        },
+        {
+          "cents" : 20,
+          "label" : "Daisy Sour",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8782,
+      "tax_cents" : 102
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Munchies Cheese FX|329\nITEM|Skippy Pnt Btr Spr|399\nITEM|Nbc Cky Chps Ahoy|334\nITEM|Kodiak Oat|439\nDISCOUNT|Card Savings|105\nITEM|Capri Sun Trop Pun|300\nITEM|Justins Ho|349\nDISCOUNT|Card Savings|49\nTAX|Tax|30\nITEM|Icelndic W|747\nDISCOUNT|Card Savings|90\nITEM|Solo Clear|898\nDISCOUNT|Card Savings|100\nITEM|Lifeway Or|358\nITEM|Lifeway Or|50\nITEM|Yakult Dai|398\nITEM|Crv Milk 5 Pack|558\nDISCOUNT|Card Savings|160\nITEM|Daisy Sour|20\nTAX|Tax|72\nTAX|Balance Card|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6791390180587769,
+      "phase2Seconds" : 30.004572987556458,
+      "totalWorkflowSeconds" : 38.47395098209381,
+      "transcriptSeconds" : 7.790231943130493,
+      "transcriptToPhase1Seconds" : 0.6791390180587769,
+      "transcriptToPhase2Seconds" : 30.683719038963318,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "howzrecycie.niv how2recycle.in PAPER packaging see more Scan to\nLIKE A BOX\nTHIS MAILER JUST\nRECYCLE\nStore 919 Dir Carlos Nunez Main: (408) 867-0180 12876 Saratoga\/Sunnyvale Rd SARATOGA CA 95070 3.29 MUNCHIES CHEESE FX 3.99 S SKIPPY PNT BTR SPR 3.34 S NBC CKY CHPS AHOY. 4.39 1.05- 19.47 S 12.58 S 3.00 S CAPRI SUN TROP PUN. 3.49 0.49- 6.57 0.30 S CRV SFTDK SNGL NTX 7.47 0.90- 7,98 T 8.98 1.00- 5.37 S 3.58 7.98 S 0.50 S 3.98 5.58 1.60- 5.99 S 0.20 0.72 88.84 01\/26\/21 15:08 PRIMARY 88.84 0.00 AUTH: 00469241 88.84 0.00 29 8852\nGROCERY Regular Price Card Savings 3 QTY KODIAK OAT 2 QTY JUSTINS HO Regular Price Card Savings 3 QTY ICELNDIC W Regular Price Card Savings GROC NONEDIBLE 2 QTY SOLO CLEAR Regular Price Card Savings REFRIG\/FROZEN 3 QTY LIFEWAY OR 2 QTY LIFEWAY OR 2 QTY YAKULT DAI CRV MILK 5 PACK 2 QTY DAISY SOUR Regular Price Card Savings • ORGANICS WH MILK MISCELLANEOUS 2 QTY RCYCBLE BA TAX BALANCE CARD # ************5122 TOTAL TRANSACTION AMOUNT: CASH BACK AMOUNT: REF: 870832151220 AID A0000000980840 Debit CHANGE TOTAL NUMBER OF ITEMS SOLD = 919 52 66 POINTS EARNED TODAY\nMR **** Debit Purchase AL US DEBIT TVR 8000048000 TSI 6800 01\/26\/21 15:08"
+  },
+  "sourceFilename" : "IMG_0335.jpeg",
+  "variantID" : "current"
+}

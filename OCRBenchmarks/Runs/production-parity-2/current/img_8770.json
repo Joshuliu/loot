@@ -1,0 +1,55 @@
+{
+  "capturedAt" : "2026-04-19T02:19:08Z",
+  "caseID" : "img_8770",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 1675,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 5620,
+    "itemValues" : 0.25,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.0975,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -3945,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "TO GO",
+      "total_cents" : 1965
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Unknown Amount 1",
+        "Unclassified priced row: Unknown Amount 2",
+        "Resolved rows differ from known total by 290 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 1675,
+          "label" : "Udon",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 1965
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Udon|1675\nUNKNOWN|Unknown Amount 1|860\nUNKNOWN|Unknown Amount 2|650\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4882040023803711,
+      "phase2Seconds" : 32.611262917518616,
+      "totalWorkflowSeconds" : 35.79595899581909,
+      "transcriptSeconds" : 2.696487069129944,
+      "transcriptToPhase1Seconds" : 0.4882040023803711,
+      "transcriptToPhase2Seconds" : 33.09947192668915,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "16796 TO GO 1\/13\/2024 7:35 PM POS $16.75 T $19.65 T $8.60 T $6.50 T\nya Udon aney Ave CA 95014 -4017 16.75 x 1 19.65 x 1 8.60 x 1 6.50 x 1"
+  },
+  "sourceFilename" : "IMG_8770.jpeg",
+  "variantID" : "current"
+}

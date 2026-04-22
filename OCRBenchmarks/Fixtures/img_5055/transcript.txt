@@ -1,0 +1,45 @@
+TAKE-OUT
+[p11]
+E Pollo LOcu
+_Unit# 3848
+Big Bear Lake, CA, 41383 Big Bear Blvd
+92315
+110 KIOSK01 909-866-1019
+1
+CHK 8289
+24 Jan'26 3:00 PM
+To Go - Kiosk
+Unknown
+1 CHKN-12p Meal LT 12101784
+41.99
+12PC Leg/Thigh
+LG - Side Salad
+DRSG-Cmy Cilntro
+LG-Mashed Potato
+LG-Spanish Rice
+3 Corn/3 Flour
+NO THANKS
+Visa/MC/DIS $45.24
+Food $41.99
+Tax $3.25
+Payment $45.24
+Change Due $0.00
+- Check Closed -
+24 Jan'26 3:00 PM
+^^[p 12]
+Order 8289
+*: ** PURCHASE *** ***
+**: PURCHASE ******* ***** ** ***
+Sale: ACCEPTED
+Total: USD 45.24 USD 45.24
+Card Type:
+Card Expiration Date: Card Entry:
+Acct Contactless
+AUTH CODE: ************3578 **/**
+****** EMV PURCHASE 08230C
+App Label: ******
+Mode: VISA CREDIT
+AID: A0000000031010 Issuer
+IAD: 06011203A00000 TVR: 0000000000
+TSI:
+ARC: 00

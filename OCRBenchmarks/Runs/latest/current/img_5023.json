@@ -1,0 +1,117 @@
+{
+  "capturedAt" : "2026-04-18T02:39:00Z",
+  "caseID" : "img_5023",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 27469,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 10632,
+    "itemValues" : 0.6111111111111112,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.37166666666666665,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 16837,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "MARY FARMS MED",
+      "total_cents" : 10632
+    },
+    "phase2" : {
+      "fees_cents" : 10,
+      "issues" : [
+        "Resolved rows differ from known total by 16837 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 99,
+          "label" : "MARY FARMS MED A BROWN E",
+          "qty" : 1
+        },
+        {
+          "cents" : 612,
+          "label" : "ALL NATURAL PORK B",
+          "qty" : 1
+        },
+        {
+          "cents" : 548,
+          "label" : "MARINATED NATURAL CHIC",
+          "qty" : 1
+        },
+        {
+          "cents" : 1131,
+          "label" : "ANGUS BEEF BNLS S",
+          "qty" : 1
+        },
+        {
+          "cents" : 671,
+          "label" : "MARINATED BEEF FINGER",
+          "qty" : 1
+        },
+        {
+          "cents" : 1299,
+          "label" : "MARINATED CHICKEN TH",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "MARINATED BEEF RIB EYE BULG",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "JIMMY DEAN SAUSAGE, EGG, &am",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "NONGSHIM MUPAMA TANG MYUN",
+          "qty" : 1
+        },
+        {
+          "cents" : 599,
+          "label" : "JUICY DUMPLING W\/ PORK &",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "PULMUONE MINI WONTONS 600 G",
+          "qty" : 1
+        },
+        {
+          "cents" : 10622,
+          "label" : "SIMPLY MANGO JUICE 1.53 L",
+          "qty" : 1
+        },
+        {
+          "cents" : 9982,
+          "label" : "SUB TOTAL",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 10622
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|MARY FARMS MED A BROWN E|99\nUNKNOWN||75\nUNKNOWN||99\nITEM|ALL NATURAL PORK B|612\nITEM|MARINATED NATURAL CHIC|548\nUNKNOWN||1578\nITEM|ANGUS BEEF BNLS S|1131\nITEM|MARINATED BEEF FINGER|671\nITEM|MARINATED CHICKEN TH|1299\nITEM|MARINATED BEEF RIB EYE BULG|899\nITEM|JIMMY DEAN SAUSAGE, EGG, &am|399\nUNKNOWN||699\nITEM|NONGSHIM MUPAMA TANG MYUN|199\nITEM|JUICY DUMPLING W\/ PORK &|599\nUNKNOWN||999\nITEM|PULMUONE MINI WONTONS 600 G|399\nITEM|SIMPLY MANGO JUICE 1.53 L|10622\nFEE||10\nUNKNOWN|SUB TOTAL|10632\nUNKNOWN||299\nTAX||18\nDISCOUNT|Markdown|100\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nFEE|Bottle sales|10\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5569000244140625,
+      "phase2Seconds" : 17.12417197227478,
+      "totalWorkflowSeconds" : 23.69213604927063,
+      "transcriptSeconds" : 6.011059045791626,
+      "transcriptToPhase1Seconds" : 0.5569000244140625,
+      "transcriptToPhase2Seconds" : 17.681077003479004,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "0071\/19\/2026 19:27:02 Young Mi 00137387 Trs#: 138073 MARY FARMS MED A BROWN E $0.99 F $0.75 F $0.99 F RINATED ALL NATURAL PORK B $6.12 F PICY MARINATED NATURAL CHIC $5.48 F $15.78 F ARINATED ANGUS BEEF BNLS S $11.31 F • MARINATED ANGUS BEEF FINGER $6.71 F MARINATED NATURAL CHICKEN TH $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F $6.99 F NONGSHIM MUPAMA TANG MYUN - $1.99 F PMO JUICY DUMPLING W\/ PORK & $5.99 F $9.99 F PULMUONE MINI WONTONS 600 G $3.99 | SIMPLY MANGO JUICE 1.53 L $106.22 $0.10 $106.32 $106.3 $106.3 $0.0\n$2.99 F $0.18 F\nkdown: $1.00 3 1b @ $0.99\/1b GHAI BOKCHOY LB ENLEAF LETTUCE 61 lb @ $0.99\/21b _LOW ONION LB RROTS 1LB 7 1LB CHOCOLATE CHIP WAFFLES Markdown: $2.00 GARLIC PK ## PК Markdown: $3.50 +Bottle sales: $0,10 Net Sales Bottle sales TOTAL SALES SUB TOTAL Visa **1407 #******** Balance"
+  },
+  "sourceFilename" : "IMG_5023.jpeg",
+  "variantID" : "current"
+}

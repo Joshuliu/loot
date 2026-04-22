@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-04-19T02:16:12Z",
+  "caseID" : "img_5112",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 6943,
+    "breakdown" : 1,
+    "expectedTotalCents" : 6943,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 255,
+        "label" : "CA Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Grossmont",
+      "total_cents" : 6943
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 2099,
+          "label" : "NF Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1589,
+          "label" : "NF Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 3000,
+          "label" : "Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 6688,
+      "tax_cents" : 255
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|NF Item|2099\nITEM|NF Item|1589\nITEM|Item|3000\nTAX|CA Tax|255\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 2.3654650449752808,
+      "phase2Seconds" : 41.248798966407776,
+      "totalWorkflowSeconds" : 48.960707902908325,
+      "transcriptSeconds" : 5.346437931060791,
+      "transcriptToPhase1Seconds" : 2.3654650449752808,
+      "transcriptToPhase2Seconds" : 43.614269971847534,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr La Mesa, California 91942-3015 01\/30\/2026 02:00 PM NF $20.99 NF $15.89 $30.00 SUBTOTAL T = CA TAX 8.50000 on $30.00 $66.88 $2.55 TOTAL $69.43 *4435 DEBIT TOTAL PAYMENT $69.43 AID: A0000000980840 US DEBIT AUTH CODE: 079603 WHEN YOU RETURN ANY ITEM, YOUR RETURN CREDIT WILL NOT INCLUDE ANY PROMOTIONAL DISCOUNT OR COUPON APPLIED TO THE ORIGINAL ORDER. VOTICE: Some furniture products can expose you to chemicals known to the State of lifornia to cause cancer, birth derects or ther reproductive harm. Please check on- warning inormation REC#2-6030-0997-0173-8749-7 ----------. Help make your Target Run better.\nGROCERY 055070114 GHIRARDELLI 055020991 GHIRARDELLI PATIO & OUTDOOR DECOR 344020038 GLG product label for"
+  },
+  "sourceFilename" : "IMG_5112.jpeg",
+  "variantID" : "current"
+}

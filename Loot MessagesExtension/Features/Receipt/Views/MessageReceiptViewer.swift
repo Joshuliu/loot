@@ -101,6 +101,7 @@ struct MessageReceiptViewer: View {
 
         currentPayload.s.tot = updatedReceipt.totalCents
         currentPayload.s.f = updatedReceipt.feesCents == 0 ? nil : updatedReceipt.feesCents
+        currentPayload.s.d = updatedReceipt.discountCents == 0 ? nil : updatedReceipt.discountCents
         currentPayload.s.tx = updatedReceipt.taxCents == 0 ? nil : updatedReceipt.taxCents
         currentPayload.s.tip = updatedReceipt.tipCents == 0 ? nil : updatedReceipt.tipCents
 
@@ -117,6 +118,7 @@ struct MessageReceiptViewer: View {
                 perGuestActive: nil,
                 items: [],
                 feesCents: updatedReceipt.feesCents,
+                discountCents: updatedReceipt.discountCents,
                 taxCents: updatedReceipt.taxCents,
                 tipCents: updatedReceipt.tipCents
             )
@@ -162,6 +164,7 @@ struct MessageReceiptViewer: View {
                 perGuestActive: nil,
                 items: items,
                 feesCents: updatedReceipt.feesCents,
+                discountCents: updatedReceipt.discountCents,
                 taxCents: updatedReceipt.taxCents,
                 tipCents: updatedReceipt.tipCents
             )

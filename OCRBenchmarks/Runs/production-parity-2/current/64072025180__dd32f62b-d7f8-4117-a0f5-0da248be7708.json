@@ -1,0 +1,62 @@
+{
+  "capturedAt" : "2026-04-19T02:04:07Z",
+  "caseID" : "64072025180__dd32f62b-d7f8-4117-a0f5-0da248be7708",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2592,
+    "breakdown" : 1,
+    "expectedTotalCents" : 2892,
+    "itemValues" : 0.6666666666666666,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.39999999999999997,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -300,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 242,
+        "label" : "Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "LOS GATOS CAFE",
+      "total_cents" : 2892
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 300 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 750,
+          "label" : "Scrambled Eggs",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Sunny-side Up Eggs",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 2650,
+      "tax_cents" : 242
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Scrambled Eggs|750\nITEM|Sunny-side Up Eggs|1600\nITEM|Sourdough Toast|0\nTAX|Sales Tax|242\nUNKNOWN|Flank Steak Order|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.7589679956436157,
+      "phase2Seconds" : 18.261868953704834,
+      "totalWorkflowSeconds" : 23.405228972434998,
+      "transcriptSeconds" : 4.384387016296387,
+      "transcriptToPhase1Seconds" : 0.7589679956436157,
+      "transcriptToPhase2Seconds" : 19.02084195613861,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "LOS GATOS CAFE 340 N SANTA CRUZ LOS GATOS, CA 95030 4083544647 ORDER: patio saturday S4 Dine In $7.50 $3.00 Egg Style: Scramble $0.00 $16.00 Egg Style: Sunnyside Up $0.00 Toast Options: Sourdough $0.00 $26.50 $2.42 $28.92\nCashier: Sandra 21-Apr-2021 10:18:42A S Flank Steak Two Eggs Flank Steak Subtotal Santa Clara County9.125% Total 42BPYJV4DNEZT Order 42BPYJV4DNEZT"
+  },
+  "sourceFilename" : "64072025180__DD32F62B-D7F8-4117-A0F5-0DA248BE7708.jpeg",
+  "variantID" : "current"
+}

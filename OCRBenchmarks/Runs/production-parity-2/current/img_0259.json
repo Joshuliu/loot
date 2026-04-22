@@ -1,0 +1,80 @@
+{
+  "capturedAt" : "2026-04-19T02:08:08Z",
+  "caseID" : "img_0259",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 3266,
+    "breakdown" : 0.4,
+    "expectedTotalCents" : 16329,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0.2,
+    "overall" : 0.19,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -13063,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 3266,
+        "label" : "Gratuity"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "La Cañita",
+      "total_cents" : 16329
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Unclassified priced row: Amount",
+        "Ignored discount row: Unknown Discount",
+        "Resolved rows differ from known total by 13063 cents"
+      ],
+      "items" : [
+        {
+          "label" : "Burger",
+          "qty" : 1
+        },
+        {
+          "label" : "Calamari",
+          "qty" : 1
+        },
+        {
+          "label" : "Cheeseburger",
+          "qty" : 1
+        },
+        {
+          "label" : "Buddha IPA",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 13063,
+      "tip_cents" : 3266
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN|Amount|2200\nUNKNOWN|Amount|800\nUNKNOWN|Amount|1700\nUNKNOWN|Amount|2300\nUNKNOWN|Amount|800\nUNKNOWN|Amount|1400\nUNKNOWN|Amount|800\nUNKNOWN|Amount|2600\nUNKNOWN|Amount|12600\nUNKNOWN|Amount|2520\nUNKNOWN|Amount|1209\nITEM|Burger|\nITEM|Calamari|\nITEM|Cheeseburger|\nITEM|Buddha IPA|\nDISCOUNT|Unknown Discount|\nTIP|Gratuity|3266\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.7674000263214111,
+      "phase2Seconds" : 42.707303047180176,
+      "totalWorkflowSeconds" : 48.166558027267456,
+      "transcriptSeconds" : 4.691851019859314,
+      "transcriptToPhase1Seconds" : 0.7674000263214111,
+      "transcriptToPhase2Seconds" : 43.47470700740814,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Table 62 3\/14\/25 1:03 PM $22.00 $8.00 $17.00 $23.00 $8.00 $14.00 $8.00 $26.00 $126.00 $25.20 $12.09 $163.29 Book Your Party with us! RATUITY IS ADDED TO EVERY PARTY THANK YOU FOR YOU VISIT!\nLa Cañita 6844 NW 169th St. Miami, FL 33015 Javier M ount: 3 BURGER LLA DAMM LOCAL CALAMARI NASADO ?? CHEESEBURGER BUDDHA IPA CAN JS Charge (20.00%)\n- 13"
+  },
+  "sourceFilename" : "IMG_0259.jpeg",
+  "variantID" : "current"
+}

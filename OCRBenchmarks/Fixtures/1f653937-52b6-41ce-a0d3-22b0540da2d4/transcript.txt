@@ -1,0 +1,27 @@
+203 Walton Street
+315-299-5790
+Server: Walter 04/05/2025
+C9/1 3:01 PM
+Guests: 1
+# 100024
+Margarita Tower 50.00
+Guacamole Dip 10.00
+Cheese Dip 7.50
+Frd Chk Burritos 20.00
+Pollo Fundido 21.00
+Quesadilla Texans Entrée 19.00
+AC Chs Quesadilla 2 10.00
+ADD SHEREDDED CHIKEN 2.00
+Tacos De Birria 22.00
+Tacos Carnitas 20.00
+Subtotal 181.50
+Tax 14.52
+Total 196.02
+Gratuity 20.00% 36.30
+Total 232.32
+Balance Due 232.32
+Margaritas
+Tip Suggestion on Total
+18% Tip =32.67
+20% Tip =36.30
+22% Tip =39.93

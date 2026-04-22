@@ -66,7 +66,8 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
     let createdAt: Date?
 
     let subtotalCents: Int
-    let feesCents: Int  // signed aggregate: negative = net discount
+    let feesCents: Int
+    let discountCents: Int
     let taxCents: Int
     let tipCents: Int
     let totalCents: Int
@@ -75,13 +76,14 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
     let lineItems: [LineItem]  // individual fee/discount rows for ReceiptView
 
     var shouldShowOnlyTotal: Bool {
-        feesCents == 0 && taxCents == 0 && tipCents == 0
+        feesCents == 0 && discountCents == 0 && taxCents == 0 && tipCents == 0
     }
 
-    init(id: String, title: String, createdAt: Date?, subtotalCents: Int, feesCents: Int,
+    init(id: String, title: String, createdAt: Date?, subtotalCents: Int, feesCents: Int, discountCents: Int = 0,
          taxCents: Int, tipCents: Int, totalCents: Int, items: [Item], lineItems: [LineItem] = []) {
         self.id = id; self.title = title; self.createdAt = createdAt
         self.subtotalCents = subtotalCents; self.feesCents = feesCents
+        self.discountCents = discountCents
         self.taxCents = taxCents; self.tipCents = tipCents; self.totalCents = totalCents
         self.items = items; self.lineItems = lineItems
     }
@@ -337,7 +339,8 @@ struct ParsedReceipt: Codable, Equatable {
     let subtotal_cents: Int?
     let tax_cents: Int?
     let tip_cents: Int?
-    let fees_cents: Int?  // signed: negative = discount
+    let fees_cents: Int?
+    let discount_cents: Int?
 
     let items: [Item]
     let issues: [String]
@@ -372,10 +375,11 @@ extension ParsedReceipt {
         .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    /// Best-effort breakdown with defaults. fees can be negative (discount).
-    func breakdownDefaults() -> (fees: Int, tax: Int, tip: Int) {
+    /// Best-effort breakdown with defaults.
+    func breakdownDefaults() -> (fees: Int, discount: Int, tax: Int, tip: Int) {
         (
             fees: fees_cents ?? 0,
+            discount: max(0, discount_cents ?? 0),
             tax: max(0, tax_cents ?? 0),
             tip: max(0, tip_cents ?? 0)
         )
@@ -387,8 +391,7 @@ extension ParsedReceipt {
         return t.isEmpty ? fallback : t
     }
 
-    /// Best-effort total for UI (prefers total, else subtotal+tax+fees+tip if present).
-    /// fees_cents is signed so discounts are already factored in.
+    /// Best-effort total for UI (prefers total, else subtotal+tax+fees-discount+tip if present).
     func bestTotalCents() -> Int {
         if let t = total_cents { return max(0, t) }
 
@@ -397,8 +400,9 @@ extension ParsedReceipt {
         if sub == nil { return 0 }
 
         let fees = fees_cents ?? 0
+        let discount = discount_cents ?? 0
         let tax = tax_cents ?? 0
         let tip = tip_cents ?? 0
-        return max(0, (sub ?? 0) + max(0, tax) + fees + max(0, tip))
+        return max(0, (sub ?? 0) + max(0, tax) + fees - max(0, discount) + max(0, tip))
     }
 }

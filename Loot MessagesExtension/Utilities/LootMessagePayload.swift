@@ -8,6 +8,25 @@
 
 import Foundation
 
+private let payloadDisplayNameDefaultsKey = "my_display_name"
+private let payloadUserIdDefaultsKey = "local_participant_id"
+
+private func payloadDisplayNameFromDefaults() -> String {
+    (UserDefaults.standard.string(forKey: payloadDisplayNameDefaultsKey) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+private func payloadCurrentUserId() -> String {
+    let defaults = UserDefaults.standard
+    let existing = (defaults.string(forKey: payloadUserIdDefaultsKey) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    if !existing.isEmpty { return existing }
+
+    let generated = UUID().uuidString
+    defaults.set(generated, forKey: payloadUserIdDefaultsKey)
+    return generated
+}
+
 // MARK: - Payload carried inside MSMessage.url
 // ✅ OPTIMIZED: Shorter field names to reduce URL size
 
@@ -33,7 +52,8 @@ struct ReceiptPayload: Codable, Equatable {
     var c: TimeInterval  // createdAtEpoch
 
     var sub: Int  // subtotalCents
-    var f: Int    // feesCents (signed: negative = discount)
+    var f: Int    // feesCents
+    var d: Int    // discountCents
     var tx: Int   // taxCents
     var tip: Int  // tipCents
     var tot: Int  // totalCents
@@ -42,14 +62,13 @@ struct ReceiptPayload: Codable, Equatable {
     var li: [ReceiptLineItemPayload]?         // individual fee/discount/tax rows (nil = use aggregates)
 
     enum CodingKeys: String, CodingKey {
-        case id, t, c, sub, f, tx, tip, tot, i, li
-        case legacyD = "d"  // legacy discountCents field
+        case id, t, c, sub, f, tx, tip, tot, i, li, d
     }
 
-    init(id: String, t: String, c: TimeInterval, sub: Int, f: Int, tx: Int, tip: Int, tot: Int,
+    init(id: String, t: String, c: TimeInterval, sub: Int, f: Int, d: Int = 0, tx: Int, tip: Int, tot: Int,
          i: [ReceiptItemPayload], li: [ReceiptLineItemPayload]? = nil) {
         self.id = id; self.t = t; self.c = c; self.sub = sub
-        self.f = f; self.tx = tx; self.tip = tip; self.tot = tot; self.i = i; self.li = li
+        self.f = f; self.d = d; self.tx = tx; self.tip = tip; self.tot = tot; self.i = i; self.li = li
     }
 
     init(from decoder: Decoder) throws {
@@ -63,10 +82,11 @@ struct ReceiptPayload: Codable, Equatable {
         tot = try container.decode(Int.self,                   forKey: .tot)
         i   = try container.decode([ReceiptItemPayload].self,  forKey: .i)
         li  = try container.decodeIfPresent([ReceiptLineItemPayload].self, forKey: .li)
-        // Fold legacy discountCents into feesCents as a negative value
-        let fees     = try container.decodeIfPresent(Int.self, forKey: .f) ?? 0
-        let discount = try container.decodeIfPresent(Int.self, forKey: .legacyD) ?? 0
-        f = fees - discount
+        let rawFees = try container.decodeIfPresent(Int.self, forKey: .f) ?? 0
+        let decodedDiscount = try container.decodeIfPresent(Int.self, forKey: .d)
+            ?? (rawFees < 0 ? abs(rawFees) : 0)
+        f = max(0, rawFees)
+        d = max(0, decodedDiscount)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -76,12 +96,13 @@ struct ReceiptPayload: Codable, Equatable {
         try container.encode(c,   forKey: .c)
         try container.encode(sub, forKey: .sub)
         try container.encode(f,   forKey: .f)
+        if d != 0 { try container.encode(d, forKey: .d) }
         try container.encode(tx,  forKey: .tx)
         try container.encode(tip, forKey: .tip)
         try container.encode(tot, forKey: .tot)
         try container.encode(i,   forKey: .i)
         if let li { try container.encode(li, forKey: .li) }
-        // Never write legacyD
+        // Never write legacy folded discount state
     }
 }
 
@@ -122,11 +143,57 @@ struct SplitPayload: Codable, Equatable {
     var pd: [Bool]? // paidStatus per guest slot (nil = all unpaid)
 
     // Breakdown (only if non-zero to save space)
-    var f: Int?   // feesCents (signed: negative = discount)
+    var f: Int?   // feesCents
     var tx: Int?  // taxCents
     var tip: Int? // tipCents
-    var d: Int?   // legacy discountCents — decode only, never written in new payloads
+    var d: Int?   // discountCents
     var tot: Int  // totalCents
+
+    init(m: Mode, g: [Guest], pi: Int, o: [Int], pd: [Bool]? = nil, f: Int? = nil, tx: Int? = nil, tip: Int? = nil, d: Int? = nil, tot: Int) {
+        self.m = m
+        self.g = g
+        self.pi = pi
+        self.o = o
+        self.pd = pd
+        self.f = f
+        self.tx = tx
+        self.tip = tip
+        self.d = d
+        self.tot = tot
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case m, g, pi, o, pd, f, tx, tip, d, tot
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        m = try container.decode(Mode.self, forKey: .m)
+        g = try container.decode([Guest].self, forKey: .g)
+        pi = try container.decode(Int.self, forKey: .pi)
+        o = try container.decode([Int].self, forKey: .o)
+        pd = try container.decodeIfPresent([Bool].self, forKey: .pd)
+        let rawFees = try container.decodeIfPresent(Int.self, forKey: .f)
+        f = max(0, rawFees ?? 0)
+        d = try container.decodeIfPresent(Int.self, forKey: .d) ?? ((rawFees ?? 0) < 0 ? abs(rawFees ?? 0) : nil)
+        tx = try container.decodeIfPresent(Int.self, forKey: .tx)
+        tip = try container.decodeIfPresent(Int.self, forKey: .tip)
+        tot = try container.decode(Int.self, forKey: .tot)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(m, forKey: .m)
+        try container.encode(g, forKey: .g)
+        try container.encode(pi, forKey: .pi)
+        try container.encode(o, forKey: .o)
+        try container.encodeIfPresent(pd, forKey: .pd)
+        try container.encodeIfPresent(f, forKey: .f)
+        try container.encodeIfPresent(tx, forKey: .tx)
+        try container.encodeIfPresent(tip, forKey: .tip)
+        try container.encodeIfPresent(d, forKey: .d)
+        try container.encode(tot, forKey: .tot)
+    }
 }
 
 // MARK: - SplitPayload → SplitDraft conversion
@@ -135,7 +202,7 @@ extension SplitPayload {
     /// Converts a sent SplitPayload back to a SplitDraft for editing.
     /// Returns the draft and the UUID-per-slot mapping (for converting back).
     func toSplitDraft(receiptItems: [ReceiptItemPayload], totalCents: Int) -> (draft: SplitDraft, slotUUIDs: [UUID]) {
-        let myUid = KeychainHelper.getOrCreateUserId()
+        let myUid = payloadCurrentUserId()
         let slotUUIDs = g.map { _ in UUID() }
 
         let guests = g.enumerated().map { i, guest in
@@ -179,8 +246,6 @@ extension SplitPayload {
             return result
         }()
 
-        // Fold legacy discountCents into feesCents as a negative value
-        let effectiveFees = (f ?? 0) - (d ?? 0)
         let draft = SplitDraft(
             guests: guests,
             payerGuestId: slotUUIDs.indices.contains(pi) ? slotUUIDs[pi] : (slotUUIDs.first ?? UUID()),
@@ -188,7 +253,8 @@ extension SplitPayload {
             totalCents: totalCents,
             perGuestCents: activePerGuestCents,
             items: items,
-            feesCents: effectiveFees,
+            feesCents: f ?? 0,
+            discountCents: d ?? 0,
             taxCents: tx ?? 0,
             tipCents: tip ?? 0
         )
@@ -382,7 +448,7 @@ extension LootMessagePayload {
                     let g = splitData.g[slot]
                     let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !t.isEmpty { return t }
-                    return g.uid == KeychainHelper.getOrCreateUserId() ? "Me" : "Guest \(slot + 1)"
+                    return g.uid == payloadCurrentUserId() ? "Me" : "Guest \(slot + 1)"
                 }()
                 return ReceiptDisplay.Responsible(slotIndex: slot, displayName: nm)
             }
@@ -406,6 +472,7 @@ extension LootMessagePayload {
             createdAt: Date(timeIntervalSince1970: receiptData.c),
             subtotalCents: receiptData.sub,
             feesCents: receiptData.f,
+            discountCents: receiptData.d,
             taxCents: receiptData.tx,
             tipCents: receiptData.tip,
             totalCents: receiptData.tot,
@@ -423,7 +490,7 @@ extension SplitPayload {
             if let d = draft, !d.guests.isEmpty {
                 return d.guests.map { Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid) }
             }
-            var out: [Guest] = [Guest(n: myDisplayNameFromDefaults(), inc: true, uid: KeychainHelper.getOrCreateUserId())]
+            var out: [Guest] = [Guest(n: payloadDisplayNameFromDefaults(), inc: true, uid: payloadCurrentUserId())]
             if participantCount > 1 {
                 for _ in 1..<participantCount {
                     out.append(Guest(n: "", inc: true, uid: nil))
@@ -447,6 +514,7 @@ extension SplitPayload {
         }()
 
         let fees = draft?.feesCents ?? 0
+        let discount = draft?.discountCents ?? 0
         let tax = draft?.taxCents ?? 0
         let tip = draft?.tipCents ?? 0
 
@@ -468,6 +536,7 @@ extension SplitPayload {
             perGuestActive: draft?.perGuestCents,
             items: itemsForMath,
             feesCents: fees,
+            discountCents: discount,
             taxCents: tax,
             tipCents: tip
         )
@@ -480,6 +549,7 @@ extension SplitPayload {
             f: fees == 0 ? nil : fees,
             tx: tax == 0 ? nil : tax,
             tip: tip == 0 ? nil : tip,
+            d: discount == 0 ? nil : discount,
             tot: totalCents
         )
     }
@@ -512,6 +582,7 @@ extension ReceiptPayload {
             c: receipt.createdAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970,
             sub: receipt.subtotalCents,
             f: receipt.feesCents,
+            d: receipt.discountCents,
             tx: receipt.taxCents,
             tip: receipt.tipCents,
             tot: receipt.totalCents,

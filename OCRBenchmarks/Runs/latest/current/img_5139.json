@@ -1,0 +1,82 @@
+{
+  "capturedAt" : "2026-04-18T02:41:31Z",
+  "caseID" : "img_5139",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 42154,
+    "breakdown" : 1,
+    "expectedTotalCents" : 14480,
+    "itemValues" : 0.6666666666666666,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.39999999999999997,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 27674,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1286,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Table B1",
+      "total_cents" : 14480
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 27674 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 9196,
+          "label" : "Koobideh White Rice & Salad",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Lamb Shank",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Must 0 Mousier",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Shams Persian Beer",
+          "qty" : 1
+        },
+        {
+          "cents" : 13194,
+          "label" : "Subtotal",
+          "qty" : 1
+        },
+        {
+          "cents" : 14480,
+          "label" : "Total",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 13194,
+      "tax_cents" : 1286
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Koobideh White Rice & Salad|9196\nITEM|Lamb Shank|2299\nITEM|Must 0 Mousier|899\nITEM|Shams Persian Beer|800\nUNKNOWN|Subtotal|13194\nTAX|Tax|1286\nUNKNOWN|Total|14480\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5465140342712402,
+      "phase2Seconds" : 16.859845995903015,
+      "totalWorkflowSeconds" : 23.24410092830658,
+      "transcriptSeconds" : 5.837736010551453,
+      "transcriptToPhase1Seconds" : 0.5465149879455566,
+      "transcriptToPhase2Seconds" : 17.406364917755127,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Table B1 2\/1\/26 7:07 PM $91.96 $22.99 $8.99 $8.00 $131.94 $12.86 $144.80 Suggested Tip: 18%: (Tip $23.75 Total $168.55) 20%: (Tip $26.39 Total $171.19) 22%: (Tip $29.03 Total $173.83) Tip percentages are based on the check\nDISCOVER\n•Pay G Pay VISA Server: Pasha T Check #71 Guest Count: 5 Ordered: 4 Koobideh White Rice & Salad 1 Lamb Shank (Mahicheh) 1 Must 0 Mousier 1 Shams Persian Beer Subtotal Tax Total"
+  },
+  "sourceFilename" : "IMG_5139.jpeg",
+  "variantID" : "current"
+}

@@ -38,13 +38,45 @@ struct Phase2Result: Codable, Equatable {
     let subtotal_cents: Int?
     let tax_cents: Int?
     let tip_cents: Int?
-    let fees_cents: Int?  // signed: negative = discount
+    let fees_cents: Int?
+    let discount_cents: Int?
     let items: [Item]
     let issues: [String]
 }
 
 final class LLMClient {
     static let shared = LLMClient()
+
+    enum DiscountResolutionMode: Equatable {
+        case billWide
+        case attachToPreviousItem(itemIndex: Int)
+        case ignore
+    }
+
+    struct ExtractedRow: Equatable {
+        enum Kind: String {
+            case item = "ITEM"
+            case discount = "DISCOUNT"
+            case tax = "TAX"
+            case tip = "TIP"
+            case fee = "FEE"
+            case unknown = "UNKNOWN"
+
+            init?(tag: String) {
+                self.init(rawValue: tag.uppercased())
+            }
+        }
+
+        let kind: Kind
+        let label: String
+        let cents: Int?
+        let index: Int
+    }
+
+    struct ResolvedPhase2 {
+        let phase2: Phase2Result
+        let lineItems: [ReceiptDisplay.LineItem]
+    }
 
     // Set this in your Info.plist (e.g. via an xcconfig or a Secrets.plist merged into the app target)
     // Key name: GEMINI_API_KEY
@@ -69,6 +101,8 @@ final class LLMClient {
     private let jpegQuality: CGFloat = 0.6
     private let maxTokensPrimary: Int = 16000
     private let maxTokensFallback: Int = 32000
+    private(set) var lastPhase2LineItems: [ReceiptDisplay.LineItem] = []
+    private(set) var lastRawPhase2Response: String? = nil
 
     private lazy var session: URLSession = {
         let cfg = URLSessionConfiguration.default
@@ -392,33 +426,35 @@ final class LLMClient {
     // MARK: - Phase 2: Full items + breakdown extraction
 
     func analyzeReceiptPhase2(fileUri: String, knownTotalCents: Int) async throws -> Phase2Result {
+        lastPhase2LineItems = []
+        lastRawPhase2Response = nil
         let developerMessage = """
-        You are extracting line items from a receipt for a bill-splitting app. The known total is \(knownTotalCents) cents.
+        You are extracting ordered receipt rows for a bill-splitting app.
         Output ONLY this exact format. No markdown, no code fences, no extra text.
 
-        BEGIN_RECEIPT_V2
-        SUBTOTAL_CENTS|<int or empty>
-        TAX_CENTS|<int or empty>
-        TIP_CENTS|<int or empty>
-        FEES_CENTS|<int or empty, negative if bill-wide discount>
-
-        ITEM|<qty>|<label>|<line total cents or empty>
-        (one ITEM line per receipt line, repeated as needed)
-
-        END_RECEIPT_V2
+        BEGIN_ROWS
+        ITEM|<label>|<cents or empty>
+        DISCOUNT|<label>|<cents>
+        TAX|<label>|<cents>
+        TIP|<label>|<cents>
+        FEE|<label>|<cents>
+        UNKNOWN|<label>|<cents or empty>
+        END_ROWS
 
         Rules:
-        - One ITEM per receipt line. Never merge two separate receipt lines into one ITEM.
-        - cents = the line total printed on the receipt for that item — the final amount charged for that line, already accounting for quantity. If two prices appear on the line (e.g. unit price and line total), use the rightmost/larger one. Never multiply or compute — copy the printed line total exactly. Only correct clear character-level OCR noise (e.g. "1 09" → 109, "L 09" → 109, "11. 09" → 1109). Never substitute a different number because you think it fits the total better — the transcript is accurate. Example: "2x Burger $16.00" → cents=1600 (not 800, not 3200).
-        - qty = the quantity printed on that line, or 1 if not shown.
-        - If the same item appears on two separate lines, output two separate ITEM lines.
+        - Output one row for each priced or important receipt row, preserving receipt order.
+        - Use ITEM for purchasable line items.
+        - Use DISCOUNT for any printed discount / promo / coupon / reward / comp row.
+        - If the printed amount has a leading or trailing minus sign, classify the row as DISCOUNT, not ITEM.
+        - Use TAX, TIP, and FEE for printed footer rows of those types.
+        - Use UNKNOWN when the row matters but the type is unclear.
         - Rewrite labels to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
-        - When a per-item discount line appears (e.g. "COMP", "DISCOUNT", "PROMO" under an item): use the known total to determine which interpretation is correct. If the item's listed price is already the post-discount price (subtracting the discount would make the sum too low), ignore the discount line entirely. If the item's listed price is pre-discount (subtracting it makes the sum match), fold the discount into the item's cents. Never emit a per-item discount as a separate ITEM line. Only use a negative ITEM line for a bill-wide discount with no associated item.
-        - Bill-wide discounts go in FEES_CENTS as a negative value (e.g. a $5 discount → FEES_CENTS|-500). If there are both fees and a discount, net them together into one FEES_CENTS value.
-        - CHECK: sum of ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS = \(knownTotalCents).
+        - cents must be the most likely locally-correct amount for that row, in integer cents.
+        - Only fix obvious OCR noise locally, such as misplaced spaces or characters in the amount. Do not use receipt-wide math.
+        - If a row has no readable amount, leave cents empty.
         """
 
-        let userMessage = "Extract all line items and breakdown from this receipt."
+        let userMessage = "Extract the ordered receipt rows from this receipt."
 
         let systemInstruction = Content(
             role: "system",
@@ -449,13 +485,16 @@ final class LLMClient {
         )
 
         let (text, _, _, _) = try await send(req)
+        lastRawPhase2Response = text
 
         guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
             throw LLMError.emptyText
         }
 
-        if let parsed = tryDecodePhase2(from: text) {
-            return parsed
+        if let rows = tryDecodePhase2Rows(from: text) {
+            let resolved = resolveExtractedRows(rows, knownTotalCents: knownTotalCents)
+            lastPhase2LineItems = resolved.lineItems
+            return resolved.phase2
         }
 
         print("[LLM] Phase2 decode failed. Raw text:\n\(text)")
@@ -510,32 +549,35 @@ final class LLMClient {
     // MARK: - Transcript-based Phase 2
 
     func analyzeReceiptPhase2(transcript: String, knownTotalCents: Int) async throws -> Phase2Result {
+        lastPhase2LineItems = []
+        lastRawPhase2Response = nil
         let developerMessage = """
-        You are extracting line items from a receipt for a bill-splitting app. The known total is \(knownTotalCents) cents.
+        You are extracting ordered receipt rows for a bill-splitting app.
         Output ONLY this exact format. No markdown, no code fences, no extra text.
 
-        BEGIN_RECEIPT_V2
-        TAX_CENTS|<int or empty>
-        TIP_CENTS|<int or empty>
-        FEES_CENTS|<int or empty, negative if bill-wide discount>
-
-        ITEM|<qty>|<label>|<line total cents or empty>
-        (one ITEM line per receipt line, repeated as needed)
-
-        END_RECEIPT_V2
+        BEGIN_ROWS
+        ITEM|<label>|<cents or empty>
+        DISCOUNT|<label>|<cents>
+        TAX|<label>|<cents>
+        TIP|<label>|<cents>
+        FEE|<label>|<cents>
+        UNKNOWN|<label>|<cents or empty>
+        END_ROWS
 
         Rules:
-        - One ITEM per receipt line. Never merge two separate receipt lines into one ITEM.
-        - cents = the line total printed on the receipt for that item — the final amount charged for that line, already accounting for quantity. If two prices appear on the line (e.g. unit price and line total), use the rightmost/larger one. Never multiply or compute — copy the printed line total exactly. Only correct clear character-level OCR noise (e.g. "1 09" → 109, "L 09" → 109). Never substitute a different number because you think it fits the total better — the transcript is accurate. Example: "2x Burger $16.00" → cents=1600 (not 800, not 3200).
-        - qty = the quantity printed on that line, or 1 if not shown.
-        - If the same item appears on two separate lines, output two separate ITEM lines.
+        - Output one row for each priced or important receipt row, preserving receipt order.
+        - Use ITEM for purchasable line items.
+        - Use DISCOUNT for any printed discount / promo / coupon / reward / comp row.
+        - If the printed amount has a leading or trailing minus sign, classify the row as DISCOUNT, not ITEM.
+        - Use TAX, TIP, and FEE for printed footer rows of those types.
+        - Use UNKNOWN when the row matters but the type is unclear.
         - Rewrite labels to be concise and readable. Example: 93EJ BCN BGR #29A -> Bacon Burger.
-        - When a per-item discount line appears (e.g. "COMP", "DISCOUNT", "PROMO" under an item): use the known total to determine which interpretation is correct. If the item's listed price is already the post-discount price (subtracting the discount would make the sum too low), ignore the discount line entirely. If the item's listed price is pre-discount (subtracting it makes the sum match), fold the discount into the item's cents. Never emit a per-item discount as a separate ITEM line. Only use a negative ITEM line for a bill-wide discount with no associated item.
-        - Bill-wide discounts go in FEES_CENTS as a negative value (e.g. a $5 discount → FEES_CENTS|-500). If there are both fees and a discount, net them together into one FEES_CENTS value.
-        - CHECK: sum of ITEM cents + TAX_CENTS + TIP_CENTS + FEES_CENTS = \(knownTotalCents).
+        - cents must be the most likely locally-correct amount for that row, in integer cents.
+        - Only fix obvious OCR noise locally, such as misplaced spaces or characters in the amount. Do not use receipt-wide math.
+        - If a row has no readable amount, leave cents empty.
         """
 
-        let userMessage = "Extract all line items and breakdown from this receipt transcript:\n\n\(transcript)"
+        let userMessage = "Extract the ordered receipt rows from this receipt transcript:\n\n\(transcript)"
 
         let systemInstruction = Content(
             role: "system",
@@ -557,116 +599,278 @@ final class LLMClient {
         )
 
         let (text, _, _, _) = try await send(req)
+        lastRawPhase2Response = text
 
         guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
             throw LLMError.emptyText
         }
 
-        if let parsed = tryDecodePhase2(from: text) {
-            return parsed
+        if let rows = tryDecodePhase2Rows(from: text) {
+            let resolved = resolveExtractedRows(rows, knownTotalCents: knownTotalCents)
+            lastPhase2LineItems = resolved.lineItems
+            return resolved.phase2
         }
 
         print("[LLM] Phase2 transcript decode failed. Raw text:\n\(text)")
         throw LLMError.decodeFailed
     }
 
-    private func tryDecodePhase2(from text: String) -> Phase2Result? {
-        // 1) Try to parse the strict line protocol (BEGIN_RECEIPT_V2 ... END_RECEIPT_V2)
-        // 2) If it doesn't look like protocol output, fall back to JSON decode (for backwards compatibility)
-
+    private func tryDecodePhase2Rows(from text: String) -> [ExtractedRow]? {
         let cleaned = text
             .replacingOccurrences(of: "```", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if cleaned.contains("BEGIN_RECEIPT_V2") {
-            let lines = cleaned
-                .components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+        guard cleaned.contains("BEGIN_ROWS") else { return nil }
 
-            var inBlock = false
-            var subtotal: Int? = nil
-            var tax: Int? = nil
-            var tip: Int? = nil
-            var fees: Int? = nil
-            var items: [Phase2Result.Item] = []
-            var issues: [String] = []
+        let lines = cleaned
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
 
-            func parseOptionalInt(_ s: String) -> Int? {
-                let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-                if t.isEmpty { return nil }
-                return Int(t)
+        func parseOptionalInt(_ raw: String) -> Int? {
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty { return nil }
+            return Int(trimmed)
+        }
+
+        var rows: [ExtractedRow] = []
+        var inBlock = false
+
+        for line in lines {
+            if line == "BEGIN_ROWS" {
+                inBlock = true
+                continue
+            }
+            if line == "END_ROWS" {
+                break
+            }
+            guard inBlock else { continue }
+
+            let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count >= 3, let kind = ExtractedRow.Kind(tag: parts[0]) else { continue }
+
+            let label = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            let cents = parseOptionalInt(parts[2])
+            guard !label.isEmpty else { continue }
+
+            rows.append(.init(kind: kind, label: label, cents: cents, index: rows.count))
+        }
+
+        return rows.isEmpty ? nil : rows
+    }
+
+    private func resolveExtractedRows(_ rows: [ExtractedRow], knownTotalCents: Int) -> ResolvedPhase2 {
+        struct DiscountCandidate {
+            let row: ExtractedRow
+            let previousItemIndex: Int?
+        }
+
+        struct ResolutionState {
+            let items: [Phase2Result.Item]
+            let taxCents: Int
+            let tipCents: Int
+            let feesCents: Int
+            let discountCents: Int
+            let issues: [String]
+            let discountModes: [Int: DiscountResolutionMode]
+            let score: Int
+        }
+
+        let cleanedRows = rows.map { row -> ExtractedRow in
+            if row.kind == .discount, let cents = row.cents, cents > 0 {
+                return .init(kind: row.kind, label: row.label, cents: -cents, index: row.index)
+            }
+            return row
+        }
+
+        var baseItems: [Phase2Result.Item] = []
+        var taxCents = 0
+        var tipCents = 0
+        var feesCents = 0
+        var discountCents = 0
+        var issues: [String] = []
+        var discountCandidates: [DiscountCandidate] = []
+
+        var lastItemIndex: Int? = nil
+
+        for row in cleanedRows {
+            switch row.kind {
+            case .item:
+                baseItems.append(.init(label: row.label, qty: 1, cents: row.cents))
+                lastItemIndex = baseItems.count - 1
+            case .tax:
+                if let cents = row.cents {
+                    taxCents += cents
+                } else {
+                    issues.append("Missing amount for tax row: \(row.label)")
+                }
+            case .tip:
+                if let cents = row.cents {
+                    tipCents += cents
+                } else {
+                    issues.append("Missing amount for tip row: \(row.label)")
+                }
+            case .fee:
+                if let cents = row.cents {
+                    feesCents += cents
+                } else {
+                    issues.append("Missing amount for fee row: \(row.label)")
+                }
+            case .discount:
+                discountCandidates.append(.init(row: row, previousItemIndex: lastItemIndex))
+            case .unknown:
+                if row.cents != nil {
+                    issues.append("Unclassified priced row: \(row.label)")
+                }
+            }
+        }
+
+        func total(of items: [Phase2Result.Item], feesCents: Int) -> Int {
+            let itemTotal = items.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+            return itemTotal + taxCents + tipCents + feesCents - discountCents
+        }
+
+        func apply(_ candidate: DiscountCandidate, mode: DiscountResolutionMode, to state: ResolutionState) -> ResolutionState {
+            var nextItems = state.items
+            var nextFees = state.feesCents
+            var nextDiscount = state.discountCents
+            var nextIssues = state.issues
+            var nextDiscountModes = state.discountModes
+            var nextScore = state.score
+
+            switch mode {
+            case .billWide:
+                if let cents = candidate.row.cents {
+                    nextDiscount += abs(cents)
+                    nextDiscountModes[candidate.row.index] = mode
+                } else {
+                    nextIssues.append("Missing amount for discount row: \(candidate.row.label)")
+                    nextScore += 200
+                }
+                nextScore += 2
+            case .attachToPreviousItem(let itemIndex):
+                guard itemIndex >= 0, itemIndex < nextItems.count else {
+                    nextIssues.append("Discount could not attach to previous item: \(candidate.row.label)")
+                    nextScore += 500
+                    return ResolutionState(items: nextItems, taxCents: state.taxCents, tipCents: state.tipCents, feesCents: nextFees, discountCents: nextDiscount, issues: nextIssues, discountModes: nextDiscountModes, score: nextScore)
+                }
+                guard let cents = candidate.row.cents else {
+                    nextIssues.append("Missing amount for discount row: \(candidate.row.label)")
+                    nextScore += 200
+                    return ResolutionState(items: nextItems, taxCents: state.taxCents, tipCents: state.tipCents, feesCents: nextFees, discountCents: nextDiscount, issues: nextIssues, discountModes: nextDiscountModes, score: nextScore)
+                }
+
+                let current = nextItems[itemIndex]
+                let updatedCents = (current.cents ?? 0) + cents
+                nextItems[itemIndex] = .init(label: current.label, qty: current.qty, cents: updatedCents)
+                nextDiscountModes[candidate.row.index] = mode
+                if updatedCents < 0 {
+                    nextScore += 1000 + abs(updatedCents)
+                    nextIssues.append("Discount drove item below zero: \(candidate.row.label)")
+                }
+            case .ignore:
+                nextIssues.append("Ignored discount row: \(candidate.row.label)")
+                nextDiscountModes[candidate.row.index] = mode
+                nextScore += candidate.previousItemIndex == nil ? 30 : 20
             }
 
-            for line in lines {
-                if line == "BEGIN_RECEIPT_V2" {
-                    inBlock = true
-                    continue
-                }
-                if line == "END_RECEIPT_V2" {
-                    inBlock = false
-                    break
-                }
-                guard inBlock else { continue }
-
-                // Split by | preserving empty fields
-                let parts = line.split(separator: "|", omittingEmptySubsequences: false).map { String($0) }
-                guard let tag = parts.first else { continue }
-
-                switch tag {
-                case "SUBTOTAL_CENTS":
-                    if parts.count >= 2 { subtotal = parseOptionalInt(parts[1]) }
-                case "TAX_CENTS":
-                    if parts.count >= 2 { tax = parseOptionalInt(parts[1]) }
-                case "TIP_CENTS":
-                    if parts.count >= 2 { tip = parseOptionalInt(parts[1]) }
-                case "FEES_CENTS":
-                    if parts.count >= 2 { fees = parseOptionalInt(parts[1]) }
-                case "DISCOUNT_CENTS":
-                    // Legacy: fold discount into fees as negative value
-                    if parts.count >= 2, let d = parseOptionalInt(parts[1]) {
-                        fees = (fees ?? 0) - d
-                    }
-                case "ISSUE":
-                    if parts.count >= 2 {
-                        let msg = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
-                        if !msg.isEmpty { issues.append(msg) }
-                    }
-                case "ITEM":
-                    // ITEM|<qty int>|<label string>|<cents int or empty>
-                    guard parts.count >= 4 else { continue }
-                    let qty = Int(parts[1].trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
-                    let label = parts[2].trimmingCharacters(in: .whitespacesAndNewlines)
-                    let cents = parseOptionalInt(parts[3])
-
-                    if !label.isEmpty {
-                        items.append(.init(label: label, qty: qty, cents: cents))
-                    }
-                default:
-                    continue
-                }
-            }
-
-            // Basic sanity: we need at least items (can be empty but shouldn't usually be)
-            // Still return even if empty so caller can surface issues.
-            return Phase2Result(
-                subtotal_cents: subtotal,
-                tax_cents: tax,
-                tip_cents: tip,
-                fees_cents: fees,
-                items: items,
-                issues: issues
+            return ResolutionState(
+                items: nextItems,
+                taxCents: state.taxCents,
+                tipCents: state.tipCents,
+                feesCents: nextFees,
+                discountCents: nextDiscount,
+                issues: nextIssues,
+                discountModes: nextDiscountModes,
+                score: nextScore
             )
         }
 
-        // Fallback: JSON decode (older behavior)
-        let repaired = repairJSON(text)
-        do {
-            return try JSONDecoder().decode(Phase2Result.self, from: Data(repaired.utf8))
-        } catch {
-            print("[LLM] Phase2 decode error: \(error)")
-            return nil
+        func resolveDiscounts(_ index: Int, state: ResolutionState) -> ResolutionState {
+            guard index < discountCandidates.count else { return state }
+
+            let candidate = discountCandidates[index]
+            var modes: [DiscountResolutionMode] = [.billWide, .ignore]
+            if let previousItemIndex = candidate.previousItemIndex {
+                modes.insert(.attachToPreviousItem(itemIndex: previousItemIndex), at: 0)
+            }
+
+            var bestState: ResolutionState?
+            var bestDiff: Int?
+
+            for mode in modes {
+                let next = apply(candidate, mode: mode, to: state)
+                let resolved = resolveDiscounts(index + 1, state: next)
+                let diff = abs(knownTotalCents - (resolved.items.reduce(0) { $0 + max(0, $1.cents ?? 0) } + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents))
+
+                if let currentBestDiff = bestDiff, let currentBest = bestState {
+                    if diff < currentBestDiff || (diff == currentBestDiff && resolved.score < currentBest.score) {
+                        bestDiff = diff
+                        bestState = resolved
+                    }
+                } else {
+                    bestDiff = diff
+                    bestState = resolved
+                }
+            }
+
+            return bestState ?? state
         }
+
+        let initial = ResolutionState(
+            items: baseItems,
+            taxCents: taxCents,
+            tipCents: tipCents,
+            feesCents: feesCents,
+            discountCents: discountCents,
+            issues: issues,
+            discountModes: [:],
+            score: 0
+        )
+
+        let resolved = resolveDiscounts(0, state: initial)
+        let filteredItems = resolved.items.filter { item in
+            guard let cents = item.cents else { return true }
+            return cents != 0
+        }
+        let derivedSubtotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents + resolved.discountCents
+        let subtotal = max(0, derivedSubtotal)
+
+        var finalIssues = resolved.issues
+        if derivedSubtotal < 0 {
+            finalIssues.append("Derived subtotal was negative; clamped to zero")
+        }
+
+        let resolvedTotal = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) } + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+        if resolvedTotal != knownTotalCents {
+            finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - resolvedTotal)) cents")
+        }
+
+        let finalLineItems = cleanedRows.compactMap { row -> ReceiptDisplay.LineItem? in
+            switch row.kind {
+            case .tax, .tip, .fee:
+                guard let cents = row.cents else { return nil }
+                return .init(label: row.label, cents: cents)
+            case .discount:
+                guard case .billWide? = resolved.discountModes[row.index], let cents = row.cents else { return nil }
+                return .init(label: row.label, cents: cents)
+            case .item, .unknown:
+                return nil
+            }
+        }
+
+        return ResolvedPhase2(
+            phase2: Phase2Result(
+                subtotal_cents: subtotal,
+                tax_cents: resolved.taxCents == 0 ? nil : resolved.taxCents,
+                tip_cents: resolved.tipCents == 0 ? nil : resolved.tipCents,
+                fees_cents: resolved.feesCents == 0 ? nil : resolved.feesCents,
+                discount_cents: resolved.discountCents == 0 ? nil : resolved.discountCents,
+                items: filteredItems,
+                issues: finalIssues
+            ),
+            lineItems: finalLineItems
+        )
     }
 
     // MARK: - JSON helpers
@@ -771,3 +975,58 @@ final class LLMClient {
         return (text, raw, status, reasons)
     }
 }
+
+#if DEBUG
+extension LLMClient {
+    func runPhase2ResolverTests() {
+        testBillWideDiscountResolution()
+        testAttachedDiscountResolution()
+        testIncludedDiscountResolution()
+        print("  [PASS] LLMClient phase 2 resolver tests")
+    }
+
+    private func testBillWideDiscountResolution() {
+        let rows: [ExtractedRow] = [
+            .init(kind: .item, label: "Burger", cents: 1600, index: 0),
+            .init(kind: .discount, label: "Birthday Discount", cents: -300, index: 1),
+            .init(kind: .tax, label: "Tax", cents: 130, index: 2)
+        ]
+
+        let resolved = resolveExtractedRows(rows, knownTotalCents: 1430)
+        assert(resolved.phase2.fees_cents == nil, "Expected no fees for bill-wide discount")
+        assert(resolved.phase2.discount_cents == 300, "Expected bill-wide discount stored separately")
+        assert(resolved.lineItems.contains(where: { $0.label == "Birthday Discount" && $0.cents == -300 }),
+               "Expected bill-wide discount line item")
+    }
+
+    private func testAttachedDiscountResolution() {
+        let rows: [ExtractedRow] = [
+            .init(kind: .item, label: "Burger", cents: 1600, index: 0),
+            .init(kind: .discount, label: "Promo", cents: -300, index: 1),
+            .init(kind: .tax, label: "Tax", cents: 100, index: 2)
+        ]
+
+        let resolved = resolveExtractedRows(rows, knownTotalCents: 1400)
+        assert(resolved.phase2.items.first?.cents == 1300, "Expected discount attached to item")
+        assert(resolved.phase2.fees_cents == nil, "Expected no bill-wide fees after attachment")
+        assert(resolved.phase2.discount_cents == nil, "Expected no bill-wide discount after attachment")
+        assert(!resolved.lineItems.contains(where: { $0.label == "Promo" }),
+               "Attached discount should not remain a footer line item")
+    }
+
+    private func testIncludedDiscountResolution() {
+        let rows: [ExtractedRow] = [
+            .init(kind: .item, label: "Burger", cents: 1300, index: 0),
+            .init(kind: .discount, label: "Promo", cents: -300, index: 1),
+            .init(kind: .tax, label: "Tax", cents: 100, index: 2)
+        ]
+
+        let resolved = resolveExtractedRows(rows, knownTotalCents: 1400)
+        assert(resolved.phase2.items.first?.cents == 1300, "Expected already-included discount to be ignored")
+        assert(resolved.phase2.fees_cents == nil, "Expected ignored discount not to change fees")
+        assert(resolved.phase2.discount_cents == nil, "Expected ignored discount not to change bill-wide discount")
+        assert(resolved.phase2.issues.contains(where: { $0.contains("Ignored discount row: Promo") }),
+               "Expected ignored-discount issue")
+    }
+}
+#endif

@@ -1,0 +1,101 @@
+{
+  "capturedAt" : "2026-04-19T02:14:15Z",
+  "caseID" : "img_4992",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 315517,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 4832,
+    "itemValues" : 0.4,
+    "lineItemValues" : 0,
+    "merchant" : 0.1111111111111111,
+    "overall" : 0.12,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 310685,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 0,
+        "label" : "CA Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Tve-nru lack In Thi STO",
+      "total_cents" : 8483
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 307034 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 1457,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 859,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 8598,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 81059,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 84423,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 8409,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 44832,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 84832,
+          "label" : "Smash Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 598,
+          "label" : "Jr. Chicken Sandwich",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8483
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Smash Fries|1457\nITEM|Smash Fries|859\nITEM|Smash Fries|8598\nITEM|Smash Fries|81059\nITEM|Smash Fries|450\nITEM|Smash Fries|84423\nITEM|Smash Fries|8409\nITEM|Smash Fries|44832\nITEM|Smash Fries|84832\nITEM|Jr. Chicken Sandwich|598\nTAX|CA Sales Tax|0\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.8331959247589111,
+      "phase2Seconds" : 56.618385910987854,
+      "totalWorkflowSeconds" : 62.68051099777222,
+      "transcriptSeconds" : 5.228922963142395,
+      "transcriptToPhase1Seconds" : 0.8331969976425171,
+      "transcriptToPhase2Seconds" : 57.451586961746216,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "$14.57 $8.59 85.98 810.59 $4.50 844.23 84.09 448.32 848.32\nOr Tve-nru lack In Thi STO 8 Hamilton Ave Castell, CA 95008 SMS BTRY SHASH K DS, LE FRENCH FRIES FOUNTAIN DRINK DIET COKE SMASHED JACK No PICKLES JR. CHICKEN SANDWICH (2 • 2.99) BAC DEL SMASH JADI 13 CLASSIC TINY TACOS AVOCADO LIME DIP DUF Subtotal CA Sales Tax - 9.258 Total Visa Tendered"
+  },
+  "sourceFilename" : "IMG_4992.jpeg",
+  "variantID" : "current"
+}
