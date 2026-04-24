@@ -687,7 +687,7 @@ final class LLMClient {
         var taxCents = 0
         var tipCents = 0
         var feesCents = 0
-        var discountCents = 0
+        let discountCents = 0
         var issues: [String] = []
         var discountCandidates: [DiscountCandidate] = []
 
@@ -732,7 +732,7 @@ final class LLMClient {
 
         func apply(_ candidate: DiscountCandidate, mode: DiscountResolutionMode, to state: ResolutionState) -> ResolutionState {
             var nextItems = state.items
-            var nextFees = state.feesCents
+            let nextFees = state.feesCents
             var nextDiscount = state.discountCents
             var nextIssues = state.issues
             var nextDiscountModes = state.discountModes

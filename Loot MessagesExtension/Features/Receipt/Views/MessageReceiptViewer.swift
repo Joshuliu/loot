@@ -254,12 +254,10 @@ struct MessageReceiptViewer: View {
     // MARK: - Firestore Persistence
 
     private func persistPayload(_ payload: LootMessagePayload, docId: String) {
+        uiModel.sendBillUpdate?(payload, docId)
         Task {
             do {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
-                await MainActor.run {
-                    self.uiModel.sendBillUpdate?(payload, docId)
-                }
                 print("[MessageReceiptViewer] Persisted edit to Firestore: \(docId)")
 
                 // Recompute tab aggregates if this receipt belongs to a tab.

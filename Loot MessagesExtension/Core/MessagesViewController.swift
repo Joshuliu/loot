@@ -10,15 +10,56 @@ import Messages
 import SwiftUI
 
 final class MessagesViewController: MSMessagesAppViewController {
+    private final class WeakControllerRef {
+        weak var controller: MessagesViewController?
+    }
+
+    // Transcript/live bubble instances cannot reliably expand themselves, so they
+    // hand off expansion to the currently active non-transcript controller.
+    private static let activeDrawerControllerRef = WeakControllerRef()
 
     // Lazy so transcript bubble instances never allocate these
     private lazy var uiModel = LootUIModel()
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
     private var hasSetupRootView = false
     private var isTranscript = false
+    private var isConversationAutoSendReady = false
     private var billUpdateSessionByDocId: [String: MSSession] = [:]
     private var pendingBillUpdateByDocId: [String: LootMessagePayload] = [:]
     private var lastSentSplitSignatureByDocId: [String: String] = [:]
+
+    private func registerAsActiveDrawerControllerIfNeeded() {
+        guard !isTranscript else { return }
+        Self.activeDrawerControllerRef.controller = self
+    }
+
+    private func unregisterAsActiveDrawerControllerIfNeeded() {
+        guard !isTranscript else { return }
+        if Self.activeDrawerControllerRef.controller === self {
+            Self.activeDrawerControllerRef.controller = nil
+        }
+    }
+
+    private func reopenMessageIfPossible(_ message: MSMessage?) {
+        guard !isTranscript,
+              let message,
+              let conversation = activeConversation else { return }
+        applyMessage(message, conversation: conversation)
+    }
+
+    private func requestExpansionFromTranscriptTap() {
+        let transcriptSelectedMessage = activeConversation?.selectedMessage
+
+        if let drawerController = Self.activeDrawerControllerRef.controller,
+           drawerController !== self {
+            drawerController.reopenMessageIfPossible(transcriptSelectedMessage)
+            drawerController.requestPresentationStyle(.expanded)
+            return
+        }
+
+        reopenMessageIfPossible(transcriptSelectedMessage)
+        requestPresentationStyle(.expanded)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -81,8 +122,27 @@ final class MessagesViewController: MSMessagesAppViewController {
             return
         }
 
+        isConversationAutoSendReady = false
+        registerAsActiveDrawerControllerIfNeeded()
         applyMessage(conversation.selectedMessage, conversation: conversation)
         setupRootView(conversation: conversation)
+    }
+
+    override func didBecomeActive(with conversation: MSConversation) {
+        super.didBecomeActive(with: conversation)
+        isConversationAutoSendReady = true
+        registerAsActiveDrawerControllerIfNeeded()
+        flushAllPendingBillUpdatesIfNeeded(conversation: conversation)
+    }
+
+    override func willResignActive(with conversation: MSConversation) {
+        super.willResignActive(with: conversation)
+        isConversationAutoSendReady = false
+        unregisterAsActiveDrawerControllerIfNeeded()
+    }
+
+    deinit {
+        unregisterAsActiveDrawerControllerIfNeeded()
     }
 
     override func contentSizeThatFits(_ size: CGSize) -> CGSize {
@@ -132,7 +192,7 @@ final class MessagesViewController: MSMessagesAppViewController {
     // MARK: - Transcript (lightweight UIKit-only path)
 
     @objc private func transcriptTapped() {
-        requestPresentationStyle(.expanded)
+        requestExpansionFromTranscriptTap()
     }
 
     private func configureAsTranscript() {
@@ -279,6 +339,27 @@ extension MessagesViewController {
         return data.base64EncodedString()
     }
 
+    private func shouldAdoptFetchedPayload(_ fetched: LootMessagePayload, for docId: String) -> Bool {
+        guard uiModel.openedMessageDocId == docId else { return true }
+        guard let current = uiModel.openedMessagePayload else { return true }
+
+        let fetchedSignature = splitSignature(for: fetched.s)
+        let currentSignature = splitSignature(for: current.s)
+        guard fetchedSignature != currentSignature else { return true }
+
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let currentHasClaim = current.s.g.contains(where: { $0.uid == myUid })
+        let fetchedHasClaim = fetched.s.g.contains(where: { $0.uid == myUid })
+
+        // Ignore stale Firestore reads that would undo the local auto-claim we just applied.
+        if currentHasClaim && !fetchedHasClaim {
+            print("[applyMessage] Ignoring stale fetched payload for \(docId); local claim is newer")
+            return false
+        }
+
+        return true
+    }
+
     private func bindBillUpdateAnchor(from message: MSMessage, docId: String, conversation: MSConversation) {
         guard let session = message.session else { return }
         billUpdateSessionByDocId[docId] = session
@@ -290,9 +371,23 @@ extension MessagesViewController {
         sendBillUpdate(payload: pending, docId: docId, conversation: conversation)
     }
 
+    private func flushAllPendingBillUpdatesIfNeeded(conversation: MSConversation) {
+        let pending = pendingBillUpdateByDocId
+        pendingBillUpdateByDocId.removeAll()
+        for (docId, payload) in pending {
+            sendBillUpdate(payload: payload, docId: docId, conversation: conversation)
+        }
+    }
+
     private func sendBillUpdate(payload: LootMessagePayload, docId: String, conversation: MSConversation) {
         let signature = splitSignature(for: payload.s)
         if !signature.isEmpty, lastSentSplitSignatureByDocId[docId] == signature {
+            return
+        }
+
+        guard isConversationAutoSendReady else {
+            pendingBillUpdateByDocId[docId] = payload
+            print("[sendBillUpdate] Deferring update until conversation is fully active for doc: \(docId)")
             return
         }
 
@@ -355,14 +450,12 @@ extension MessagesViewController {
             ignoredUUIDs: ignoredToWrite
         )
 
-        let alternateLayout = MSMessageTemplateLayout()
-        alternateLayout.image = cardImage
-        // Transitional: send as template layout (see sendBillMessage comment)
-        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
-
         if !signature.isEmpty {
             lastSentSplitSignatureByDocId[docId] = signature
         }
+
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
 
         let message = MSMessage(session: session)
         message.layout = alternateLayout
@@ -376,6 +469,54 @@ extension MessagesViewController {
                 print("[sendBillUpdate] Failed to send updated bill message: \(error)")
             }
         }
+    }
+
+    private func autoClaimPayloadIfNeeded(
+        _ payload: LootMessagePayload,
+        docId: String,
+        from message: MSMessage,
+        conversation: MSConversation
+    ) -> LootMessagePayload {
+        var updated = payload
+        let myUid = KeychainHelper.getOrCreateUserId()
+
+        guard !updated.s.g.contains(where: { $0.uid == myUid }) else { return updated }
+
+        let hasIgnoredList = uiModel.hasIgnoredUUIDsList(for: docId)
+        if hasIgnoredList, uiModel.isIgnoredUUID(myUid, for: docId) {
+            return updated
+        }
+
+        let claimIndex: Int? = {
+            if updated.s.m == .equally {
+                return updated.s.g.firstIndex(where: { $0.uid == nil })
+            }
+            let freeSlots = updated.s.g.indices.filter { updated.s.g[$0].uid == nil }
+            return freeSlots.count == 1 ? freeSlots[0] : nil
+        }()
+
+        guard let claimIndex else { return updated }
+
+        updated.s.g[claimIndex].uid = myUid
+        if hasIgnoredList {
+            uiModel.removeIgnoredUUID(myUid, for: docId)
+        }
+
+        if let session = billUpdateSessionByDocId[docId] ?? message.session {
+            billUpdateSessionByDocId[docId] = session
+        }
+        sendBillUpdate(payload: updated, docId: docId, conversation: conversation)
+
+        Task {
+            do {
+                try await SharedReceiptService.shared.updatePayload(updated, docId: docId)
+                print("[autoClaim] Persisted claimed slot for \(docId)")
+            } catch {
+                print("[autoClaim] Failed to persist claimed slot for \(docId): \(error)")
+            }
+        }
+
+        return updated
     }
 
     private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
@@ -406,30 +547,40 @@ extension MessagesViewController {
            !docId.isEmpty {
             bindBillUpdateAnchor(from: msg, docId: docId, conversation: conversation)
 
-            // Clear old payload first so MessageReceiptViewer unmounts,
-            // then remounts fresh once the new payload arrives.
-            uiModel.openedMessagePayload = nil
-            uiModel.messageLoadingState = .loading
-            uiModel.openedMessageDocId = docId
-            uiModel.currentScreen = .messageViewer
-
             // Extract inline fallback payload embedded at send time.
-            // Present on every card sent with the current app version.
+            // Present it immediately while Firestore refreshes in the background.
             let decodedInline = LootMessageCodec.decodedInlinePayload(from: url)
             let inlinePayload = decodedInline?.payload
+
             if let decodedInline {
                 uiModel.setInlineIgnoredState(
                     ignoredUUIDs: decodedInline.ignoredUUIDs,
                     hasList: decodedInline.hasIgnoredUUIDsList,
                     for: docId
                 )
+                let claimedPayload = autoClaimPayloadIfNeeded(
+                    decodedInline.payload,
+                    docId: docId,
+                    from: msg,
+                    conversation: conversation
+                )
+                uiModel.openedMessagePayload = claimedPayload
+                uiModel.currentReceipt = claimedPayload.toReceiptDisplay()
+                uiModel.messageLoadingState = .loaded(claimedPayload)
             } else {
+                // No local payload available, so fall back to the loading state.
+                uiModel.openedMessagePayload = nil
+                uiModel.messageLoadingState = .loading
                 uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
             }
+
+            uiModel.openedMessageDocId = docId
+            uiModel.currentScreen = .messageViewer
 
             Task { @MainActor in
                 do {
                     let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
+                    guard shouldAdoptFetchedPayload(payload, for: docId) else { return }
                     uiModel.openedMessagePayload = payload
                     uiModel.currentReceipt = payload.toReceiptDisplay()
                     if let captureImage {
@@ -505,13 +656,18 @@ extension MessagesViewController {
 
         // Legacy path: inline payload
         if let decodedInline = LootMessageCodec.decodedInlinePayload(from: url) {
-            let payload = decodedInline.payload
-            let billId = payload.r.id
+            let billId = decodedInline.payload.r.id
             bindBillUpdateAnchor(from: msg, docId: billId, conversation: conversation)
             uiModel.setInlineIgnoredState(
                 ignoredUUIDs: decodedInline.ignoredUUIDs,
                 hasList: decodedInline.hasIgnoredUUIDsList,
                 for: billId
+            )
+            let payload = autoClaimPayloadIfNeeded(
+                decodedInline.payload,
+                docId: billId,
+                from: msg,
+                conversation: conversation
             )
             uiModel.openedMessagePayload = payload
             uiModel.openedMessageDocId = billId
@@ -891,10 +1047,6 @@ extension MessagesViewController {
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
 
-        // Transitional: send as template layout so older app versions
-        // don't spin up a mini LiveLayout instance they can't handle.
-        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
-
         let message = MSMessage(session: MSSession())
         message.layout = alternateLayout
         message.url = components.url
@@ -956,15 +1108,12 @@ extension MessagesViewController {
         let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
 
         var components = lootURLComponents()
-        var queryItems: [URLQueryItem] = [
+        let queryItems: [URLQueryItem] = [
             URLQueryItem(name: queryItemName, value: tabId),
             URLQueryItem(name: "tn", value: tabName),
             URLQueryItem(name: "tc", value: tabColorHex)
         ]
         components.queryItems = queryItems
-
-        let layout = MSMessageTemplateLayout()
-        layout.image = cardImage
 
         let session: MSSession
         if useSelectedMessageSession {
@@ -972,6 +1121,9 @@ extension MessagesViewController {
         } else {
             session = MSSession()
         }
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
+
         let message = MSMessage(session: session)
         message.layout = layout
         message.url = components.url

@@ -52,7 +52,7 @@ struct RootContainerView: View {
     @State private var pendingTabId: String = ""
     @State private var tabInviteCameFromTabView: Bool = false
 
-    // DEBUG: Set to true to only run VisionKit OCR and print JSON (no Gemini)
+    // DEBUG: Set to true to only run VisionKit OCR and print JSON (no AI)
     private let DEBUG_OCR_ONLY = false
     // DEBUG: Set to true to copy OCR transcript to clipboard after each scan
     private let DEBUG_COPY_TRANSCRIPT = true
@@ -76,7 +76,6 @@ struct RootContainerView: View {
 
     // Backend user restore state
     @State private var isCheckingBackendUser: Bool = true
-
     init(uiModel: LootUIModel) {
         self.uiModel = uiModel
         self.participantCount = 1
@@ -549,6 +548,93 @@ struct RootContainerView: View {
         splitDraft = effectiveDraft
     }
 
+    private func optimisticMessagePayload(for receipt: TabReceipt) -> LootMessagePayload? {
+        guard let tab = uiModel.activeTab else { return nil }
+
+        var orderedMemberIds: [String] = []
+        func appendMemberId(_ memberId: String) {
+            guard !memberId.isEmpty, !orderedMemberIds.contains(memberId) else { return }
+            orderedMemberIds.append(memberId)
+        }
+
+        appendMemberId(receipt.payerMemberId)
+        receipt.splits.forEach { appendMemberId($0.memberId) }
+        receipt.items?.forEach { item in
+            item.assignedMemberIds.forEach { appendMemberId($0) }
+        }
+        guard !orderedMemberIds.isEmpty else { return nil }
+
+        let memberById = Dictionary(uniqueKeysWithValues: tab.members.map { ($0.memberId, $0) })
+        let guests = orderedMemberIds.map { memberId in
+            let member = memberById[memberId]
+            return SplitPayload.Guest(
+                n: member?.displayName ?? "Guest",
+                inc: true,
+                uid: member?.userId
+            )
+        }
+
+        let payerIndex = orderedMemberIds.firstIndex(of: receipt.payerMemberId) ?? 0
+        let owedByMemberId = Dictionary(uniqueKeysWithValues: receipt.splits.map { ($0.memberId, $0.owedCents) })
+        let owedAmounts = orderedMemberIds.map { owedByMemberId[$0] ?? 0 }
+
+        let splitMode: SplitPayload.Mode = {
+            switch receipt.splitMode {
+            case .equally: return .equally
+            case .custom: return .custom
+            case .byItems: return .byItems
+            }
+        }()
+
+        let items = (receipt.items ?? []).map { item in
+            ReceiptItemPayload(
+                id: UUID().uuidString,
+                l: item.label,
+                p: item.priceCents,
+                rs: item.assignedMemberIds.compactMap { orderedMemberIds.firstIndex(of: $0) }
+            )
+        }
+
+        let split = SplitPayload(
+            m: splitMode,
+            g: guests,
+            pi: payerIndex,
+            o: owedAmounts,
+            f: receipt.feesCents == 0 ? nil : receipt.feesCents,
+            tx: receipt.taxCents == 0 ? nil : receipt.taxCents,
+            tip: receipt.tipCents == 0 ? nil : receipt.tipCents,
+            d: (receipt.discountCents ?? 0) == 0 ? nil : receipt.discountCents,
+            tot: receipt.totalCents
+        )
+
+        let payloadReceipt = ReceiptPayload(
+            id: receipt.messagePayloadId ?? receipt.id ?? UUID().uuidString,
+            t: receipt.title,
+            c: Date().timeIntervalSince1970,
+            sub: receipt.subtotalCents,
+            f: receipt.feesCents,
+            d: receipt.discountCents ?? 0,
+            tx: receipt.taxCents,
+            tip: receipt.tipCents,
+            tot: receipt.totalCents,
+            i: items
+        )
+
+        let tabPayload: TabPayload? = {
+            guard let tabId = tab.id else { return nil }
+            return TabPayload(id: tabId, n: tab.name, c: tab.colorHex)
+        }()
+
+        return LootMessagePayload(
+            r: payloadReceipt,
+            s: split,
+            tid: tab.id,
+            trid: receipt.id,
+            tab: tabPayload,
+            su: nil
+        )
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -664,7 +750,7 @@ struct RootContainerView: View {
             saveSession(screen: screen)
         }
         .onChange(of: uiModel.currentReceipt) { _, receipt in
-            if let receipt {
+            if uiModel.openedMessagePayload == nil, let receipt {
                 receiptName = receipt.title
             }
             saveSession(screen: uiModel.currentScreen)
@@ -747,6 +833,11 @@ struct RootContainerView: View {
             onUpload: { startPhotoLibraryFlow() },
             onScan: { startScanFlow() },
             onFill: {
+                uiModel.resetForNewReceipt()
+                receiptName = ""
+                amountString = "0"
+                tipAmount = ""
+                splitDraft = nil
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .fill
                 }
@@ -829,8 +920,14 @@ struct RootContainerView: View {
             },
             onPreviewSplits: { receipt in
                 guard let docId = receipt.messagePayloadId, !docId.isEmpty else { return }
-                uiModel.openedMessagePayload = nil
-                uiModel.messageLoadingState = .loading
+                if let optimisticPayload = optimisticMessagePayload(for: receipt) {
+                    uiModel.openedMessagePayload = optimisticPayload
+                    uiModel.currentReceipt = optimisticPayload.toReceiptDisplay()
+                    uiModel.messageLoadingState = .loaded(optimisticPayload)
+                } else {
+                    uiModel.openedMessagePayload = nil
+                    uiModel.messageLoadingState = .loading
+                }
                 uiModel.openedMessageDocId = docId
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .messageViewer
@@ -846,7 +943,9 @@ struct RootContainerView: View {
                         uiModel.messageLoadingState = .loaded(payload)
                     } catch {
                         print("[LootTabView] Failed to load receipt payload: \(error)")
-                        uiModel.messageLoadingState = .failed(error)
+                        if uiModel.openedMessagePayload == nil {
+                            uiModel.messageLoadingState = .failed(error)
+                        }
                     }
                 }
             },
