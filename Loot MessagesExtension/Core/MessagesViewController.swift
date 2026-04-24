@@ -932,8 +932,6 @@ extension MessagesViewController {
                          amount: String,
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
-
-        // Build a "portable" receipt + split payload
         let fallbackTotalCents = stringToCents(amount)
         let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
@@ -961,8 +959,6 @@ extension MessagesViewController {
 
         // Capture scan image before async block (will be nil for manual receipts)
         let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal
-
-        // Render card image synchronously (before async block)
         let cardImage = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
@@ -978,8 +974,6 @@ extension MessagesViewController {
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
-        // Embed the full payload inline (compressed) so the card is readable
-        // even if the Firestore upload never completes (e.g. no internet at send time).
         LootMessageCodec.writePayload(
             into: &components,
             payload: payload,
@@ -988,9 +982,10 @@ extension MessagesViewController {
 
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let message = MSMessage(session: MSSession())
-        message.layout = alternateLayout
+        message.layout = liveLayout
         message.url = components.url
 
         conversation.send(message) { error in
@@ -999,15 +994,12 @@ extension MessagesViewController {
 
         requestPresentationStyle(.compact)
 
-        // Upload to Firestore in the background, then add to tab if applicable
         Task {
             do {
                 try await SharedReceiptService.shared.upload(payload, captureImage: captureImage, docId: docId)
                 print("[sendBillMessage] Uploaded to Firestore: \(docId)")
 
-                // If this receipt belongs to a tab, recompute its derived aggregates.
                 if let tabId = payload.tid {
-                    // Refresh cached tab from the single-source sharedReceipts model.
                     if let refreshed = try await TabService.shared.syncTabDerivedState(tabId: tabId) {
                         await MainActor.run {
                             self.uiModel.activeTab = refreshed
