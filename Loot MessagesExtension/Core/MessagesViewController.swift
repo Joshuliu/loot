@@ -456,9 +456,10 @@ extension MessagesViewController {
 
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let message = MSMessage(session: session)
-        message.layout = alternateLayout
+        message.layout = liveLayout
         message.url = components.url
 
         conversation.send(message) { [weak self] error in
@@ -469,54 +470,6 @@ extension MessagesViewController {
                 print("[sendBillUpdate] Failed to send updated bill message: \(error)")
             }
         }
-    }
-
-    private func autoClaimPayloadIfNeeded(
-        _ payload: LootMessagePayload,
-        docId: String,
-        from message: MSMessage,
-        conversation: MSConversation
-    ) -> LootMessagePayload {
-        var updated = payload
-        let myUid = KeychainHelper.getOrCreateUserId()
-
-        guard !updated.s.g.contains(where: { $0.uid == myUid }) else { return updated }
-
-        let hasIgnoredList = uiModel.hasIgnoredUUIDsList(for: docId)
-        if hasIgnoredList, uiModel.isIgnoredUUID(myUid, for: docId) {
-            return updated
-        }
-
-        let claimIndex: Int? = {
-            if updated.s.m == .equally {
-                return updated.s.g.firstIndex(where: { $0.uid == nil })
-            }
-            let freeSlots = updated.s.g.indices.filter { updated.s.g[$0].uid == nil }
-            return freeSlots.count == 1 ? freeSlots[0] : nil
-        }()
-
-        guard let claimIndex else { return updated }
-
-        updated.s.g[claimIndex].uid = myUid
-        if hasIgnoredList {
-            uiModel.removeIgnoredUUID(myUid, for: docId)
-        }
-
-        if let session = billUpdateSessionByDocId[docId] ?? message.session {
-            billUpdateSessionByDocId[docId] = session
-        }
-        sendBillUpdate(payload: updated, docId: docId, conversation: conversation)
-
-        Task {
-            do {
-                try await SharedReceiptService.shared.updatePayload(updated, docId: docId)
-                print("[autoClaim] Persisted claimed slot for \(docId)")
-            } catch {
-                print("[autoClaim] Failed to persist claimed slot for \(docId): \(error)")
-            }
-        }
-
-        return updated
     }
 
     private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
@@ -558,15 +511,9 @@ extension MessagesViewController {
                     hasList: decodedInline.hasIgnoredUUIDsList,
                     for: docId
                 )
-                let claimedPayload = autoClaimPayloadIfNeeded(
-                    decodedInline.payload,
-                    docId: docId,
-                    from: msg,
-                    conversation: conversation
-                )
-                uiModel.openedMessagePayload = claimedPayload
-                uiModel.currentReceipt = claimedPayload.toReceiptDisplay()
-                uiModel.messageLoadingState = .loaded(claimedPayload)
+                uiModel.openedMessagePayload = decodedInline.payload
+                uiModel.currentReceipt = decodedInline.payload.toReceiptDisplay()
+                uiModel.messageLoadingState = .loaded(decodedInline.payload)
             } else {
                 // No local payload available, so fall back to the loading state.
                 uiModel.openedMessagePayload = nil
@@ -663,12 +610,7 @@ extension MessagesViewController {
                 hasList: decodedInline.hasIgnoredUUIDsList,
                 for: billId
             )
-            let payload = autoClaimPayloadIfNeeded(
-                decodedInline.payload,
-                docId: billId,
-                from: msg,
-                conversation: conversation
-            )
+            let payload = decodedInline.payload
             uiModel.openedMessagePayload = payload
             uiModel.openedMessageDocId = billId
             uiModel.currentReceipt = payload.toReceiptDisplay()

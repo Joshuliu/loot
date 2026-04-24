@@ -643,11 +643,13 @@ struct SplitsSummaryView: View {
 
         payload.s = split
         uiModel.openedMessagePayload = payload
-        uiModel.sendBillUpdate?(payload, docId)
 
         Task {
             do {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
+                await MainActor.run {
+                    uiModel.sendBillUpdate?(payload, docId)
+                }
                 print("[SplitsSummaryView] Split persisted to \(docId)")
             } catch {
                 print("[SplitsSummaryView] Failed to persist split: \(error)")
@@ -1179,7 +1181,18 @@ struct SplitsSummaryView: View {
                         selectedIndex = myIdx
                     }
                 } else if hasClaimableSlots {
-                    billState = .choosing
+                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+                        claimSlot(at: i)
+                    } else if split.m != .equally {
+                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+                        if freeSlots.count == 1 {
+                            claimSlot(at: freeSlots[0])
+                        } else {
+                            billState = .choosing
+                        }
+                    } else {
+                        billState = .choosing
+                    }
                 } else {
                     billState = .notInBill
                     selectedIndex = nil
@@ -1192,7 +1205,18 @@ struct SplitsSummaryView: View {
                         selectedIndex = myIdx
                     }
                 } else {
-                    billState = .choosing
+                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+                        claimSlot(at: i)
+                    } else if split.m != .equally {
+                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+                        if freeSlots.count == 1 {
+                            claimSlot(at: freeSlots[0])
+                        } else {
+                            billState = .choosing
+                        }
+                    } else {
+                        billState = .choosing
+                    }
                 }
             }
         }
