@@ -249,15 +249,17 @@ extension ConfirmationView {
 
     // MARK: - Equal split generator (exact cents)
     func equalSplitCents(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) {
-                out[i] += 1
+        splitCentsEvenly(total: total, count: count)
+    }
+
+    private func byItemsGuestCents(for guestId: UUID) -> Int {
+        byItemsGuestSubtotalCents(
+            guestId: guestId,
+            guestOrder: guests.map(\.id),
+            items: byItemItems.map { item in
+                (priceCents: stringToCents(item.price), assignedGuestIds: Array(item.assignedGuestIds))
             }
-        }
-        return out
+        )
     }
 
     func ensureGuestArrays() {
@@ -1233,12 +1235,7 @@ extension ConfirmationView {
                             
                             // Right side: amount (byItems shows running total; other modes show editable amount)
                             if mode == .byItems {
-                                let guestCents = byItemItems
-                                    .filter { $0.assignedGuestIds.contains(gid) }
-                                    .reduce(0) { acc, item in
-                                        let n = max(1, item.assignedGuestIds.count)
-                                        return acc + stringToCents(item.price) / n
-                                    }
+                                let guestCents = byItemsGuestCents(for: gid)
                                 Text(ReceiptDisplay.money(guestCents))
                                     .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
                                     .foregroundColor(guestCents > 0 ? .primary : .secondary)

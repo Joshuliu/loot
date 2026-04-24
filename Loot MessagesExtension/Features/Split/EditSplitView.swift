@@ -58,7 +58,7 @@ struct EditSplitView: View {
         // Compute initial amounts
         var amounts = draft.perGuestCents
         if draftMode == .equally {
-            amounts = Self.computeEqualSplit(total: payload.s.tot, count: activeCount)
+            amounts = splitCentsEvenly(total: payload.s.tot, count: activeCount)
         }
         _guestAmountsCents = State(initialValue: amounts)
 
@@ -71,16 +71,6 @@ struct EditSplitView: View {
                 assignedGuestIds: Set(item.assignedGuestIds)
             )
         })
-    }
-
-    private static func computeEqualSplit(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) { out[i] += 1 }
-        }
-        return out
     }
 
     private var activeGuests: [SplitGuest] { guests.filter { $0.isIncluded } }
@@ -322,12 +312,7 @@ struct EditSplitView: View {
 
                     // Amount
                     if mode == .byItems {
-                        let guestCents = byItemItems
-                            .filter { $0.assignedGuestIds.contains(gid) }
-                            .reduce(0) { acc, item in
-                                let n = max(1, item.assignedGuestIds.count)
-                                return acc + stringToCents(item.price) / n
-                            }
+                        let guestCents = byItemsGuestCents(for: gid)
                         Text(ReceiptDisplay.money(guestCents))
                             .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
                             .foregroundColor(guestCents > 0 ? .primary : .secondary)
@@ -576,7 +561,17 @@ struct EditSplitView: View {
     }
 
     private func equalSplitCents(total: Int, count: Int) -> [Int] {
-        Self.computeEqualSplit(total: total, count: count)
+        splitCentsEvenly(total: total, count: count)
+    }
+
+    private func byItemsGuestCents(for guestId: UUID) -> Int {
+        byItemsGuestSubtotalCents(
+            guestId: guestId,
+            guestOrder: guests.map(\.id),
+            items: byItemItems.map { item in
+                (priceCents: stringToCents(item.price), assignedGuestIds: Array(item.assignedGuestIds))
+            }
+        )
     }
 
     private func remainingExcluding(_ idx: Int) -> Int {

@@ -306,11 +306,21 @@ struct RootContainerView: View {
                         }
                         print("[Scan] Phase 2 complete: \(phase2.items.count) items")
 
-                        // Build full ParsedReceipt for compatibility
+                        let breakdown = (
+                            fees: max(0, phase2.fees_cents ?? 0),
+                            discount: max(0, phase2.discount_cents ?? 0),
+                            tax: max(0, phase2.tax_cents ?? 0),
+                            tip: max(0, phase2.tip_cents ?? 0)
+                        )
+                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees + breakdown.discount - breakdown.tip))
+                        let phase2ProjectedTotalCents = subtotal + breakdown.tax + breakdown.fees - breakdown.discount + breakdown.tip
+
+                        // Build full ParsedReceipt for compatibility, using the projected phase-2 total
+                        // (not the coarse phase-1 total) so downstream UI can reflect corrections.
                         let fullParsed = ParsedReceipt(
                             merchant: phase1.merchant,
-                            total_cents: knownTotal,
-                            subtotal_cents: phase2.subtotal_cents,
+                            total_cents: phase2ProjectedTotalCents,
+                            subtotal_cents: subtotal,
                             tax_cents: phase2.tax_cents,
                             tip_cents: phase2.tip_cents,
                             fees_cents: phase2.fees_cents,
@@ -319,10 +329,6 @@ struct RootContainerView: View {
                             issues: phase2.issues
                         )
                         uiModel.parsedReceipt = fullParsed
-
-                        // Extract breakdown
-                        let breakdown = fullParsed.breakdownDefaults()
-                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees + breakdown.discount - breakdown.tip))
 
                         // Check if user already added a tip manually (don't overwrite it)
                         let userAddedTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
@@ -354,8 +360,11 @@ struct RootContainerView: View {
                             }
                         }
 
-                        // Update subtotal field
+                        // Update subtotal field used by manual/edit flows.
                         amountString = String(format: "%.2f", Double(subtotal) / 100.0)
+
+                        // Final total after phase 2 + local post-processing adjustments.
+                        let finalizedTotalCents = subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents
 
                         // Rebuild currentReceipt with items + breakdown, preserving user's tip
                         uiModel.currentReceipt = ReceiptDisplay(
@@ -367,7 +376,7 @@ struct RootContainerView: View {
                             discountCents: breakdown.discount,
                             taxCents: breakdown.tax,
                             tipCents: finalTipCents,
-                            totalCents: subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents,
+                            totalCents: finalizedTotalCents,
                             items: fullParsed.toDisplayItems(),
                             lineItems: displayLineItems
                         )
@@ -393,15 +402,7 @@ struct RootContainerView: View {
     /// Computes an exact-cents even split for active guest count.
     /// Used by draft reconciliation so "Split evenly" stays consistent with live totals.
     private func equalSplitCents(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) {
-                out[i] += 1
-            }
-        }
-        return out
+        splitCentsEvenly(total: total, count: count)
     }
 
     /// Reconciles split-draft totals with the latest receipt totals.

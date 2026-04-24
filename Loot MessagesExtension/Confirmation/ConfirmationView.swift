@@ -74,6 +74,9 @@ struct ConfirmationView: View {
     @State var splitSnapshot: (mode: SplitDraft.Mode, guests: [SplitGuest], payerGuestId: UUID, guestAmountsCents: [Int])? = nil
     @State private var keyboardHeight: CGFloat = 0
     @State private var sendHintAnimating: Bool = false
+    @State private var billCardRefreshNonce: Int = 0
+    @State private var billCardBounceYOffset: CGFloat = 0
+    @State private var billCardBounceToken: Int = 0
 
 
     private enum DragIntent { case none, up, left, right, down }
@@ -210,13 +213,7 @@ struct ConfirmationView: View {
     
     // Helper to compute equal split
     private func equalSplit(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: count) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) { out[i] += 1 }
-        }
-        return out
+        splitCentsEvenly(total: total, count: count)
     }
     
     private func formatAmount(_ str: String) -> String {
@@ -437,6 +434,30 @@ struct ConfirmationView: View {
         }
     }
 
+    private func triggerBillCardBounce() {
+        guard !hasSent else { return }
+        billCardBounceToken += 1
+        let token = billCardBounceToken
+        billCardBounceYOffset = 0
+
+        withAnimation(.easeOut(duration: 0.18)) {
+            billCardBounceYOffset = -18
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            guard billCardBounceToken == token else { return }
+            withAnimation(.easeIn(duration: 0.14)) {
+                billCardBounceYOffset = 8
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+                guard billCardBounceToken == token else { return }
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.74)) {
+                    billCardBounceYOffset = 0
+                }
+            }
+        }
+    }
+
     // MARK: - Tip Panel (delegates to shared TipPanelView)
     private func tipPanel() -> some View {
         let preTip = stringToCents(amount) - stringToCents(tipAmount)
@@ -564,6 +585,7 @@ struct ConfirmationView: View {
                             tabName: uiModel.activeTab?.name,
                             tabColorHex: uiModel.activeTab?.colorHex
                         )
+                        .id("confirmation-bill-card-\(billCardRefreshNonce)-\(totalCents)-\(displayAmount)")
                         .transition(.opacity)
                     }
                 }
@@ -571,7 +593,7 @@ struct ConfirmationView: View {
                 .cardPhysics(isDragging: cardOffset != .zero)
                 .scaleEffect(cardScale)
                 .frame(width: 260 * cardScale, height: cardH)
-                .offset(cardOffset)
+                .offset(x: cardOffset.width, y: cardOffset.height + billCardBounceYOffset)
                 .rotationEffect(.degrees(cardRotation), anchor: .bottom)
                 .gesture(swipeCardGesture)
                 .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
@@ -886,6 +908,8 @@ struct ConfirmationView: View {
             cardRotation = 0
             hasSent = false
             showSuccess = false
+            billCardBounceToken += 1
+            billCardBounceYOffset = 0
             sendHintAnimating = false
             withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
                 sendHintAnimating = true
@@ -949,13 +973,14 @@ struct ConfirmationView: View {
             }
         }
         .onChange(of: amount) { _, newAmount in
+            billCardRefreshNonce += 1
             let newTotal = stringToCents(newAmount)
             // When Phase 1 completes and the total arrives, recalculate amounts if they
             // were seeded as zeros (because the view appeared before the total was known).
             guard newTotal > 0, guestAmountsCents.allSatisfy({ $0 == 0 }), !guests.isEmpty else { return }
             switch mode {
             case .equally, .custom:
-                guestAmountsCents = equalSplitCents(total: newTotal, count: activeCount)
+                guestAmountsCents = splitCentsEvenly(total: newTotal, count: activeCount)
             case .byItems:
                 break
             }
@@ -969,6 +994,10 @@ struct ConfirmationView: View {
         }
         .onChange(of: uiModel.itemsLoadingState.isLoading) { _, isNowLoading in
             if !isNowLoading {
+                billCardRefreshNonce += 1
+                if uiModel.itemsLoadingState.value != nil {
+                    triggerBillCardBounce()
+                }
                 // Phase 2 just finished. Re-seed items immediately if already in byItems mode,
                 // otherwise reset the flag so entering byItems mode later will seed from real data.
                 if mode == .byItems {

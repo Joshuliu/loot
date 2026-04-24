@@ -56,6 +56,41 @@ func signedStringToCents(_ raw: String) -> Int {
     return isNegative ? -value : value
 }
 
+/// Splits `total` cents across `count` participants, distributing remainder
+/// cents to the earliest indices so shares always sum back to `total`.
+func splitCentsEvenly(total: Int, count: Int) -> [Int] {
+    guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
+    var out = Array(repeating: total / count, count: count)
+    let remainder = total - out.reduce(0, +)
+    if remainder > 0 {
+        for i in 0..<min(remainder, count) { out[i] += 1 }
+    }
+    return out
+}
+
+/// Computes one guest's by-items subtotal using deterministic remainder handling.
+/// Guest ordering defines which assignees receive remainder cents first.
+func byItemsGuestSubtotalCents(
+    guestId: UUID,
+    guestOrder: [UUID],
+    items: [(priceCents: Int, assignedGuestIds: [UUID])]
+) -> Int {
+    let orderIndex: [UUID: Int] = Dictionary(uniqueKeysWithValues: guestOrder.enumerated().map { ($1, $0) })
+
+    return items.reduce(0) { acc, item in
+        let assignedUnique = Set(item.assignedGuestIds)
+        let assignedSorted = assignedUnique.sorted { lhs, rhs in
+            let li = orderIndex[lhs] ?? Int.max
+            let ri = orderIndex[rhs] ?? Int.max
+            if li == ri { return lhs.uuidString < rhs.uuidString }
+            return li < ri
+        }
+        guard let guestPosition = assignedSorted.firstIndex(of: guestId) else { return acc }
+        let shares = splitCentsEvenly(total: max(0, item.priceCents), count: assignedSorted.count)
+        return acc + (shares.indices.contains(guestPosition) ? shares[guestPosition] : 0)
+    }
+}
+
 // MARK: - Split Math (equal/custom/by-items)
 
 enum SplitMath {
@@ -81,7 +116,7 @@ enum SplitMath {
 
         switch mode {
         case .equally:
-            let shares = splitEvenly(total: totalCents, count: included.count)
+            let shares = splitCentsEvenly(total: totalCents, count: included.count)
             for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
             return owed
 
@@ -89,7 +124,7 @@ enum SplitMath {
             if let perGuestActive, perGuestActive.count == included.count {
                 for (i, idx) in included.enumerated() { owed[idx] = max(0, perGuestActive[i]) }
             } else {
-                let shares = splitEvenly(total: totalCents, count: included.count)
+                let shares = splitCentsEvenly(total: totalCents, count: included.count)
                 for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
             }
             return owed
@@ -100,7 +135,7 @@ enum SplitMath {
             for it in items {
                 let assigned = it.assignedSlots.filter { guests.indices.contains($0) && guests[$0].inc }
                 let targets = assigned.isEmpty ? [safePayer] : assigned.sorted()
-                let parts = splitEvenly(total: max(0, it.priceCents), count: targets.count)
+                let parts = splitCentsEvenly(total: max(0, it.priceCents), count: targets.count)
                 for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
             }
 
@@ -115,23 +150,13 @@ enum SplitMath {
         }
     }
 
-    private static func splitEvenly(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) { out[i] += 1 }
-        }
-        return out
-    }
-
     private static func allocateProportional(total: Int, base: [Int], included: [Int]) -> [Int] {
         var out = Array(repeating: 0, count: base.count)
         guard total != 0 else { return out }
 
         let sumBase = included.reduce(0) { $0 + max(0, base[$1]) }
         if sumBase <= 0 {
-            let shares = splitEvenly(total: total, count: included.count)
+            let shares = splitCentsEvenly(total: total, count: included.count)
             for (i, idx) in included.enumerated() { out[idx] = shares[i] }
             return out
         }
