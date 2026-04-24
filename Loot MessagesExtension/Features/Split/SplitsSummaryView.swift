@@ -628,6 +628,13 @@ struct SplitsSummaryView: View {
         }
     }
 
+    private func autoClaimSlotAfterViewLoad(at guestIndex: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard split.g.indices.contains(guestIndex), split.g[guestIndex].uid == nil else { return }
+            claimSlot(at: guestIndex)
+        }
+    }
+
     private func unclaimSlot() {
         let myUid = KeychainHelper.getOrCreateUserId()
         if let gi = split.g.firstIndex(where: { $0.uid == myUid }) {
@@ -1182,11 +1189,11 @@ struct SplitsSummaryView: View {
                     }
                 } else if hasClaimableSlots {
                     if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                        claimSlot(at: i)
+                        autoClaimSlotAfterViewLoad(at: i)
                     } else if split.m != .equally {
                         let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
                         if freeSlots.count == 1 {
-                            claimSlot(at: freeSlots[0])
+                            autoClaimSlotAfterViewLoad(at: freeSlots[0])
                         } else {
                             billState = .choosing
                         }
@@ -1206,11 +1213,11 @@ struct SplitsSummaryView: View {
                     }
                 } else {
                     if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                        claimSlot(at: i)
+                        autoClaimSlotAfterViewLoad(at: i)
                     } else if split.m != .equally {
                         let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
                         if freeSlots.count == 1 {
-                            claimSlot(at: freeSlots[0])
+                            autoClaimSlotAfterViewLoad(at: freeSlots[0])
                         } else {
                             billState = .choosing
                         }
