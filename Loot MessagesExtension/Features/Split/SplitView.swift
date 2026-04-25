@@ -247,10 +247,6 @@ extension ConfirmationView {
         return displayName(for: guests.first(where: { $0.isMe }) ?? SplitGuest(name: "Me", isIncluded: true, isMe: true))
     }
 
-    // MARK: - Equal split generator (exact cents)
-    func equalSplitCents(total: Int, count: Int) -> [Int] {
-        splitCentsEvenly(total: total, count: count)
-    }
 
     private func byItemsGuestCents(for guestId: UUID) -> Int {
         byItemsGuestSubtotalCents(
@@ -488,7 +484,7 @@ extension ConfirmationView {
 
         if newMode == .equally {
             ensureGuestArrays()
-            guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: activeCount)
         }
 
         if newMode == .custom {
@@ -556,7 +552,7 @@ extension ConfirmationView {
 
         switch mode {
         case .equally:
-            guestAmountsCents = equalSplitCents(total: totalCents, count: newActive.count)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: newActive.count)
         case .custom:
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
         case .byItems:
@@ -1046,7 +1042,7 @@ extension ConfirmationView {
         let newActive = activeGuests
         switch mode {
         case .equally:
-            guestAmountsCents = equalSplitCents(total: totalCents, count: newActive.count)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: newActive.count)
         case .custom, .byItems:
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
         }
@@ -1086,7 +1082,7 @@ extension ConfirmationView {
         let newActive = activeGuests
         switch mode {
         case .equally:
-            guestAmountsCents = equalSplitCents(total: totalCents, count: newActive.count)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: newActive.count)
         case .custom, .byItems:
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
         }
@@ -1123,7 +1119,7 @@ extension ConfirmationView {
         let newActive = activeGuests
         switch mode {
         case .equally:
-            guestAmountsCents = equalSplitCents(total: totalCents, count: newActive.count)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: newActive.count)
         case .custom, .byItems:
             // Re-included guest gets 0 — user must manually assign in custom/byItems
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
@@ -1457,7 +1453,7 @@ extension ConfirmationView {
                 if existingDraft.perGuestCents.count == activeCount {
                     guestAmountsCents = existingDraft.perGuestCents
                 } else {
-                    guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
+                    guestAmountsCents = splitCentsEvenly(total: totalCents, count: activeCount)
                 }
 
             case .custom:
@@ -1485,7 +1481,7 @@ extension ConfirmationView {
         } else {
             mode = .equally
             lastMode = .equally
-            guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: activeCount)
             if !didInitByItem { seedByItemsFromReceipt() }
         }
 

@@ -82,7 +82,7 @@ enum PaymentMethodType: String, Codable, CaseIterable {
 
     /// Builds a deep link URL for the payment app, or nil if no deep link exists.
     func deepLinkURL(identifier: String, amountCents: Int, note: String, bankURL: String? = nil, payeeName: String? = nil, zelleData: String? = nil) -> URL? {
-        let dollars = String(format: "%.2f", Double(amountCents) / 100.0)
+        let dollars = Money(cents: amountCents).inputString
 
         switch self {
         case .venmo:

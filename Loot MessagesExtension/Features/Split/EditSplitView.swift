@@ -560,9 +560,6 @@ struct EditSplitView: View {
         return BadgeColors.color(for: idx)
     }
 
-    private func equalSplitCents(total: Int, count: Int) -> [Int] {
-        splitCentsEvenly(total: total, count: count)
-    }
 
     private func byItemsGuestCents(for guestId: UUID) -> Int {
         byItemsGuestSubtotalCents(
@@ -588,7 +585,7 @@ struct EditSplitView: View {
         ensureGuestArrays()
 
         if newMode == .equally {
-            guestAmountsCents = equalSplitCents(total: totalCents, count: activeCount)
+            guestAmountsCents = splitCentsEvenly(total: totalCents, count: activeCount)
         }
         if newMode == .custom {
             // Keep existing amounts or reset

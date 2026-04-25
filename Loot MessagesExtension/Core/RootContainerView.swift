@@ -25,17 +25,16 @@ struct RootContainerView: View {
     private var totalAmount: String {
         // If we have a receipt with breakdown, use its total (includes tax, fees, discounts, tip)
         if let receipt = uiModel.currentReceipt {
-            return String(format: "%.2f", Double(receipt.totalCents) / 100.0)
+            return Money(cents: receipt.totalCents).inputString
         }
-        
+
         // Otherwise, calculate from manual entry (subtotal + tip only, no tax/fees in manual flow)
         guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
             return amountString
         }
-        let subtotal = stringToCents(amountString)
-        let tip = stringToCents(tipAmount)
-        let total = subtotal + tip
-        return String(format: "%.2f", Double(total) / 100.0)
+        let subtotal = Money(parsing: amountString)
+        let tip = Money(parsing: tipAmount)
+        return (subtotal + tip).inputString
     }
     
     let participantCount: Int
@@ -266,7 +265,7 @@ struct RootContainerView: View {
 
                 await MainActor.run {
                     // Update form fields with phase 1 data
-                    amountString = String(format: "%.2f", Double(total) / 100.0)
+                    amountString = Money(cents: total).inputString
 
                     if let merchant = phase1.merchant, !merchant.isEmpty {
                         receiptName = merchant
@@ -336,7 +335,7 @@ struct RootContainerView: View {
 
                         // Only prefill tip from scan if user hasn't added one manually
                         if !userAddedTip && existingUserTip == 0 && breakdown.tip > 0 {
-                            tipAmount = String(format: "%.2f", Double(breakdown.tip) / 100.0)
+                            tipAmount = Money(cents: breakdown.tip).inputString
                         }
 
                         // Preserve user's tip if they added one, otherwise use scanned tip
@@ -361,7 +360,7 @@ struct RootContainerView: View {
                         }
 
                         // Update subtotal field used by manual/edit flows.
-                        amountString = String(format: "%.2f", Double(subtotal) / 100.0)
+                        amountString = Money(cents: subtotal).inputString
 
                         // Final total after phase 2 + local post-processing adjustments.
                         let finalizedTotalCents = subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents
@@ -399,12 +398,6 @@ struct RootContainerView: View {
         }
     }
 
-    /// Computes an exact-cents even split for active guest count.
-    /// Used by draft reconciliation so "Split evenly" stays consistent with live totals.
-    private func equalSplitCents(total: Int, count: Int) -> [Int] {
-        splitCentsEvenly(total: total, count: count)
-    }
-
     /// Reconciles split-draft totals with the latest receipt totals.
     ///
     /// Why this exists:
@@ -435,7 +428,7 @@ struct RootContainerView: View {
 
         // For default "split evenly", keep per-guest amounts aligned with the live total.
         if draft.mode == .equally {
-            draft.perGuestCents = equalSplitCents(total: receipt.totalCents, count: activeGuests.count)
+            draft.perGuestCents = splitCentsEvenly(total: receipt.totalCents, count: activeGuests.count)
         }
 
         // Keep payer valid if guest membership changed earlier in the flow.
