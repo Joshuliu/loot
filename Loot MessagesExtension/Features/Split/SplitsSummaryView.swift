@@ -121,6 +121,13 @@ struct SplitsSummaryView: View {
         return uiModel.isIgnoredUUID(myUid, for: currentBillId)
     }
 
+    private func unclaimCurrentUserIfNeeded() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        guard let gi = split.g.firstIndex(where: { $0.uid == myUid }) else { return false }
+        split.g[gi].uid = nil
+        return true
+    }
+
     private var headerTitle: String {
         receipt?.title ?? uiModel.openedMessagePayload?.r.t ?? "Receipt"
     }
@@ -362,7 +369,7 @@ struct SplitsSummaryView: View {
             split.pd!.append(false)
         }
         split.pd![guestIndex].toggle()
-        persistSplit()
+        persistSplit(action: .paidToggled(paid: split.pd![guestIndex]))
     }
 
     /// Returns true if the current user can toggle paid for this guest's transaction.
@@ -613,14 +620,14 @@ struct SplitsSummaryView: View {
 
     // MARK: - Slot claim / unclaim
 
-    private func claimSlot(at guestIndex: Int) {
+    private func claimSlot(at guestIndex: Int, broadcast: Bool = true) {
         let myUid = KeychainHelper.getOrCreateUserId()
         split.g[guestIndex].uid = myUid
         removeCurrentUserFromIgnoredIfPresent()
         // Don't overwrite .n — that's the bill creator's manually-entered name.
         // Display name is resolved from uid via displayName(for:).
         billState = .joined
-        persistSplit()
+        persistSplit(broadcast: broadcast, action: .claimed)
 
         // Select the newly claimed slot on the donut
         if let idx = myIncludedIndex {
@@ -628,35 +635,98 @@ struct SplitsSummaryView: View {
         }
     }
 
+    /// Auto-claim a slot on first view of the bill. Skips the chat bubble
+    /// broadcast: iOS won't auto-send an MSConversation.send call this far
+    /// from a user tap (the message lands in the input field draft instead).
+    /// The next *manual* interaction will broadcast the latest state with a
+    /// real user-tap context, which iOS will auto-send normally.
     private func autoClaimSlotAfterViewLoad(at guestIndex: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
             guard split.g.indices.contains(guestIndex), split.g[guestIndex].uid == nil else { return }
-            claimSlot(at: guestIndex)
+            claimSlot(at: guestIndex, broadcast: false)
         }
     }
 
-    private func unclaimSlot() {
-        let myUid = KeychainHelper.getOrCreateUserId()
-        if let gi = split.g.firstIndex(where: { $0.uid == myUid }) {
-            split.g[gi].uid = nil
-        }
+    private func optOutOfBill() {
+        _ = unclaimCurrentUserIfNeeded()
         addCurrentUserToIgnored()
-        persistSplit()
+        selectedIndex = nil
+        billState = .notInBill
+        persistSplit(action: .optedOut)
     }
 
-    private func persistSplit() {
+    private func reconcileClaimState(shouldAutoJoin: Bool = false) {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let alreadyClaimed = split.g.contains { $0.uid == myUid }
+
+        if hasIgnoredListForBill {
+            if isCurrentUserIgnored() {
+                if alreadyClaimed {
+                    _ = unclaimCurrentUserIfNeeded()
+                    persistSplit(action: .optedOut)
+                }
+                billState = .notInBill
+                selectedIndex = nil
+            } else if alreadyClaimed {
+                billState = .joined
+                if let myIdx = myIncludedIndex {
+                    selectedIndex = myIdx
+                }
+            } else if hasClaimableSlots {
+                attemptAutoJoinOrChoose(shouldAutoJoin: shouldAutoJoin)
+            } else {
+                billState = .notInBill
+                selectedIndex = nil
+            }
+        } else {
+            // Legacy behavior (messages without ignoredUUIDs list)
+            if alreadyClaimed {
+                billState = .joined
+                if let myIdx = myIncludedIndex {
+                    selectedIndex = myIdx
+                }
+            } else {
+                attemptAutoJoinOrChoose(shouldAutoJoin: shouldAutoJoin)
+            }
+        }
+    }
+
+    /// On first view of a bill, auto-claim a slot for the current user when
+    /// it's unambiguous (equal-split, or a single free slot). Otherwise leave
+    /// the user in the choosing state. Skipped when reconciling from a live
+    /// Firestore update so a remote change doesn't trigger an auto-claim.
+    private func attemptAutoJoinOrChoose(shouldAutoJoin: Bool) {
+        guard shouldAutoJoin else {
+            billState = .choosing
+            return
+        }
+        if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+            autoClaimSlotAfterViewLoad(at: i)
+        } else if split.m != .equally {
+            let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+            if freeSlots.count == 1 {
+                autoClaimSlotAfterViewLoad(at: freeSlots[0])
+            } else {
+                billState = .choosing
+            }
+        } else {
+            billState = .choosing
+        }
+    }
+
+    private func persistSplit(broadcast: Bool = true, action: BillUpdateAction = .edited) {
         guard var payload = uiModel.openedMessagePayload,
               let docId = uiModel.openedMessageDocId else { return }
 
         payload.s = split
         uiModel.openedMessagePayload = payload
+        if broadcast {
+            uiModel.sendBillUpdate?(payload, docId, action)
+        }
 
         Task {
             do {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
-                await MainActor.run {
-                    uiModel.sendBillUpdate?(payload, docId)
-                }
                 print("[SplitsSummaryView] Split persisted to \(docId)")
             } catch {
                 print("[SplitsSummaryView] Failed to persist split: \(error)")
@@ -989,9 +1059,7 @@ struct SplitsSummaryView: View {
                         if !iAmPayer {
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    unclaimSlot()
-                                    billState = .notInBill
-                                    selectedIndex = nil
+                                    optOutOfBill()
                                 }
                             } label: {
                                 HStack(spacing: 6) {
@@ -1023,9 +1091,7 @@ struct SplitsSummaryView: View {
 
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            addCurrentUserToIgnored()
-                            selectedIndex = nil
-                            billState = .notInBill
+                            optOutOfBill()
                         }
                     } label: {
                         HStack(spacing: 6) {
@@ -1174,58 +1240,12 @@ struct SplitsSummaryView: View {
             let initBillId = currentBillId ?? "__legacy__"
             guard initializedClaimStateBillId != initBillId else { return }
             initializedClaimStateBillId = initBillId
-
-            let myUid = KeychainHelper.getOrCreateUserId()
-            let alreadyClaimed = split.g.contains { $0.uid == myUid }
-
-            if hasIgnoredListForBill {
-                if isCurrentUserIgnored() {
-                    billState = .notInBill
-                    selectedIndex = nil
-                } else if alreadyClaimed {
-                    billState = .joined
-                    if let myIdx = myIncludedIndex {
-                        selectedIndex = myIdx
-                    }
-                } else if hasClaimableSlots {
-                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                        autoClaimSlotAfterViewLoad(at: i)
-                    } else if split.m != .equally {
-                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-                        if freeSlots.count == 1 {
-                            autoClaimSlotAfterViewLoad(at: freeSlots[0])
-                        } else {
-                            billState = .choosing
-                        }
-                    } else {
-                        billState = .choosing
-                    }
-                } else {
-                    billState = .notInBill
-                    selectedIndex = nil
-                }
-            } else {
-                // Legacy behavior (messages without ignoredUUIDs list)
-                if alreadyClaimed {
-                    billState = .joined
-                    if let myIdx = myIncludedIndex {
-                        selectedIndex = myIdx
-                    }
-                } else {
-                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                        autoClaimSlotAfterViewLoad(at: i)
-                    } else if split.m != .equally {
-                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-                        if freeSlots.count == 1 {
-                            autoClaimSlotAfterViewLoad(at: freeSlots[0])
-                        } else {
-                            billState = .choosing
-                        }
-                    } else {
-                        billState = .choosing
-                    }
-                }
-            }
+            reconcileClaimState(shouldAutoJoin: true)
+        }
+        .onChange(of: uiModel.openedMessagePayload?.s) { _, latestSplit in
+            guard let latestSplit, latestSplit != split else { return }
+            split = latestSplit
+            reconcileClaimState()
         }
         .task {
             let myUid = KeychainHelper.getOrCreateUserId()

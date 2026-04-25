@@ -149,6 +149,26 @@ struct RequestCardMetadata {
     var debtorId: String?
 }
 
+/// Identifies the kind of action that triggered a bill bubble update so the
+/// iMessage transcript notice ("X <verb>...") can be tailored. iOS prepends
+/// the sender's contact name automatically; the summaryText is just the
+/// suffix verb phrase.
+enum BillUpdateAction {
+    case claimed
+    case optedOut
+    case paidToggled(paid: Bool)
+    case edited
+
+    var summaryText: String {
+        switch self {
+        case .claimed: return "joined a bill"
+        case .optedOut: return "left a bill"
+        case .paidToggled(let paid): return paid ? "marked a payment paid" : "marked a payment unpaid"
+        case .edited: return "updated a bill"
+        }
+    }
+}
+
 @MainActor
 final class LootUIModel: ObservableObject {
     @Published var isExpanded: Bool = false
@@ -222,8 +242,8 @@ final class LootUIModel: ObservableObject {
     var sendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)?
 
     /// Sends an updated live receipt card on the current session so Messages replaces the bubble in place.
-    /// Args: (payload, Firestore docId)
-    var sendBillUpdate: ((LootMessagePayload, String) -> Void)?
+    /// Args: (payload, Firestore docId, action that triggered the update)
+    var sendBillUpdate: ((LootMessagePayload, String, BillUpdateAction) -> Void)?
 
     func hasIgnoredUUIDsList(for billId: String?) -> Bool {
         guard let billId else { return false }

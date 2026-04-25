@@ -254,7 +254,7 @@ struct MessageReceiptViewer: View {
     // MARK: - Firestore Persistence
 
     private func persistPayload(_ payload: LootMessagePayload, docId: String) {
-        uiModel.sendBillUpdate?(payload, docId)
+        uiModel.sendBillUpdate?(payload, docId, .edited)
         Task {
             do {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)

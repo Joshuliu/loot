@@ -25,8 +25,10 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var isTranscript = false
     private var isConversationAutoSendReady = false
     private var billUpdateSessionByDocId: [String: MSSession] = [:]
-    private var pendingBillUpdateByDocId: [String: LootMessagePayload] = [:]
+    private var pendingBillUpdateByDocId: [String: (payload: LootMessagePayload, action: BillUpdateAction)] = [:]
     private var lastSentSplitSignatureByDocId: [String: String] = [:]
+    private var activeBillUpdateDocId: String?
+    private var activeBillUpdateSession: MSSession?
 
     private func registerAsActiveDrawerControllerIfNeeded() {
         guard !isTranscript else { return }
@@ -44,6 +46,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         guard !isTranscript,
               let message,
               let conversation = activeConversation else { return }
+        saveBillUpdateAnchor(from: message)
         applyMessage(message, conversation: conversation)
     }
 
@@ -93,8 +96,8 @@ final class MessagesViewController: MSMessagesAppViewController {
                                      metadata: metadata)
         }
 
-        uiModel.sendBillUpdate = { [weak self] payload, docId in
-            self?.sendBillUpdate(payload: payload, docId: docId)
+        uiModel.sendBillUpdate = { [weak self] payload, docId, action in
+            self?.sendBillUpdate(payload: payload, docId: docId, action: action)
         }
 
         view.isOpaque = true
@@ -124,6 +127,13 @@ final class MessagesViewController: MSMessagesAppViewController {
 
         isConversationAutoSendReady = false
         registerAsActiveDrawerControllerIfNeeded()
+        // Anchor the bill-update session here too: when the extension launches
+        // directly from a tapped bubble, iOS fires willBecomeActive but NOT
+        // didSelect, so the anchor would otherwise never be set on the first
+        // open and the first slot-claim update would be skipped.
+        if let selectedMessage = conversation.selectedMessage {
+            saveBillUpdateAnchor(from: selectedMessage)
+        }
         applyMessage(conversation.selectedMessage, conversation: conversation)
         setupRootView(conversation: conversation)
     }
@@ -167,6 +177,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         super.didSelect(message, conversation: conversation)
         guard !isTranscript else { return }
         // Use the message parameter directly, not conversation.selectedMessage
+        saveBillUpdateAnchor(from: message)
         applyMessage(message, conversation: conversation)
     }
 
@@ -192,7 +203,88 @@ final class MessagesViewController: MSMessagesAppViewController {
     // MARK: - Transcript (lightweight UIKit-only path)
 
     @objc private func transcriptTapped() {
+        // Run the autojoin broadcast first, while we're still inside the user's
+        // tap gesture handler. iOS only auto-sends MSConversation.send when
+        // there's a fresh user-interaction context — and a delayed call from
+        // the drawer's .onAppear is too far removed (lands in the input field
+        // instead). The transcript tap is the closest synchronous path we
+        // have to a real user gesture, so we send from here.
+        if let conversation = activeConversation,
+           let message = conversation.selectedMessage {
+            broadcastTranscriptAutojoinIfPossible(from: message, conversation: conversation)
+        }
         requestExpansionFromTranscriptTap()
+    }
+
+    /// Computes whether the current user can be auto-claimed into a slot of
+    /// the tapped bill bubble, and if so sends an MSMessage update with the
+    /// new state — reusing the bubble's MSSession so iMessage replaces the
+    /// bubble in place. Skips Firestore writes (transcript path doesn't
+    /// configure Firebase); the drawer's autojoin path will persist when it
+    /// loads, with broadcast=false so this update isn't duplicated.
+    private func broadcastTranscriptAutojoinIfPossible(from message: MSMessage,
+                                                       conversation: MSConversation) {
+        guard isTranscript else { return }
+        guard let url = message.url,
+              let decoded = LootMessageCodec.decodedInlinePayload(from: url),
+              let session = message.session,
+              let docId = messageDocId(from: url)
+        else { return }
+
+        let original = decoded.payload
+        let myUid = KeychainHelper.getOrCreateUserId()
+
+        // Already claimed — nothing to broadcast.
+        if original.s.g.contains(where: { $0.uid == myUid }) { return }
+        // Opted out — skip.
+        if decoded.hasIgnoredUUIDsList, decoded.ignoredUUIDs.contains(myUid) { return }
+
+        let claimIndex: Int? = {
+            if original.s.m == .equally {
+                return original.s.g.firstIndex(where: { $0.uid == nil })
+            }
+            let free = original.s.g.indices.filter { original.s.g[$0].uid == nil }
+            return free.count == 1 ? free[0] : nil
+        }()
+        guard let claimIndex else { return }
+
+        var updated = original
+        updated.s.g[claimIndex].uid = myUid
+
+        let cardImage = renderCardImage(
+            receiptName: updated.r.t,
+            displayAmount: ReceiptDisplay.money(updated.r.tot),
+            participantCount: max(1, updated.s.g.count),
+            splitPayload: updated.s,
+            tabName: updated.tab?.n,
+            tabColorHex: updated.tab?.c
+        )
+
+        var components = lootURLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: docId)]
+        let preservedIgnored: [String]? = decoded.hasIgnoredUUIDsList ? decoded.ignoredUUIDs : nil
+        LootMessageCodec.writePayload(
+            into: &components,
+            payload: updated,
+            ignoredUUIDs: preservedIgnored
+        )
+
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+
+        let outgoing = MSMessage(session: session)
+        outgoing.layout = liveLayout
+        outgoing.url = components.url
+        outgoing.summaryText = BillUpdateAction.claimed.summaryText
+
+        conversation.send(outgoing) { error in
+            if let error {
+                print("[transcriptAutojoin] send failed for \(docId): \(error)")
+            } else {
+                print("[transcriptAutojoin] broadcast autojoin for \(docId)")
+            }
+        }
     }
 
     private func configureAsTranscript() {
@@ -334,6 +426,25 @@ extension MessagesViewController {
         return docId
     }
 
+    private func billUpdateDocId(from message: MSMessage) -> String? {
+        if let docId = messageDocId(from: message.url) {
+            return docId
+        }
+        guard let url = message.url,
+              let payload = LootMessageCodec.decodedInlinePayload(from: url)?.payload else {
+            return nil
+        }
+        return payload.r.id
+    }
+
+    private func saveBillUpdateAnchor(from message: MSMessage) {
+        guard let docId = billUpdateDocId(from: message),
+              let session = message.session else { return }
+        activeBillUpdateDocId = docId
+        activeBillUpdateSession = session
+        billUpdateSessionByDocId[docId] = session
+    }
+
     private func splitSignature(for split: SplitPayload) -> String {
         guard let data = try? JSONEncoder().encode(split) else { return "" }
         return data.base64EncodedString()
@@ -351,7 +462,7 @@ extension MessagesViewController {
         let currentHasClaim = current.s.g.contains(where: { $0.uid == myUid })
         let fetchedHasClaim = fetched.s.g.contains(where: { $0.uid == myUid })
 
-        // Ignore stale Firestore reads that would undo the local auto-claim we just applied.
+        // Ignore stale Firestore reads that would undo a local slot claim we just applied.
         if currentHasClaim && !fetchedHasClaim {
             print("[applyMessage] Ignoring stale fetched payload for \(docId); local claim is newer")
             return false
@@ -361,63 +472,50 @@ extension MessagesViewController {
     }
 
     private func bindBillUpdateAnchor(from message: MSMessage, docId: String, conversation: MSConversation) {
-        guard let session = message.session else { return }
+        guard activeBillUpdateDocId == docId,
+              let session = activeBillUpdateSession else { return }
         billUpdateSessionByDocId[docId] = session
         flushPendingBillUpdateIfNeeded(for: docId, conversation: conversation)
     }
 
     private func flushPendingBillUpdateIfNeeded(for docId: String, conversation: MSConversation) {
         guard let pending = pendingBillUpdateByDocId.removeValue(forKey: docId) else { return }
-        sendBillUpdate(payload: pending, docId: docId, conversation: conversation)
+        sendBillUpdate(payload: pending.payload, docId: docId, action: pending.action, conversation: conversation)
     }
 
     private func flushAllPendingBillUpdatesIfNeeded(conversation: MSConversation) {
         let pending = pendingBillUpdateByDocId
         pendingBillUpdateByDocId.removeAll()
-        for (docId, payload) in pending {
-            sendBillUpdate(payload: payload, docId: docId, conversation: conversation)
+        for (docId, entry) in pending {
+            sendBillUpdate(payload: entry.payload, docId: docId, action: entry.action, conversation: conversation)
         }
     }
 
-    private func sendBillUpdate(payload: LootMessagePayload, docId: String, conversation: MSConversation) {
+    private func sendBillUpdate(payload: LootMessagePayload, docId: String, action: BillUpdateAction, conversation: MSConversation) {
         let signature = splitSignature(for: payload.s)
         if !signature.isEmpty, lastSentSplitSignatureByDocId[docId] == signature {
             return
         }
 
         guard isConversationAutoSendReady else {
-            pendingBillUpdateByDocId[docId] = payload
+            pendingBillUpdateByDocId[docId] = (payload, action)
             print("[sendBillUpdate] Deferring update until conversation is fully active for doc: \(docId)")
             return
         }
 
-        if let anchoredSession = billUpdateSessionByDocId[docId] {
+        if activeBillUpdateDocId == docId, let anchoredSession = activeBillUpdateSession {
             sendBillUpdateMessage(
                 payload: payload,
                 docId: docId,
                 signature: signature,
                 session: anchoredSession,
+                action: action,
                 conversation: conversation
             )
             return
         }
 
-        if let selected = conversation.selectedMessage,
-           messageDocId(from: selected.url) == docId,
-           let selectedSession = selected.session {
-            billUpdateSessionByDocId[docId] = selectedSession
-            sendBillUpdateMessage(
-                payload: payload,
-                docId: docId,
-                signature: signature,
-                session: selectedSession,
-                conversation: conversation
-            )
-            return
-        }
-
-        pendingBillUpdateByDocId[docId] = payload
-        print("[sendBillUpdate] Deferring update until anchored session is available for doc: \(docId)")
+        print("[sendBillUpdate] Skipping update because no tapped message session is anchored for doc: \(docId)")
     }
 
     private func sendBillUpdateMessage(
@@ -425,6 +523,7 @@ extension MessagesViewController {
         docId: String,
         signature: String,
         session: MSSession,
+        action: BillUpdateAction,
         conversation: MSConversation
     ) {
         let splitPayload = payload.s
@@ -461,6 +560,7 @@ extension MessagesViewController {
         let message = MSMessage(session: session)
         message.layout = liveLayout
         message.url = components.url
+        message.summaryText = action.summaryText
 
         conversation.send(message) { [weak self] error in
             if let error {
@@ -812,6 +912,7 @@ extension MessagesViewController {
         let message = MSMessage(session: MSSession())
         message.layout = layout
         message.url = components.url
+        message.summaryText = "sent a payment"
 
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendSettlementMessage error: \(error)") }
@@ -851,6 +952,7 @@ extension MessagesViewController {
         let message = MSMessage(session: MSSession())
         message.layout = layout
         message.url = components.url
+        message.summaryText = "requested a payment"
 
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
@@ -987,9 +1089,10 @@ extension MessagesViewController {
         let message = MSMessage(session: MSSession())
         message.layout = liveLayout
         message.url = components.url
+        message.summaryText = "shared a bill"
 
         conversation.send(message) { error in
-            if let error { print("Error inserting message: \(error)") }
+            if let error { print("[sendBillMessage] Failed to send bill message: \(error)") }
         }
 
         requestPresentationStyle(.compact)
@@ -1016,9 +1119,9 @@ extension MessagesViewController {
         }
     }
 
-    func sendBillUpdate(payload: LootMessagePayload, docId: String) {
+    func sendBillUpdate(payload: LootMessagePayload, docId: String, action: BillUpdateAction) {
         guard let conversation = activeConversation else { return }
-        sendBillUpdate(payload: payload, docId: docId, conversation: conversation)
+        sendBillUpdate(payload: payload, docId: docId, action: action, conversation: conversation)
     }
 
     private func sendTabInviteMessage(
@@ -1061,6 +1164,10 @@ extension MessagesViewController {
         let message = MSMessage(session: session)
         message.layout = layout
         message.url = components.url
+        // queryItemName == "tabInviteUpdate" is the same-session retract+replace
+        // path used when someone joins an existing tab; the original "tabInvite"
+        // name is the brand-new invite send.
+        message.summaryText = (queryItemName == "tabInviteUpdate") ? "joined a tab" : "invited you to a tab"
 
         conversation.send(message) { error in
             if let error { print("[\(queryItemName)] send failed: \(error)") }
