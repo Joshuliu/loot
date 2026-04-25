@@ -19,6 +19,13 @@ import Foundation
 struct LineItemForm: Identifiable, Equatable, Hashable {
     var line: LineItem
     var priceText: String
+    /// Working set of assigned guest UUIDs during by-items editing. Stored
+    /// (not computed) so SwiftUI @State + array-subscript + Set.insert
+    /// mutations propagate cleanly. Synced to `line.assigneeIDs` at
+    /// construction and on `committed()`.
+    /// Phase 2.6 bridge: SplitGuest.id is still UUID-based; Phase 2.8
+    /// (SplitGuest -> Person) collapses this back to `line.assigneeIDs`.
+    var assignedGuestIds: Set<UUID>
 
     var id: UUID { line.id }
 
@@ -31,6 +38,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(line: LineItem, priceText: String) {
         self.line = line
         self.priceText = priceText
+        self.assignedGuestIds = Set(line.assigneeIDs.compactMap { UUID(uuidString: $0.rawValue) })
     }
 
     /// Convenience for editor flows that work with an id + label + raw text.
@@ -39,15 +47,14 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(id: UUID = UUID(), label: String, priceText: String) {
         self.line = LineItem(id: id, label: label, priceCents: 0)
         self.priceText = priceText
+        self.assignedGuestIds = []
     }
 
     /// Convenience for split-by-items flows that supply assigned-guest UUIDs.
-    /// Same Phase 2.6 bridge as `assignedGuestIds` — converted to PersonID-backed
-    /// `line.assigneeIDs` internally.
     init(id: UUID = UUID(), label: String, priceText: String, assignedGuestIds: Set<UUID>) {
-        let assignees = assignedGuestIds.map { PersonID(rawValue: $0.uuidString) }
-        self.line = LineItem(id: id, label: label, priceCents: 0, assigneeIDs: assignees)
+        self.line = LineItem(id: id, label: label, priceCents: 0)
         self.priceText = priceText
+        self.assignedGuestIds = assignedGuestIds
     }
 
     /// Construct a form from a canonical LineItem, formatting priceCents into
@@ -55,6 +62,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(from line: LineItem) {
         self.line = line
         self.priceText = Money(cents: line.priceCents).inputString
+        self.assignedGuestIds = Set(line.assigneeIDs.compactMap { UUID(uuidString: $0.rawValue) })
     }
 
     /// Construct a blank form with a fresh ID.
@@ -78,24 +86,16 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
         Money(parsing: priceText).cents
     }
 
-    /// UUID-based view of `line.assigneeIDs`. Temporary bridge for Phase 2.6:
-    /// the split editor still has `SplitGuest.id: UUID`. Once SplitGuest
-    /// migrates to Person (Phase 2.8), this property is removed and call
-    /// sites use `line.assigneeIDs` directly.
-    var assignedGuestIds: Set<UUID> {
-        get { Set(line.assigneeIDs.compactMap { UUID(uuidString: $0.rawValue) }) }
-        set { line.assigneeIDs = newValue.map { PersonID(rawValue: $0.uuidString) } }
-    }
-
-    /// Returns a finalized LineItem with `priceCents` resolved from `priceText`
-    /// and the label trimmed. Use this when persisting form state.
+    /// Returns a finalized LineItem with `priceCents` resolved from `priceText`,
+    /// label trimmed, and `assigneeIDs` synced from the working
+    /// `assignedGuestIds` set. Use this when persisting form state.
     func committed() -> LineItem {
         LineItem(
             id: line.id,
             label: line.label.trimmingCharacters(in: .whitespacesAndNewlines),
             priceCents: priceCents,
             quantity: line.quantity,
-            assigneeIDs: line.assigneeIDs
+            assigneeIDs: assignedGuestIds.map { PersonID(rawValue: $0.uuidString) }
         )
     }
 }

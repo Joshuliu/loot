@@ -75,13 +75,22 @@ final class LineItemFormTests: XCTestCase {
     }
 
     func testCommittedPreservesAssignees() {
+        // LineItemForm stores assignedGuestIds as UUIDs (matching SplitGuest.id
+        // until Phase 2.8). Construction from a LineItem seeds the working set
+        // from line.assigneeIDs; committed() writes it back. Editing the
+        // label should not disturb assignees.
+        let u1 = UUID()
+        let u2 = UUID()
         var f = LineItemForm(
-            line: LineItem(label: "Pizza", priceCents: 0, assigneeIDs: [PersonID("a"), PersonID("b")]),
+            line: LineItem(label: "Pizza", priceCents: 0,
+                           assigneeIDs: [PersonID(rawValue: u1.uuidString),
+                                         PersonID(rawValue: u2.uuidString)]),
             priceText: "18.00"
         )
         f.line.label = "Margherita"
         let committed = f.committed()
-        XCTAssertEqual(committed.assigneeIDs, [PersonID("a"), PersonID("b")])
+        XCTAssertEqual(Set(committed.assigneeIDs.map(\.rawValue)),
+                       [u1.uuidString, u2.uuidString])
         XCTAssertEqual(committed.priceCents, 1800)
     }
 
@@ -102,27 +111,22 @@ final class LineItemFormTests: XCTestCase {
         XCTAssertEqual(set.count, 1)
     }
 
-    // MARK: - assignedGuestIds bridge (Phase 2.6 transitional)
+    // MARK: - assignedGuestIds working set (Phase 2.6 transitional)
 
-    func testAssignedGuestIdsBridgeRoundTrip() {
+    func testAssignedGuestIdsRoundTrip() {
         let u1 = UUID()
         let u2 = UUID()
         var f = LineItemForm.empty()
         f.assignedGuestIds = [u1, u2]
         XCTAssertEqual(f.assignedGuestIds, [u1, u2])
-        // Underlying canonical is PersonID-based
-        XCTAssertEqual(f.line.assigneeIDs.count, 2)
-        XCTAssertTrue(f.line.assigneeIDs.contains(PersonID(rawValue: u1.uuidString)))
     }
 
-    func testAssignedGuestIdsBridgeEmpty() {
-        var f = LineItemForm.empty()
-        f.assignedGuestIds = []
+    func testAssignedGuestIdsEmptyDefault() {
+        let f = LineItemForm.empty()
         XCTAssertTrue(f.assignedGuestIds.isEmpty)
-        XCTAssertTrue(f.line.assigneeIDs.isEmpty)
     }
 
-    func testAssignedGuestIdsBridgeSetThenContains() {
+    func testAssignedGuestIdsInsertThenContains() {
         let u1 = UUID()
         let u2 = UUID()
         var f = LineItemForm.empty()
@@ -140,13 +144,35 @@ final class LineItemFormTests: XCTestCase {
         XCTAssertEqual(f.priceText, "18.00")
     }
 
-    func testAssignedGuestIdsBridgeIgnoresNonUUIDPersonIDs() {
-        // Direct construction from a PersonID with non-UUID raw value should be
-        // tolerated — the bridge filters via UUID(uuidString:) and drops
-        // unparseable IDs. (Not expected in practice but defensive.)
-        let li = LineItem(label: "X", priceCents: 100, assigneeIDs: [PersonID("not-a-uuid")])
-        let f = LineItemForm(line: li, priceText: "1.00")
-        XCTAssertTrue(f.assignedGuestIds.isEmpty)
+    func testInitFromLineSeedsAssignedGuestIdsFromAssigneeIDs() {
+        // When constructed from a canonical LineItem, the working set should
+        // mirror line.assigneeIDs (so existing assignments survive seeding).
+        let u1 = UUID()
+        let li = LineItem(label: "Pizza", priceCents: 1800,
+                          assigneeIDs: [PersonID(rawValue: u1.uuidString)])
+        let f = LineItemForm(from: li)
+        XCTAssertEqual(f.assignedGuestIds, [u1])
+    }
+
+    func testCommittedSyncsAssignedGuestIdsToAssigneeIDs() {
+        // committed() must reflect the working set into line.assigneeIDs.
+        let u1 = UUID()
+        let u2 = UUID()
+        var f = LineItemForm(label: "Pizza", priceText: "18.00")
+        f.assignedGuestIds.insert(u1)
+        f.assignedGuestIds.insert(u2)
+        let committed = f.committed()
+        let committedSet = Set(committed.assigneeIDs.map(\.rawValue))
+        XCTAssertEqual(committedSet, [u1.uuidString, u2.uuidString])
+    }
+
+    func testEditingWorkingSetDoesNotMutateLineUntilCommit() {
+        // Mutating `assignedGuestIds` should NOT change `line.assigneeIDs`
+        // until commit — the snapshot reflects the original LineItem.
+        let original = LineItem(label: "X", priceCents: 100, assigneeIDs: [])
+        var f = LineItemForm(line: original, priceText: "1.00")
+        f.assignedGuestIds.insert(UUID())
+        XCTAssertTrue(f.line.assigneeIDs.isEmpty)
     }
 }
 
