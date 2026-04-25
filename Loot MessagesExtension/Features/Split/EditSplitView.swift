@@ -21,7 +21,7 @@ struct EditSplitView: View {
     @State private var payerGuestId: UUID
     @State private var guestAmountsCents: [Int]
     @State private var guestSelectedIndex: Int = 0
-    @State private var byItemItems: [DraftReceiptItem]
+    @State private var byItemItems: [LineItemForm]
     @State private var byItemSelectedGuestId: UUID
     @State private var slotUUIDs: [UUID]
 
@@ -64,10 +64,10 @@ struct EditSplitView: View {
 
         _byItemSelectedGuestId = State(initialValue: active.first?.id ?? UUID())
         _byItemItems = State(initialValue: draft.items.map { item in
-            DraftReceiptItem(
+            LineItemForm(
                 id: item.id,
                 label: item.label,
-                price: ReceiptDisplay.money(item.priceCents),
+                priceText: Money(cents: item.priceCents).inputString,
                 assignedGuestIds: Set(item.assignedGuestIds)
             )
         })
@@ -144,7 +144,7 @@ struct EditSplitView: View {
                 SplitDraft.Item(
                     id: it.id,
                     label: it.label,
-                    priceCents: stringToCents(it.price),
+                    priceCents: it.priceCents,
                     assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
                 )
             }
@@ -368,7 +368,7 @@ struct EditSplitView: View {
                             Text(item.label)
                                 .font(.system(size: 16, weight: .semibold))
                                 .lineLimit(1)
-                            Text(ReceiptDisplay.money(stringToCents(item.price)))
+                            Text(ReceiptDisplay.money(item.priceCents))
                                 .font(.system(size: 13))
                                 .foregroundStyle(.secondary)
                         }
@@ -566,7 +566,7 @@ struct EditSplitView: View {
             guestId: guestId,
             guestOrder: guests.map(\.id),
             items: byItemItems.map { item in
-                (priceCents: stringToCents(item.price), assignedGuestIds: Array(item.assignedGuestIds))
+                (priceCents: item.priceCents, assignedGuestIds: Array(item.assignedGuestIds))
             }
         )
     }

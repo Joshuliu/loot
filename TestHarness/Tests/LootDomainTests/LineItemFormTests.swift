@@ -101,6 +101,53 @@ final class LineItemFormTests: XCTestCase {
         let set: Set<LineItemForm> = [a, b]
         XCTAssertEqual(set.count, 1)
     }
+
+    // MARK: - assignedGuestIds bridge (Phase 2.6 transitional)
+
+    func testAssignedGuestIdsBridgeRoundTrip() {
+        let u1 = UUID()
+        let u2 = UUID()
+        var f = LineItemForm.empty()
+        f.assignedGuestIds = [u1, u2]
+        XCTAssertEqual(f.assignedGuestIds, [u1, u2])
+        // Underlying canonical is PersonID-based
+        XCTAssertEqual(f.line.assigneeIDs.count, 2)
+        XCTAssertTrue(f.line.assigneeIDs.contains(PersonID(rawValue: u1.uuidString)))
+    }
+
+    func testAssignedGuestIdsBridgeEmpty() {
+        var f = LineItemForm.empty()
+        f.assignedGuestIds = []
+        XCTAssertTrue(f.assignedGuestIds.isEmpty)
+        XCTAssertTrue(f.line.assigneeIDs.isEmpty)
+    }
+
+    func testAssignedGuestIdsBridgeSetThenContains() {
+        let u1 = UUID()
+        let u2 = UUID()
+        var f = LineItemForm.empty()
+        f.assignedGuestIds.insert(u1)
+        f.assignedGuestIds.insert(u2)
+        XCTAssertTrue(f.assignedGuestIds.contains(u1))
+        XCTAssertTrue(f.assignedGuestIds.contains(u2))
+    }
+
+    func testAssignedGuestIdsConvenienceInit() {
+        let u = UUID()
+        let f = LineItemForm(label: "Pizza", priceText: "18.00", assignedGuestIds: [u])
+        XCTAssertEqual(f.assignedGuestIds, [u])
+        XCTAssertEqual(f.label, "Pizza")
+        XCTAssertEqual(f.priceText, "18.00")
+    }
+
+    func testAssignedGuestIdsBridgeIgnoresNonUUIDPersonIDs() {
+        // Direct construction from a PersonID with non-UUID raw value should be
+        // tolerated — the bridge filters via UUID(uuidString:) and drops
+        // unparseable IDs. (Not expected in practice but defensive.)
+        let li = LineItem(label: "X", priceCents: 100, assigneeIDs: [PersonID("not-a-uuid")])
+        let f = LineItemForm(line: li, priceText: "1.00")
+        XCTAssertTrue(f.assignedGuestIds.isEmpty)
+    }
 }
 
 final class AuxLineFormTests: XCTestCase {

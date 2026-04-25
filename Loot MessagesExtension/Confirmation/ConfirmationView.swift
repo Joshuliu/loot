@@ -61,7 +61,7 @@ struct ConfirmationView: View {
     @FocusState var guestNameFocusedId: UUID?
     @State var haptic = UIImpactFeedbackGenerator(style: .light)
     @State var lastHapticCents: Int = 0
-    @State var byItemItems: [DraftReceiptItem] = []
+    @State var byItemItems: [LineItemForm] = []
     @State var byItemSelectedGuestId: UUID = UUID()
     @State var feesString: String = ""
     @State var taxString: String = ""
@@ -1075,13 +1075,13 @@ struct ConfirmationView: View {
                             }) {
                                 matched.insert(existing.id)
                                 var updated = existing
-                                updated.price = ReceiptDisplay.money(newItem.priceCents)
+                                updated.priceText = Money(cents: newItem.priceCents).inputString
                                 return updated
                             }
-                            return DraftReceiptItem(
+                            return LineItemForm(
                                 id: UUID(),
                                 label: newItem.label,
-                                price: ReceiptDisplay.money(newItem.priceCents),
+                                priceText: Money(cents: newItem.priceCents).inputString,
                                 assignedGuestIds: []
                             )
                         }

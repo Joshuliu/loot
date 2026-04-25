@@ -41,6 +41,15 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
         self.priceText = priceText
     }
 
+    /// Convenience for split-by-items flows that supply assigned-guest UUIDs.
+    /// Same Phase 2.6 bridge as `assignedGuestIds` — converted to PersonID-backed
+    /// `line.assigneeIDs` internally.
+    init(id: UUID = UUID(), label: String, priceText: String, assignedGuestIds: Set<UUID>) {
+        let assignees = assignedGuestIds.map { PersonID(rawValue: $0.uuidString) }
+        self.line = LineItem(id: id, label: label, priceCents: 0, assigneeIDs: assignees)
+        self.priceText = priceText
+    }
+
     /// Construct a form from a canonical LineItem, formatting priceCents into
     /// the display text (e.g. 1250 → "12.50").
     init(from line: LineItem) {
@@ -67,6 +76,15 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     /// the canonical line is only updated on save via `committed()`.
     var priceCents: Int {
         Money(parsing: priceText).cents
+    }
+
+    /// UUID-based view of `line.assigneeIDs`. Temporary bridge for Phase 2.6:
+    /// the split editor still has `SplitGuest.id: UUID`. Once SplitGuest
+    /// migrates to Person (Phase 2.8), this property is removed and call
+    /// sites use `line.assigneeIDs` directly.
+    var assignedGuestIds: Set<UUID> {
+        get { Set(line.assigneeIDs.compactMap { UUID(uuidString: $0.rawValue) }) }
+        set { line.assigneeIDs = newValue.map { PersonID(rawValue: $0.uuidString) } }
     }
 
     /// Returns a finalized LineItem with `priceCents` resolved from `priceText`

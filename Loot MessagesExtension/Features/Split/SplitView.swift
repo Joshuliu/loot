@@ -44,18 +44,6 @@ struct DonutDrag {
     var endFracUnwrapped: Double
 }
 
-struct DraftReceiptItem: Identifiable, Equatable {
-    let id: UUID
-    var label: String
-    var price: String
-    var assignedGuestIds: Set<UUID>
-
-    var isComplete: Bool {
-        !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-}
-
 // MARK: - Cent Slider (Fine Tuner)
 
 struct CentSlider: View {
@@ -253,7 +241,7 @@ extension ConfirmationView {
             guestId: guestId,
             guestOrder: guests.map(\.id),
             items: byItemItems.map { item in
-                (priceCents: stringToCents(item.price), assignedGuestIds: Array(item.assignedGuestIds))
+                (priceCents: item.priceCents, assignedGuestIds: Array(item.assignedGuestIds))
             }
         )
     }
@@ -463,10 +451,10 @@ extension ConfirmationView {
 
         let receiptItems = uiModel.currentReceipt?.items ?? []
         byItemItems = receiptItems.map { it in
-            DraftReceiptItem(
+            LineItemForm(
                 id: UUID(),
                 label: it.label,
-                price: ReceiptDisplay.money(it.priceCents),
+                priceText: Money(cents: it.priceCents).inputString,
                 assignedGuestIds: []
             )
         }
@@ -509,7 +497,7 @@ extension ConfirmationView {
                 SplitDraft.Item(
                     id: it.id,
                     label: it.label,
-                    priceCents: stringToCents(it.price),
+                    priceCents: it.priceCents,
                     assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
                 )
             }
@@ -884,7 +872,7 @@ extension ConfirmationView {
                                             Text(item.label)
                                                 .font(.system(size: 16, weight: .semibold))
                                                 .lineLimit(1)
-                                            Text(ReceiptDisplay.money(stringToCents(item.price)))
+                                            Text(ReceiptDisplay.money(item.priceCents))
                                                 .font(.system(size: 13))
                                                 .foregroundStyle(.secondary)
                                         }
@@ -1467,10 +1455,10 @@ extension ConfirmationView {
                 if !existingDraft.items.isEmpty {
                     didInitByItem = true
                     byItemItems = existingDraft.items.map { it in
-                        DraftReceiptItem(
+                        LineItemForm(
                             id: it.id,
                             label: it.label,
-                            price: ReceiptDisplay.money(it.priceCents),
+                            priceText: Money(cents: it.priceCents).inputString,
                             assignedGuestIds: Set(it.assignedGuestIds)
                         )
                     }
