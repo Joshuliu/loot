@@ -1087,29 +1087,22 @@ struct ConfirmationView: View {
                         }
                     }
                     uiModel.currentReceipt = updatedReceipt
-                    // Sync splitDraft so send doesn't overwrite edits
+                    // Sync splitDraft non-item fields from the edited receipt.
                     if var draft = uiModel.currentSplitDraft {
                         draft.feesCents = updatedReceipt.feesCents
                         draft.discountCents = updatedReceipt.discountCents
                         draft.taxCents = updatedReceipt.taxCents
                         draft.tipCents = updatedReceipt.tipCents
                         draft.totalCents = updatedReceipt.totalCents
-                        // Sync items: update labels and prices, remove deleted items
-                        draft.items = updatedReceipt.items.map { newItem in
-                            if let existing = draft.items.first(where: { $0.id.uuidString == newItem.id }) {
-                                var updated = existing
-                                updated.label = newItem.label
-                                updated.priceCents = newItem.priceCents
-                                return updated
-                            }
-                            return SplitDraft.Item(
-                                id: UUID(uuidString: newItem.id) ?? UUID(),
-                                label: newItem.label,
-                                priceCents: newItem.priceCents,
-                                assignedGuestIds: []
-                            )
-                        }
                         uiModel.currentSplitDraft = draft
+                    }
+                    // In by-items mode, byItemItems has just been re-matched by
+                    // label above (preserving assignedGuestIds). Push it through
+                    // to currentSplitDraft.items so the send pipeline sees the
+                    // up-to-date assignments. Out of by-items mode, items are
+                    // not used downstream, so we skip the sync.
+                    if mode == .byItems {
+                        syncByItemsToSplitDraft()
                     }
                     showEditReceipt = false
                 },

@@ -444,6 +444,36 @@ extension ConfirmationView {
         } else {
             byItemItems[idx].assignedGuestIds.insert(guestId)
         }
+
+        // Push the updated assignments through to currentSplitDraft so the
+        // ring math, owedAmounts, and outgoing wire payload all see them
+        // without requiring an explicit "Save" tap in the split editor.
+        syncByItemsToSplitDraft()
+    }
+
+    /// Syncs the current `byItemItems` (form-state) into
+    /// `uiModel.currentSplitDraft.items`, building a draft if none exists.
+    /// Called whenever assignments change so the rest of the pipeline
+    /// (ring rendering, send) sees up-to-date data without depending on the
+    /// split editor's "Save" button.
+    func syncByItemsToSplitDraft() {
+        let items: [SplitDraft.Item] = byItemItems
+            .filter { $0.isComplete }
+            .map { it in
+                SplitDraft.Item(
+                    id: it.id,
+                    label: it.label,
+                    priceCents: it.priceCents,
+                    assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
+                )
+            }
+
+        if var draft = uiModel.currentSplitDraft {
+            draft.items = items
+            uiModel.currentSplitDraft = draft
+        } else {
+            uiModel.currentSplitDraft = buildSplitDraft()
+        }
     }
 
     func seedByItemsFromReceipt() {
@@ -558,6 +588,7 @@ extension ConfirmationView {
             copy.assignedGuestIds = copy.assignedGuestIds.intersection(activeSet)
             return copy
         }
+        syncByItemsToSplitDraft()
     }
 
     // MARK: - Split mode button (for extension use)
