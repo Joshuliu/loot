@@ -482,6 +482,27 @@ extension MessagesViewController {
             return false
         }
 
+        // Same race for OTHER participants' claims. The inline payload baked
+        // into a freshly-broadcast bubble (e.g. a "joined a bill" update from
+        // B) carries their claim immediately, but B's drawer-side
+        // persistSplit Firestore write may still be in flight. If our current
+        // view has uids that the fetched payload lacks, the fetch is stale
+        // and would visually undo a join that just landed via the bubble's
+        // session-replace — reverting B's name to "Guest N" half a second
+        // after we first rendered it correctly.
+        let currentUids = Set(current.s.g.compactMap { g -> String? in
+            guard let u = g.uid, !u.isEmpty else { return nil }
+            return u
+        })
+        let fetchedUids = Set(fetched.s.g.compactMap { g -> String? in
+            guard let u = g.uid, !u.isEmpty else { return nil }
+            return u
+        })
+        if !currentUids.subtracting(fetchedUids).isEmpty {
+            print("[applyMessage] Ignoring stale fetched payload for \(docId); local has uids fetched lacks")
+            return false
+        }
+
         return true
     }
 
