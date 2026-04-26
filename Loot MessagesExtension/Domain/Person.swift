@@ -57,6 +57,24 @@ struct Person: Identifiable, Hashable, Codable, Sendable {
         Person(id: .newGuest(), displayName: displayName, userId: nil)
     }
 
+    /// Convenience for a Person whose Keychain `userId` is known (local user, tab
+    /// member, or any wire slot with a non-nil `uid`). The PersonID is derived
+    /// directly from `userId` so encode → decode → encode round-trips back to
+    /// the same identity.
+    static func identified(userId: String, displayName: String) -> Person {
+        Person(id: PersonID(rawValue: userId), displayName: displayName, userId: userId)
+    }
+
+    /// Convenience for the wire-decode boundary. If `uid` is non-nil and non-empty,
+    /// the resulting Person carries a stable PersonID derived from it; otherwise
+    /// the slot becomes an anonymous Person with a fresh ID per decode.
+    static func fromWireSlot(uid: String?, displayName: String) -> Person {
+        if let uid, !uid.isEmpty {
+            return .identified(userId: uid, displayName: displayName)
+        }
+        return Person(id: .newGuest(), displayName: displayName, userId: nil)
+    }
+
     /// Returns true if `userId` matches the local Keychain user.
     /// Caller must pass `KeychainHelper.getOrCreateUserId()` (or equivalent) — this
     /// keeps the domain layer free of platform dependencies.

@@ -112,6 +112,39 @@ final class PersonTests: XCTestCase {
         XCTAssertNil(decoded.userId)
     }
 
+    func testIdentifiedDerivesPersonIDFromUserId() {
+        let p = Person.identified(userId: "keychain-abc", displayName: "Alice")
+        XCTAssertEqual(p.id.rawValue, "keychain-abc")
+        XCTAssertEqual(p.userId, "keychain-abc")
+        XCTAssertEqual(p.displayName, "Alice")
+    }
+
+    func testIdentifiedRoundTripsToSamePersonID() {
+        let a = Person.identified(userId: "kc-1", displayName: "Alice")
+        let b = Person.identified(userId: "kc-1", displayName: "Alice (renamed)")
+        XCTAssertEqual(a.id, b.id, "PersonID should be stable across separate identified() calls with the same userId")
+    }
+
+    func testFromWireSlotWithNonNilUidIsStable() {
+        let p = Person.fromWireSlot(uid: "kc-2", displayName: "Bob")
+        XCTAssertEqual(p.id.rawValue, "kc-2")
+        XCTAssertEqual(p.userId, "kc-2")
+    }
+
+    func testFromWireSlotWithNilUidGeneratesFreshAnonymousID() {
+        let a = Person.fromWireSlot(uid: nil, displayName: "Anon")
+        let b = Person.fromWireSlot(uid: nil, displayName: "Anon")
+        XCTAssertNotEqual(a.id, b.id, "Anonymous slots should get fresh PersonIDs per call")
+        XCTAssertNil(a.userId)
+        XCTAssertNil(b.userId)
+    }
+
+    func testFromWireSlotWithEmptyUidGeneratesFreshAnonymousID() {
+        let p = Person.fromWireSlot(uid: "", displayName: "Empty")
+        XCTAssertNil(p.userId)
+        XCTAssertFalse(p.id.rawValue.isEmpty)
+    }
+
     func testEqualityRequiresAllFieldsMatch() {
         let a = Person(id: PersonID("u1"), displayName: "Alice", userId: "kc")
         let b = Person(id: PersonID("u1"), displayName: "Alice", userId: "kc")
