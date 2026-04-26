@@ -623,9 +623,23 @@ struct SplitsSummaryView: View {
     private func claimSlot(at guestIndex: Int, broadcast: Bool = true) {
         let myUid = KeychainHelper.getOrCreateUserId()
         split.g[guestIndex].uid = myUid
+
+        // Embed the joiner's local display name into the wire payload when
+        // the slot's name is empty. The sender's view falls through to
+        // g.n when uidDisplayNames hasn't been populated yet (the recipient's
+        // Firestore user doc may not exist or may not have synced), so
+        // without this, the sender keeps seeing "Guest N" until a separate
+        // round-trip resolves the name. We deliberately only fill empty
+        // slots — a manually-entered name from the bill creator wins.
+        let trimmedExisting = split.g[guestIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedExisting.isEmpty {
+            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !myName.isEmpty {
+                split.g[guestIndex].n = myName
+            }
+        }
+
         removeCurrentUserFromIgnoredIfPresent()
-        // Don't overwrite .n — that's the bill creator's manually-entered name.
-        // Display name is resolved from uid via displayName(for:).
         billState = .joined
         persistSplit(broadcast: broadcast, action: .claimed)
 
