@@ -40,21 +40,21 @@ func splitCentsEvenly(total: Int, count: Int) -> [Int] {
 /// Computes one guest's by-items subtotal using deterministic remainder handling.
 /// Guest ordering defines which assignees receive remainder cents first.
 func byItemsGuestSubtotalCents(
-    guestId: UUID,
-    guestOrder: [UUID],
-    items: [(priceCents: Int, assignedGuestIds: [UUID])]
+    guestID: PersonID,
+    guestOrder: [PersonID],
+    items: [(priceCents: Int, assignedGuestIDs: [PersonID])]
 ) -> Int {
-    let orderIndex: [UUID: Int] = Dictionary(uniqueKeysWithValues: guestOrder.enumerated().map { ($1, $0) })
+    let orderIndex: [PersonID: Int] = Dictionary(uniqueKeysWithValues: guestOrder.enumerated().map { ($1, $0) })
 
     return items.reduce(0) { acc, item in
-        let assignedUnique = Set(item.assignedGuestIds)
+        let assignedUnique = Set(item.assignedGuestIDs)
         let assignedSorted = assignedUnique.sorted { lhs, rhs in
             let li = orderIndex[lhs] ?? Int.max
             let ri = orderIndex[rhs] ?? Int.max
-            if li == ri { return lhs.uuidString < rhs.uuidString }
+            if li == ri { return lhs.rawValue < rhs.rawValue }
             return li < ri
         }
-        guard let guestPosition = assignedSorted.firstIndex(of: guestId) else { return acc }
+        guard let guestPosition = assignedSorted.firstIndex(of: guestID) else { return acc }
         let shares = splitCentsEvenly(total: max(0, item.priceCents), count: assignedSorted.count)
         return acc + (shares.indices.contains(guestPosition) ? shares[guestPosition] : 0)
     }

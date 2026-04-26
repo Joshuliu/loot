@@ -6,37 +6,6 @@
 //
 import SwiftUI
 
-struct SplitDraft: Equatable, Codable {
-    enum Mode: String, CaseIterable, Codable {
-        case equally = "Split Equally"
-        case byItems = "Split by Items"
-        case custom = "Custom Split"
-    }
-
-    struct Item: Identifiable, Equatable, Codable {
-        let id: UUID
-        var label: String
-        var priceCents: Int
-        var assignedGuestIds: [UUID]
-    }
-
-    var guests: [SplitGuest]
-    var payerGuestId: UUID
-
-    var mode: Mode
-    var totalCents: Int
-    var perGuestCents: [Int]
-    var items: [Item]
-    var feesCents: Int
-    var discountCents: Int
-    var taxCents: Int
-    var tipCents: Int
-
-    var activeGuests: [SplitGuest] {
-        guests.filter { $0.isIncluded }
-    }
-}
-
 // MARK: - Supporting Types
 
 struct DonutDrag {
@@ -208,17 +177,19 @@ struct CentSlider: View {
 extension ConfirmationView {
 
     // MARK: - Derived guest views
-    var activeGuests: [SplitGuest] { guests.filter { $0.isIncluded } }
+    var activeGuests: [Person] { guests.filter { includedIDs.contains($0.id) } }
     var activeCount: Int { max(0, activeGuests.count) }
 
-    func allIndex(for id: UUID) -> Int? {
+    var localUserId: String { KeychainHelper.getOrCreateUserId() }
+
+    func allIndex(for id: PersonID) -> Int? {
         guests.firstIndex(where: { $0.id == id })
     }
 
-    func displayName(for guest: SplitGuest, fallbackIndexInAllGuests: Int? = nil) -> String {
-        let t = guest.trimmedName
+    func displayName(for guest: Person, fallbackIndexInAllGuests: Int? = nil) -> String {
+        let t = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !t.isEmpty { return t }
-        if guest.isMe {
+        if guest.isMe(localUserId: localUserId) {
             let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
             return me.isEmpty ? "Me" : me
         }
@@ -229,19 +200,24 @@ extension ConfirmationView {
     }
 
     func payerDisplayName() -> String {
-        if let idx = guests.firstIndex(where: { $0.id == payerGuestId }) {
+        if let idx = guests.firstIndex(where: { $0.id == payerID }) {
             return displayName(for: guests[idx], fallbackIndexInAllGuests: idx)
         }
-        return displayName(for: guests.first(where: { $0.isMe }) ?? SplitGuest(name: "Me", isIncluded: true, isMe: true))
+        if let me = guests.first(where: { $0.isMe(localUserId: localUserId) }) {
+            return displayName(for: me)
+        }
+        let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+        return meName.isEmpty ? "Me" : meName
     }
 
 
-    private func byItemsGuestCents(for guestId: UUID) -> Int {
+    private func byItemsGuestCents(for guestId: PersonID) -> Int {
         byItemsGuestSubtotalCents(
-            guestId: guestId,
+            guestID: guestId,
             guestOrder: guests.map(\.id),
             items: byItemItems.map { item in
-                (priceCents: item.priceCents, assignedGuestIds: Array(item.assignedGuestIds))
+                let assignees = item.assignedGuestIds.compactMap { PersonID(rawValue: $0.uuidString) }
+                return (priceCents: item.priceCents, assignedGuestIDs: assignees)
             }
         )
     }
@@ -297,7 +273,7 @@ extension ConfirmationView {
         BadgeColors.color(for: i)
     }
 
-    func colorForGuestId(_ id: UUID) -> Color {
+    func colorForGuestId(_ id: PersonID) -> Color {
         guard let idx = guests.firstIndex(where: { $0.id == id }) else {
             return BadgeColors.palette[0]
         }
@@ -313,7 +289,7 @@ extension ConfirmationView {
     // MARK: - Guest navigation (for toolbar)
     var currentGuestIndex: Int {
         if mode == .byItems {
-            return activeGuests.firstIndex(where: { $0.id == byItemSelectedGuestId }) ?? 0
+            return activeGuests.firstIndex(where: { $0.id == byItemSelectedGuestID }) ?? 0
         } else {
             return guestSelectedIndex
         }
@@ -338,7 +314,7 @@ extension ConfirmationView {
         guard canGoPrevGuest else { return }
         let newIndex = currentGuestIndex - 1
         if mode == .byItems {
-            byItemSelectedGuestId = activeGuests[newIndex].id
+            byItemSelectedGuestID = activeGuests[newIndex].id
         } else {
             guestSelectedIndex = newIndex
         }
@@ -348,7 +324,7 @@ extension ConfirmationView {
         guard canGoNextGuest else { return }
         let newIndex = currentGuestIndex + 1
         if mode == .byItems {
-            byItemSelectedGuestId = activeGuests[newIndex].id
+            byItemSelectedGuestID = activeGuests[newIndex].id
         } else {
             guestSelectedIndex = newIndex
         }
@@ -436,13 +412,17 @@ extension ConfirmationView {
         guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
         guard byItemItems[idx].isComplete else { return }
 
-        let guestId = byItemSelectedGuestId
+        let guestId = byItemSelectedGuestID
         guard activeGuests.contains(where: { $0.id == guestId }) else { return }
 
-        if byItemItems[idx].assignedGuestIds.contains(guestId) {
-            byItemItems[idx].assignedGuestIds.remove(guestId)
+        // Bridge during Phase 2.8: LineItemForm.assignedGuestIds is still Set<UUID>
+        // until commit 3 collapses it to Set<PersonID>. Convert via uuidString —
+        // every PersonID rawValue in this codebase is a Keychain UUID string.
+        guard let bridgeUUID = UUID(uuidString: guestId.rawValue) else { return }
+        if byItemItems[idx].assignedGuestIds.contains(bridgeUUID) {
+            byItemItems[idx].assignedGuestIds.remove(bridgeUUID)
         } else {
-            byItemItems[idx].assignedGuestIds.insert(guestId)
+            byItemItems[idx].assignedGuestIds.insert(bridgeUUID)
         }
 
         // Push the updated assignments through to currentSplitDraft so the
@@ -460,11 +440,14 @@ extension ConfirmationView {
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
-                SplitDraft.Item(
+                let assignees = it.assignedGuestIds
+                    .map { PersonID(rawValue: $0.uuidString) }
+                    .sorted { $0.rawValue < $1.rawValue }
+                return SplitDraft.Item(
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
+                    assignedGuestIds: assignees
                 )
             }
 
@@ -515,7 +498,7 @@ extension ConfirmationView {
 
         if newMode == .byItems {
             if !didInitByItem { seedByItemsFromReceipt() }
-            byItemSelectedGuestId = activeGuests.first?.id ?? UUID()
+            byItemSelectedGuestID = activeGuests.first?.id ?? PersonID(rawValue: "")
         }
 
         // Push the mode change through to currentSplitDraft so the ring math
@@ -532,17 +515,21 @@ extension ConfirmationView {
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
-                SplitDraft.Item(
+                let assignees = it.assignedGuestIds
+                    .map { PersonID(rawValue: $0.uuidString) }
+                    .sorted { $0.rawValue < $1.rawValue }
+                return SplitDraft.Item(
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
+                    assignedGuestIds: assignees
                 )
             }
 
         return SplitDraft(
             guests: guests,
-            payerGuestId: payerGuestId,
+            includedIDs: includedIDs,
+            payerID: payerID,
             mode: mode,
             totalCents: totalCents,
             perGuestCents: guestAmountsCents,
@@ -557,7 +544,8 @@ extension ConfirmationView {
     // MARK: - Guest editor
     func openGuestEditor(_ editorMode: GuestEditorMode) {
         draftGuests = guests
-        draftPayerGuestId = payerGuestId
+        draftIncludedIDs = includedIDs
+        draftPayerID = payerID
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
             guestEditorMode = editorMode
             showGuestEditor = true
@@ -566,13 +554,15 @@ extension ConfirmationView {
 
     func applyGuestEdits() {
         let oldActiveIds = activeGuests.map { $0.id }
-        let oldAmounts: [UUID: Int] = Dictionary(uniqueKeysWithValues: zip(oldActiveIds, guestAmountsCents))
+        let oldAmounts: [PersonID: Int] = Dictionary(uniqueKeysWithValues: zip(oldActiveIds, guestAmountsCents))
 
         let newGuests = draftGuests
-        let newActive = newGuests.filter { $0.isIncluded }
+        let newIncluded = draftIncludedIDs
+        let newActive = newGuests.filter { newIncluded.contains($0.id) }
 
         guests = newGuests
-        payerGuestId = draftPayerGuestId
+        includedIDs = newIncluded
+        payerID = draftPayerID
 
         if guestSelectedIndex >= newActive.count { guestSelectedIndex = max(0, newActive.count - 1) }
 
@@ -586,14 +576,15 @@ extension ConfirmationView {
         }
 
         if let first = newActive.first {
-            if !newActive.contains(where: { $0.id == byItemSelectedGuestId }) {
-                byItemSelectedGuestId = first.id
+            if !newActive.contains(where: { $0.id == byItemSelectedGuestID }) {
+                byItemSelectedGuestID = first.id
             }
         }
-        let activeSet = Set(newActive.map { $0.id })
+        // Bridge: LineItemForm.assignedGuestIds is still Set<UUID> until commit 3.
+        let activeUUIDSet: Set<UUID> = Set(newActive.compactMap { UUID(uuidString: $0.id.rawValue) })
         byItemItems = byItemItems.map { it in
             var copy = it
-            copy.assignedGuestIds = copy.assignedGuestIds.intersection(activeSet)
+            copy.assignedGuestIds = copy.assignedGuestIds.intersection(activeUUIDSet)
             return copy
         }
         syncByItemsToSplitDraft()
@@ -920,11 +911,13 @@ extension ConfirmationView {
 
                                         HStack(spacing: 6) {
                                             ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
-                                                let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
-                                                let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
+                                                // Bridge: LineItemForm.assignedGuestIds is Set<UUID> until commit 3.
+                                                let pid = PersonID(rawValue: gid.uuidString)
+                                                let fallbackIndex = guests.firstIndex(where: { $0.id == pid }) ?? 0
+                                                let name = guests.first(where: { $0.id == pid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
                                                 ColoredCircleBadge(
                                                     text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                                    color: colorForGuestId(gid)
+                                                    color: colorForGuestId(pid)
                                                 )
                                             }
                                         }
@@ -958,14 +951,21 @@ extension ConfirmationView {
 
     // MARK: - Split panel snapshot (for Back button discard)
     func captureSnapshot() {
-        splitSnapshot = (mode: mode, guests: guests, payerGuestId: payerGuestId, guestAmountsCents: guestAmountsCents)
+        splitSnapshot = (
+            mode: mode,
+            guests: guests,
+            includedIDs: includedIDs,
+            payerID: payerID,
+            guestAmountsCents: guestAmountsCents
+        )
     }
 
     func restoreSnapshot() {
         guard let snap = splitSnapshot else { return }
         mode = snap.mode
         guests = snap.guests
-        payerGuestId = snap.payerGuestId
+        includedIDs = snap.includedIDs
+        payerID = snap.payerID
         guestAmountsCents = snap.guestAmountsCents
         splitSnapshot = nil
     }
@@ -995,7 +995,7 @@ extension ConfirmationView {
                 let draft = buildSplitDraft()
                 uiModel.currentSplitDraft = draft
                 onSelectMode(mode)
-                onGuestsChanged(guests, payerGuestId)
+                onGuestsChanged(guests, includedIDs, payerID)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                     confirmed = true
@@ -1054,16 +1054,18 @@ extension ConfirmationView {
     // MARK: - Inline guest management
 
     func addGuestInline() {
-        let new = SplitGuest(name: "", isIncluded: true, isMe: false)
+        let new = Person.newGuest(displayName: "")
 
         // Snapshot old amounts by guest ID
         let oldActive = activeGuests
-        let oldAmounts: [UUID: Int] = Dictionary(
+        let oldAmounts: [PersonID: Int] = Dictionary(
             uniqueKeysWithValues: zip(oldActive.map(\.id), guestAmountsCents.prefix(oldActive.count))
         )
 
         guests.append(new)
+        includedIDs.insert(new.id)
         draftGuests = guests
+        draftIncludedIDs = includedIDs
 
         // Rebuild amounts
         let newActive = activeGuests
@@ -1076,33 +1078,35 @@ extension ConfirmationView {
         ensureGuestArrays()
     }
 
-    func removeGuestInline(guestId: UUID) {
+    func removeGuestInline(guestId: PersonID) {
         guard let idx = guests.firstIndex(where: { $0.id == guestId }) else { return }
         // Block if this is the last included guest
         if activeGuests.count <= 1 { return }
-        let hasUid = !((guests[idx].uid ?? "").isEmpty)
+        let hasUid = !((guests[idx].userId ?? "").isEmpty)
 
         // Snapshot old amounts by guest ID
         let oldActive = activeGuests
-        let oldAmounts: [UUID: Int] = Dictionary(
+        let oldAmounts: [PersonID: Int] = Dictionary(
             uniqueKeysWithValues: zip(oldActive.map(\.id), guestAmountsCents.prefix(oldActive.count))
         )
 
         if hasUid {
-            // Exclude (recoverable) — guest stays in array with isIncluded = false
-            guests[idx].isIncluded = false
+            // Exclude (recoverable) — guest stays in array, just out of includedIDs
+            includedIDs.remove(guestId)
         } else {
             // Permanently delete guests without a uid
             guests.remove(at: idx)
+            includedIDs.remove(guestId)
         }
         draftGuests = guests
+        draftIncludedIDs = includedIDs
 
         // Reassign payer if removed/excluded
-        if payerGuestId == guestId {
+        if payerID == guestId {
             let remaining = activeGuests
-            if let me = remaining.first(where: { $0.isMe }) { payerGuestId = me.id }
-            else if let first = remaining.first { payerGuestId = first.id }
-            draftPayerGuestId = payerGuestId
+            if let me = remaining.first(where: { $0.isMe(localUserId: localUserId) }) { payerID = me.id }
+            else if let first = remaining.first { payerID = first.id }
+            draftPayerID = payerID
         }
 
         // Rebuild amounts
@@ -1116,31 +1120,32 @@ extension ConfirmationView {
         ensureGuestArrays()
 
         // Clear editing state if needed
-        if editingGuestNameId == guestId {
-            editingGuestNameId = nil
-            guestNameFocusedId = nil
+        if editingGuestNameID == guestId {
+            editingGuestNameID = nil
+            guestNameFocusedID = nil
         }
 
         // Fix selection indices
         if guestSelectedIndex >= newActive.count {
             guestSelectedIndex = max(0, newActive.count - 1)
         }
-        if !newActive.contains(where: { $0.id == byItemSelectedGuestId }) {
-            byItemSelectedGuestId = newActive.first?.id ?? UUID()
+        if !newActive.contains(where: { $0.id == byItemSelectedGuestID }) {
+            byItemSelectedGuestID = newActive.first?.id ?? PersonID(rawValue: "")
         }
     }
 
-    func reIncludeGuest(guestId: UUID) {
-        guard let idx = guests.firstIndex(where: { $0.id == guestId }) else { return }
+    func reIncludeGuest(guestId: PersonID) {
+        guard guests.contains(where: { $0.id == guestId }) else { return }
 
         // Snapshot old amounts by guest ID
         let oldActive = activeGuests
-        let oldAmounts: [UUID: Int] = Dictionary(
+        let oldAmounts: [PersonID: Int] = Dictionary(
             uniqueKeysWithValues: zip(oldActive.map(\.id), guestAmountsCents.prefix(oldActive.count))
         )
 
-        guests[idx].isIncluded = true
+        includedIDs.insert(guestId)
         draftGuests = guests
+        draftIncludedIDs = includedIDs
 
         // Rebuild amounts
         let newActive = activeGuests
@@ -1166,12 +1171,12 @@ extension ConfirmationView {
                 Menu {
                     ForEach(activeGuests) { guest in
                         Button {
-                            payerGuestId = guest.id
-                            draftPayerGuestId = guest.id
+                            payerID = guest.id
+                            draftPayerID = guest.id
                         } label: {
                             HStack {
                                 Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: guest.id)))
-                                if guest.id == payerGuestId {
+                                if guest.id == payerID {
                                     Image(systemName: "checkmark")
                                 }
                             }
@@ -1198,7 +1203,7 @@ extension ConfirmationView {
                         let guest = activeGuests[i]
                         let gid = guest.id
                         let isSelected: Bool = mode == .byItems
-                        ? gid == byItemSelectedGuestId
+                        ? gid == byItemSelectedGuestID
                         : i == guestSelectedIndex
                         
                         HStack(spacing: 8) {
@@ -1211,44 +1216,46 @@ extension ConfirmationView {
                                 color: colorForActiveIdx(i)
                             )
                             .onTapGesture {
-                                if mode == .byItems { byItemSelectedGuestId = gid }
+                                if mode == .byItems { byItemSelectedGuestID = gid }
                                 else { guestSelectedIndex = i }
                             }
-                            
+
                             // Name – tap to edit inline (disabled for tab members)
-                            let isTabMember = uiModel.activeTab != nil && guest.uid != nil && !guest.uid!.isEmpty
-                            if editingGuestNameId == gid && !guest.isMe && !isTabMember {
+                            let isMe = guest.isMe(localUserId: localUserId)
+                            let isTabMember = uiModel.activeTab != nil && guest.userId != nil && !guest.userId!.isEmpty
+                            let trimmed = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if editingGuestNameID == gid && !isMe && !isTabMember {
                                 TextField(
                                     "Guest name",
                                     text: Binding(
                                         get: {
-                                            guests.first(where: { $0.id == gid })?.name ?? ""
+                                            guests.first(where: { $0.id == gid })?.displayName ?? ""
                                         },
                                         set: { newValue in
                                             if let idx = guests.firstIndex(where: { $0.id == gid }) {
-                                                guests[idx].name = newValue
+                                                guests[idx].displayName = newValue
                                                 draftGuests = guests
                                             }
                                         }
                                     )
                                 )
                                 .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                                .focused($guestNameFocusedId, equals: gid)
+                                .focused($guestNameFocusedID, equals: gid)
                                 .textInputAutocapitalization(.words)
                                 .submitLabel(.done)
                                 .onSubmit {
-                                    editingGuestNameId = nil
+                                    editingGuestNameID = nil
                                 }
                             } else {
-                                let isUnnamed = guest.trimmedName.isEmpty && !guest.isMe
+                                let isUnnamed = trimmed.isEmpty && !isMe
                                 Text(displayName(for: guest, fallbackIndexInAllGuests: allIndex(for: gid)))
                                     .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
                                     .foregroundColor(isUnnamed ? .secondary : .primary)
                                     .onTapGesture {
-                                        if !guest.isMe && !isTabMember {
-                                            editingGuestNameId = gid
+                                        if !isMe && !isTabMember {
+                                            editingGuestNameID = gid
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                                guestNameFocusedId = gid
+                                                guestNameFocusedID = gid
                                             }
                                         }
                                     }
@@ -1298,11 +1305,11 @@ extension ConfirmationView {
                         .contentShape(Rectangle())
                         .onTapGesture {
                             // Dismiss any open name edit when tapping another row
-                            if editingGuestNameId != nil && editingGuestNameId != gid {
-                                editingGuestNameId = nil
-                                guestNameFocusedId = nil
+                            if editingGuestNameID != nil && editingGuestNameID != gid {
+                                editingGuestNameID = nil
+                                guestNameFocusedID = nil
                             }
-                            if mode == .byItems { byItemSelectedGuestId = gid }
+                            if mode == .byItems { byItemSelectedGuestID = gid }
                             else { guestSelectedIndex = i }
                         }
                         .padding(.horizontal, 14)
@@ -1350,7 +1357,7 @@ extension ConfirmationView {
             }
 
             // Excluded guests section (only guests with UIDs)
-            let excludedWithUid = guests.filter { !$0.isIncluded && !(($0.uid ?? "").isEmpty) }
+            let excludedWithUid = guests.filter { !includedIDs.contains($0.id) && !(($0.userId ?? "").isEmpty) }
             if !excludedWithUid.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Not Included")
@@ -1385,9 +1392,9 @@ extension ConfirmationView {
                 .padding(.horizontal, 14)
             }
         }
-        .onChange(of: guestNameFocusedId) { _, newValue in
+        .onChange(of: guestNameFocusedID) { _, newValue in
             if newValue == nil {
-                editingGuestNameId = nil
+                editingGuestNameID = nil
             }
         }
     }
@@ -1440,42 +1447,47 @@ extension ConfirmationView {
         if guests.isEmpty {
             if let existingDraft = splitDraft, !existingDraft.guests.isEmpty {
                 guests = existingDraft.guests
-                payerGuestId = existingDraft.payerGuestId
+                includedIDs = existingDraft.includedIDs
+                payerID = existingDraft.payerID
             } else if !draftGuests.isEmpty {
-                // onAppear has already seeded draftGuests (with whatever UUIDs
-                // were appropriate for this conversation/tab/fallback).
-                // Reuse those UUIDs verbatim — otherwise this branch would
-                // generate a fresh set, and byItemSelectedGuestId
-                // (sourced from `guests`) would never match
-                // currentSplitDraft.guests (sourced from draftGuests via
+                // onAppear has already seeded draftGuests (with stable PersonIDs
+                // for this conversation/tab/fallback). Reuse those PersonIDs
+                // verbatim — otherwise this branch would generate a fresh set,
+                // and byItemSelectedGuestID (sourced from `guests`) would never
+                // match currentSplitDraft.guests (sourced from draftGuests via
                 // onGuestsChanged), breaking byItems assignment lookup.
                 guests = draftGuests
-                payerGuestId = draftPayerGuestId
+                includedIDs = draftIncludedIDs
+                payerID = draftPayerID
             } else if let tab = uiModel.activeTab {
                 let myUid = KeychainHelper.getOrCreateUserId()
-                let seeded = tab.members.filter { $0.isActive }.map { member in
+                let seeded = tab.members.filter { $0.isActive }.map { member -> Person in
                     let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
-                    return SplitGuest(name: member.displayName, isIncluded: true,
-                                      isMe: uid == myUid, uid: uid)
+                    return Person.identified(userId: uid, displayName: member.displayName)
                 }
                 guests = seeded
-                payerGuestId = seeded.first(where: { $0.isMe })?.id ?? seeded.first?.id ?? UUID()
+                includedIDs = Set(seeded.map(\.id))
+                payerID = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
+                    ?? seeded.first?.id
+                    ?? PersonID(rawValue: myUid)
             } else {
+                let myUid = KeychainHelper.getOrCreateUserId()
                 let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
+                var seeded: [Person] = [Person.identified(userId: myUid, displayName: meName)]
                 if participantCount > 1 {
                     for _ in 1..<participantCount {
-                        seeded.append(SplitGuest(name: "", isIncluded: true, isMe: false))
+                        seeded.append(Person.newGuest(displayName: ""))
                     }
                 }
                 guests = seeded
-                payerGuestId = seeded.first?.id ?? UUID()
+                includedIDs = Set(seeded.map(\.id))
+                payerID = seeded.first?.id ?? PersonID(rawValue: myUid)
             }
         }
 
         if activeCount > 0 {
-            if byItemSelectedGuestId == UUID() {
-                byItemSelectedGuestId = activeGuests.first?.id ?? payerGuestId
+            if byItemSelectedGuestID.rawValue.isEmpty {
+                byItemSelectedGuestID = activeGuests.first?.id ?? payerID
             }
         }
 
@@ -1504,11 +1516,15 @@ extension ConfirmationView {
                 if !existingDraft.items.isEmpty {
                     didInitByItem = true
                     byItemItems = existingDraft.items.map { it in
-                        LineItemForm(
+                        // Bridge: LineItemForm.assignedGuestIds is still Set<UUID>
+                        // until commit 3 collapses it to Set<PersonID>. PersonIDs
+                        // here always have rawValues that are UUID strings.
+                        let bridgeUUIDs = Set(it.assignedGuestIds.compactMap { UUID(uuidString: $0.rawValue) })
+                        return LineItemForm(
                             id: it.id,
                             label: it.label,
                             priceText: Money(cents: it.priceCents).inputString,
-                            assignedGuestIds: Set(it.assignedGuestIds)
+                            assignedGuestIds: bridgeUUIDs
                         )
                     }
                 } else if !didInitByItem {
@@ -1524,7 +1540,8 @@ extension ConfirmationView {
 
         if draftGuests.isEmpty {
             draftGuests = guests
-            draftPayerGuestId = payerGuestId
+            draftIncludedIDs = includedIDs
+            draftPayerID = payerID
         }
     }
 

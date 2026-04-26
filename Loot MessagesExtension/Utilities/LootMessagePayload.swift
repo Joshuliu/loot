@@ -200,20 +200,28 @@ struct SplitPayload: Codable, Equatable {
 
 extension SplitPayload {
     /// Converts a sent SplitPayload back to a SplitDraft for editing.
-    /// Returns the draft and the UUID-per-slot mapping (for converting back).
-    func toSplitDraft(receiptItems: [ReceiptItemPayload], totalCents: Int) -> (draft: SplitDraft, slotUUIDs: [UUID]) {
-        let myUid = payloadCurrentUserId()
-        let slotUUIDs = g.map { _ in UUID() }
-
-        let guests = g.enumerated().map { i, guest in
-            SplitGuest(
-                id: slotUUIDs[i],
-                name: guest.n,
-                isIncluded: guest.inc,
-                isMe: guest.uid == myUid,
-                uid: guest.uid
-            )
+    /// Returns the draft and the per-slot PersonID mapping (for converting back).
+    /// PersonID stability rule: identified guests (uid != nil) keep a deterministic
+    /// `PersonID(rawValue: uid)`, so encode → decode → encode round-trips back to
+    /// the same id. Anonymous slots get a fresh PersonID per decode — nothing
+    /// outside this draft holds those ids, so per-decode freshness is fine.
+    func toSplitDraft(receiptItems: [ReceiptItemPayload], totalCents: Int) -> (draft: SplitDraft, slotPersonIDs: [PersonID]) {
+        let slotPersonIDs: [PersonID] = g.map { guest in
+            if let uid = guest.uid, !uid.isEmpty {
+                return PersonID(rawValue: uid)
+            }
+            return PersonID(rawValue: UUID().uuidString)
         }
+
+        let guests: [Person] = g.enumerated().map { i, guest in
+            Person(id: slotPersonIDs[i], displayName: guest.n, userId: guest.uid)
+        }
+
+        let includedIDs: Set<PersonID> = Set(
+            g.enumerated()
+                .filter { $0.element.inc }
+                .map { slotPersonIDs[$0.offset] }
+        )
 
         let mode: SplitDraft.Mode = {
             switch m {
@@ -228,17 +236,16 @@ extension SplitPayload {
                 id: UUID(),
                 label: item.l,
                 priceCents: item.p,
-                assignedGuestIds: item.rs.compactMap { slotUUIDs.indices.contains($0) ? slotUUIDs[$0] : nil }
+                assignedGuestIds: item.rs.compactMap { slotPersonIDs.indices.contains($0) ? slotPersonIDs[$0] : nil }
             )
         }
 
         // Map owed cents to active guests (preserving original slot indices)
         let activePerGuestCents: [Int] = {
             var result: [Int] = []
-            for guest in guests where guest.isIncluded {
-                if let origIdx = guests.firstIndex(where: { $0.id == guest.id }),
-                   o.indices.contains(origIdx) {
-                    result.append(o[origIdx])
+            for (idx, guest) in g.enumerated() where guest.inc {
+                if o.indices.contains(idx) {
+                    result.append(o[idx])
                 } else {
                     result.append(0)
                 }
@@ -246,9 +253,14 @@ extension SplitPayload {
             return result
         }()
 
+        let payerID: PersonID = slotPersonIDs.indices.contains(pi)
+            ? slotPersonIDs[pi]
+            : (slotPersonIDs.first ?? PersonID(rawValue: ""))
+
         let draft = SplitDraft(
             guests: guests,
-            payerGuestId: slotUUIDs.indices.contains(pi) ? slotUUIDs[pi] : (slotUUIDs.first ?? UUID()),
+            includedIDs: includedIDs,
+            payerID: payerID,
             mode: mode,
             totalCents: totalCents,
             perGuestCents: activePerGuestCents,
@@ -258,7 +270,7 @@ extension SplitPayload {
             taxCents: tx ?? 0,
             tipCents: tip ?? 0
         )
-        return (draft, slotUUIDs)
+        return (draft, slotPersonIDs)
     }
 }
 
@@ -526,7 +538,13 @@ extension SplitPayload {
     static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
         let guests: [Guest] = {
             if let d = draft, !d.guests.isEmpty {
-                return d.guests.map { Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid) }
+                return d.guests.map { p in
+                    Guest(
+                        n: p.displayName,
+                        inc: d.includedIDs.contains(p.id),
+                        uid: p.userId
+                    )
+                }
             }
             var out: [Guest] = [Guest(n: payloadDisplayNameFromDefaults(), inc: true, uid: payloadCurrentUserId())]
             if participantCount > 1 {
@@ -539,7 +557,7 @@ extension SplitPayload {
 
         let payerIndex: Int = {
             guard let d = draft else { return 0 }
-            return d.guests.firstIndex(where: { $0.id == d.payerGuestId }) ?? 0
+            return d.guests.firstIndex(where: { $0.id == d.payerID }) ?? 0
         }()
 
         let mode: Mode = {
@@ -558,10 +576,10 @@ extension SplitPayload {
 
         let itemsForMath: [(label: String, priceCents: Int, assignedSlots: [Int])] = {
             guard let d = draft, d.mode == .byItems else { return [] }
-            let slotIndexByUUID: [UUID: Int] = Dictionary(uniqueKeysWithValues:
+            let slotIndexByPersonID: [PersonID: Int] = Dictionary(uniqueKeysWithValues:
                 d.guests.enumerated().map { ($0.element.id, $0.offset) })
             return d.items.map { it in
-                let slots = it.assignedGuestIds.compactMap { slotIndexByUUID[$0] }.sorted()
+                let slots = it.assignedGuestIds.compactMap { slotIndexByPersonID[$0] }.sorted()
                 return (label: it.label, priceCents: it.priceCents, assignedSlots: slots)
             }
         }()

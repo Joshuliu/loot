@@ -21,7 +21,7 @@ struct ConfirmationView: View {
     let onAddTip: () -> Void
     let onTipChanged: (String, String) -> Void  // (tipAmount, newTotal)
     let onSelectMode: (SplitDraft.Mode) -> Void
-    let onGuestsChanged: ([SplitGuest], UUID) -> Void  // (guests, payerGuestId)
+    let onGuestsChanged: ([Person], Set<PersonID>, PersonID) -> Void  // (guests, includedIDs, payerID)
     let collapsedHeight: CGFloat = 132
     let onRequestCollapse: () -> Void
     let onRequestExpand: () -> Void
@@ -41,14 +41,16 @@ struct ConfirmationView: View {
     // Guest drawer state
     @State var showGuestEditor: Bool = false
     @State var guestEditorMode: GuestEditorMode? = nil
-    @State var draftGuests: [SplitGuest] = []
-    @State var draftPayerGuestId: UUID = UUID()
+    @State var draftGuests: [Person] = []
+    @State var draftIncludedIDs: Set<PersonID> = []
+    @State var draftPayerID: PersonID = PersonID(rawValue: "")
 
     // Split panel state (used by extension in SplitView.swift)
     @State var mode: SplitDraft.Mode = .equally
     @State var lastMode: SplitDraft.Mode = .equally
-    @State var guests: [SplitGuest] = []
-    @State var payerGuestId: UUID = UUID()
+    @State var guests: [Person] = []
+    @State var includedIDs: Set<PersonID> = []
+    @State var payerID: PersonID = PersonID(rawValue: "")
     @State var guestSelectedIndex: Int = 0
     @State var guestAmountsCents: [Int] = []
     @State var donutDrag: DonutDrag? = nil
@@ -57,12 +59,12 @@ struct ConfirmationView: View {
     @State var editingGuestIndex: Int? = nil
     @State var amountInputText: String = ""
     @FocusState var isAmountFieldFocused: Bool
-    @State var editingGuestNameId: UUID? = nil
-    @FocusState var guestNameFocusedId: UUID?
+    @State var editingGuestNameID: PersonID? = nil
+    @FocusState var guestNameFocusedID: PersonID?
     @State var haptic = UIImpactFeedbackGenerator(style: .light)
     @State var lastHapticCents: Int = 0
     @State var byItemItems: [LineItemForm] = []
-    @State var byItemSelectedGuestId: UUID = UUID()
+    @State var byItemSelectedGuestID: PersonID = PersonID(rawValue: "")
     @State var feesString: String = ""
     @State var taxString: String = ""
     @State var tipString: String = ""
@@ -71,7 +73,7 @@ struct ConfirmationView: View {
     @State var confirmed: Bool = true
     @State var introAnimationDone: Bool = false
     @State var splitModesExpanded: Bool = false
-    @State var splitSnapshot: (mode: SplitDraft.Mode, guests: [SplitGuest], payerGuestId: UUID, guestAmountsCents: [Int])? = nil
+    @State var splitSnapshot: (mode: SplitDraft.Mode, guests: [Person], includedIDs: Set<PersonID>, payerID: PersonID, guestAmountsCents: [Int])? = nil
     @State private var keyboardHeight: CGFloat = 0
     @State private var sendHintAnimating: Bool = false
     @State private var billCardRefreshNonce: Int = 0
@@ -153,8 +155,7 @@ struct ConfirmationView: View {
         let total = stringToCents(amount)
 
         if let draft = splitDraft {
-            let activeGuests = draft.guests.filter { $0.isIncluded }
-            guard !activeGuests.isEmpty else { return nil }
+            guard !draft.includedGuests.isEmpty else { return nil }
 
             // Convert to SplitPayload types and use shared SplitMath
             let mode: SplitPayload.Mode = {
@@ -165,11 +166,11 @@ struct ConfirmationView: View {
                 }
             }()
 
-            let guests: [SplitPayload.Guest] = draft.guests.map {
-                SplitPayload.Guest(n: $0.name, inc: $0.isIncluded, uid: $0.uid)
+            let guests: [SplitPayload.Guest] = draft.guests.map { p in
+                SplitPayload.Guest(n: p.displayName, inc: draft.includedIDs.contains(p.id), uid: p.userId)
             }
 
-            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerGuestId }) ?? 0
+            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerID }) ?? 0
 
             let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
                 let slots = item.assignedGuestIds.compactMap { gid in
@@ -926,26 +927,31 @@ struct ConfirmationView: View {
             if draftGuests.isEmpty {
                 if let draft = splitDraft, !draft.guests.isEmpty {
                     draftGuests = draft.guests
-                    draftPayerGuestId = draft.payerGuestId
+                    draftIncludedIDs = draft.includedIDs
+                    draftPayerID = draft.payerID
                 } else if let tab = uiModel.activeTab {
                     let myUid = KeychainHelper.getOrCreateUserId()
                     let seeded = tab.members.filter { $0.isActive }.map { member in
                         let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
-                        return SplitGuest(name: member.displayName, isIncluded: true,
-                                          isMe: uid == myUid, uid: uid)
+                        return Person.identified(userId: uid, displayName: member.displayName)
                     }
                     draftGuests = seeded
-                    draftPayerGuestId = seeded.first(where: { $0.isMe })?.id ?? seeded.first?.id ?? UUID()
+                    draftIncludedIDs = Set(seeded.map(\.id))
+                    draftPayerID = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
+                        ?? seeded.first?.id
+                        ?? PersonID(rawValue: myUid)
                 } else {
+                    let myUid = KeychainHelper.getOrCreateUserId()
                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                    var seeded: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
+                    var seeded: [Person] = [Person.identified(userId: myUid, displayName: meName)]
                     if participantCount > 1 {
                         for _ in 1..<participantCount {
-                            seeded.append(SplitGuest(name: "", isIncluded: true, isMe: false))
+                            seeded.append(Person.newGuest(displayName: ""))
                         }
                     }
                     draftGuests = seeded
-                    draftPayerGuestId = seeded.first?.id ?? UUID()
+                    draftIncludedIDs = Set(seeded.map(\.id))
+                    draftPayerID = seeded.first?.id ?? PersonID(rawValue: myUid)
                 }
             }
 
@@ -953,10 +959,13 @@ struct ConfirmationView: View {
             initializeSplitState()
         }
         .onChange(of: draftGuests) { _, newGuests in
-            onGuestsChanged(newGuests, draftPayerGuestId)
+            onGuestsChanged(newGuests, draftIncludedIDs, draftPayerID)
         }
-        .onChange(of: draftPayerGuestId) { _, newPayerId in
-            onGuestsChanged(draftGuests, newPayerId)
+        .onChange(of: draftIncludedIDs) { _, newIncluded in
+            onGuestsChanged(draftGuests, newIncluded, draftPayerID)
+        }
+        .onChange(of: draftPayerID) { _, newPayerId in
+            onGuestsChanged(draftGuests, draftIncludedIDs, newPayerId)
         }
         .onChange(of: confirmed) { _, newValue in
             if newValue {

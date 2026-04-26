@@ -17,22 +17,25 @@ struct EditSplitView: View {
 
     // Split state (initialized from payload in init)
     @State private var mode: SplitDraft.Mode
-    @State private var guests: [SplitGuest]
-    @State private var payerGuestId: UUID
+    @State private var guests: [Person]
+    @State private var includedIDs: Set<PersonID>
+    @State private var payerID: PersonID
     @State private var guestAmountsCents: [Int]
     @State private var guestSelectedIndex: Int = 0
     @State private var byItemItems: [LineItemForm]
-    @State private var byItemSelectedGuestId: UUID
-    @State private var slotUUIDs: [UUID]
+    @State private var byItemSelectedGuestID: PersonID
+    @State private var slotPersonIDs: [PersonID]
 
     // Editing state
     @State private var isEditingAmount = false
     @State private var editingGuestIndex: Int? = nil
     @State private var amountInputText = ""
     @FocusState private var isAmountFieldFocused: Bool
-    @State private var editingGuestNameId: UUID? = nil
-    @FocusState private var guestNameFocusedId: UUID?
+    @State private var editingGuestNameID: PersonID? = nil
+    @FocusState private var guestNameFocusedID: PersonID?
     @State private var uidDisplayNames: [String: String] = [:]
+
+    private var localUserId: String { KeychainHelper.getOrCreateUserId() }
 
     init(payload: LootMessagePayload, docId: String, onSave: @escaping (LootMessagePayload) -> Void, onCancel: @escaping () -> Void) {
         self.payload = payload
@@ -40,19 +43,20 @@ struct EditSplitView: View {
         self.onSave = onSave
         self.onCancel = onCancel
 
-        let (draft, uuids) = payload.s.toSplitDraft(
+        let (draft, slotPersonIDs) = payload.s.toSplitDraft(
             receiptItems: payload.r.i,
             totalCents: payload.s.tot
         )
 
-        _slotUUIDs = State(initialValue: uuids)
+        _slotPersonIDs = State(initialValue: slotPersonIDs)
         _guests = State(initialValue: draft.guests)
-        _payerGuestId = State(initialValue: draft.payerGuestId)
+        _includedIDs = State(initialValue: draft.includedIDs)
+        _payerID = State(initialValue: draft.payerID)
 
         let draftMode = draft.mode
         _mode = State(initialValue: draftMode)
 
-        let active = draft.guests.filter { $0.isIncluded }
+        let active = draft.includedGuests
         let activeCount = active.count
 
         // Compute initial amounts
@@ -62,18 +66,20 @@ struct EditSplitView: View {
         }
         _guestAmountsCents = State(initialValue: amounts)
 
-        _byItemSelectedGuestId = State(initialValue: active.first?.id ?? UUID())
+        _byItemSelectedGuestID = State(initialValue: active.first?.id ?? PersonID(rawValue: ""))
         _byItemItems = State(initialValue: draft.items.map { item in
-            LineItemForm(
+            // Bridge: LineItemForm.assignedGuestIds is still Set<UUID> until commit 3.
+            let bridgeUUIDs = Set(item.assignedGuestIds.compactMap { UUID(uuidString: $0.rawValue) })
+            return LineItemForm(
                 id: item.id,
                 label: item.label,
                 priceText: Money(cents: item.priceCents).inputString,
-                assignedGuestIds: Set(item.assignedGuestIds)
+                assignedGuestIds: bridgeUUIDs
             )
         })
     }
 
-    private var activeGuests: [SplitGuest] { guests.filter { $0.isIncluded } }
+    private var activeGuests: [Person] { guests.filter { includedIDs.contains($0.id) } }
     private var activeCount: Int { activeGuests.count }
 
     private var totalCents: Int { payload.s.tot }
@@ -141,17 +147,21 @@ struct EditSplitView: View {
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
-                SplitDraft.Item(
+                let assignees = it.assignedGuestIds
+                    .map { PersonID(rawValue: $0.uuidString) }
+                    .sorted { $0.rawValue < $1.rawValue }
+                return SplitDraft.Item(
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: it.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }
+                    assignedGuestIds: assignees
                 )
             }
 
         let draft = SplitDraft(
             guests: guests,
-            payerGuestId: payerGuestId,
+            includedIDs: includedIDs,
+            payerID: payerID,
             mode: mode,
             totalCents: totalCents,
             perGuestCents: guestAmountsCents,
@@ -176,14 +186,14 @@ struct EditSplitView: View {
 
         // Update receipt items with new responsible slots if by-items mode
         if mode == .byItems {
-            let slotIndexByUUID: [UUID: Int] = Dictionary(
+            let slotIndexByPersonID: [PersonID: Int] = Dictionary(
                 uniqueKeysWithValues: guests.enumerated().map { ($1.id, $0) }
             )
             updatedPayload.r.i = updatedPayload.r.i.enumerated().map { idx, item in
                 var updated = item
                 if byItemItems.indices.contains(idx) {
                     updated.rs = byItemItems[idx].assignedGuestIds
-                        .compactMap { slotIndexByUUID[$0] }
+                        .compactMap { slotIndexByPersonID[PersonID(rawValue: $0.uuidString)] }
                         .sorted()
                 }
                 return updated
@@ -229,11 +239,11 @@ struct EditSplitView: View {
             Menu {
                 ForEach(activeGuests) { guest in
                     Button {
-                        payerGuestId = guest.id
+                        payerID = guest.id
                     } label: {
                         HStack {
                             Text(displayName(for: guest))
-                            if guest.id == payerGuestId {
+                            if guest.id == payerID {
                                 Image(systemName: "checkmark")
                             }
                         }
@@ -265,8 +275,10 @@ struct EditSplitView: View {
             ForEach(0..<activeCount, id: \.self) { i in
                 let guest = activeGuests[i]
                 let gid = guest.id
+                let isMe = guest.isMe(localUserId: localUserId)
+                let trimmed = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
                 let isSelected: Bool = mode == .byItems
-                    ? gid == byItemSelectedGuestId
+                    ? gid == byItemSelectedGuestID
                     : i == guestSelectedIndex
 
                 HStack(spacing: 8) {
@@ -280,29 +292,29 @@ struct EditSplitView: View {
                     )
 
                     // Name
-                    if editingGuestNameId == gid && canEditName(for: guest) {
+                    if editingGuestNameID == gid && canEditName(for: guest) {
                         TextField("Guest name", text: Binding(
-                            get: { guests.first(where: { $0.id == gid })?.name ?? "" },
+                            get: { guests.first(where: { $0.id == gid })?.displayName ?? "" },
                             set: { newValue in
                                 if let idx = guests.firstIndex(where: { $0.id == gid }) {
-                                    guests[idx].name = newValue
+                                    guests[idx].displayName = newValue
                                 }
                             }
                         ))
                         .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                        .focused($guestNameFocusedId, equals: gid)
+                        .focused($guestNameFocusedID, equals: gid)
                         .textInputAutocapitalization(.words)
                         .submitLabel(.done)
-                        .onSubmit { editingGuestNameId = nil }
+                        .onSubmit { editingGuestNameID = nil }
                     } else {
                         Text(displayName(for: guest))
                             .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                            .foregroundColor(guest.trimmedName.isEmpty && !guest.isMe ? .secondary : .primary)
+                            .foregroundColor(trimmed.isEmpty && !isMe ? .secondary : .primary)
                             .onTapGesture {
                                 if canEditName(for: guest) {
-                                    editingGuestNameId = gid
+                                    editingGuestNameID = gid
                                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        guestNameFocusedId = gid
+                                        guestNameFocusedID = gid
                                     }
                                 }
                             }
@@ -331,11 +343,11 @@ struct EditSplitView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    if editingGuestNameId != nil && editingGuestNameId != gid {
-                        editingGuestNameId = nil
-                        guestNameFocusedId = nil
+                    if editingGuestNameID != nil && editingGuestNameID != gid {
+                        editingGuestNameID = nil
+                        guestNameFocusedID = nil
                     }
-                    if mode == .byItems { byItemSelectedGuestId = gid }
+                    if mode == .byItems { byItemSelectedGuestID = gid }
                     else { guestSelectedIndex = i }
                 }
                 .padding(.horizontal, 14)
@@ -344,8 +356,8 @@ struct EditSplitView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
         }
-        .onChange(of: guestNameFocusedId) { _, newValue in
-            if newValue == nil { editingGuestNameId = nil }
+        .onChange(of: guestNameFocusedID) { _, newValue in
+            if newValue == nil { editingGuestNameID = nil }
         }
     }
 
@@ -377,11 +389,13 @@ struct EditSplitView: View {
 
                         HStack(spacing: 6) {
                             ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
-                                let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
-                                let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0) } ?? "Guest"
+                                // Bridge: LineItemForm.assignedGuestIds is Set<UUID> until commit 3.
+                                let pid = PersonID(rawValue: gid.uuidString)
+                                let fallbackIndex = guests.firstIndex(where: { $0.id == pid }) ?? 0
+                                let name = guests.first(where: { $0.id == pid }).map { displayName(for: $0) } ?? "Guest"
                                 ColoredCircleBadge(
                                     text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                    color: colorForGuestId(gid)
+                                    color: colorForGuestId(pid)
                                 )
                             }
                         }
@@ -481,15 +495,15 @@ struct EditSplitView: View {
 
     // MARK: - Helpers
 
-    private func canEditName(for guest: SplitGuest) -> Bool {
-        let uid = guest.uid?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    private func canEditName(for guest: Person) -> Bool {
+        let uid = guest.userId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return uid.isEmpty
     }
 
-    private func displayName(for guest: SplitGuest) -> String {
-        let t = guest.trimmedName
+    private func displayName(for guest: Person) -> String {
+        let t = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !t.isEmpty { return t }
-        if guest.isMe {
+        if guest.isMe(localUserId: localUserId) {
             let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
             return me.isEmpty ? "Me" : me
         }
@@ -500,7 +514,7 @@ struct EditSplitView: View {
     }
 
     private var guestUIDsTaskKey: String {
-        guests.compactMap(\.uid)
+        guests.compactMap(\.userId)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .sorted()
@@ -510,7 +524,7 @@ struct EditSplitView: View {
     private func loadUIDDisplayNamesIfNeeded() async {
         let myUid = KeychainHelper.getOrCreateUserId()
         let uids = Set(
-            guests.compactMap(\.uid)
+            guests.compactMap(\.userId)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty && $0 != myUid }
         )
@@ -524,9 +538,10 @@ struct EditSplitView: View {
                         uidDisplayNames[uid] = name
                         // Match tab-style display behavior: known users carry a concrete name value.
                         for idx in guests.indices {
-                            guard guests[idx].uid == uid else { continue }
-                            if guests[idx].trimmedName.isEmpty {
-                                guests[idx].name = name
+                            guard guests[idx].userId == uid else { continue }
+                            let trimmedExisting = guests[idx].displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                            if trimmedExisting.isEmpty {
+                                guests[idx].displayName = name
                             }
                         }
                     }
@@ -538,13 +553,13 @@ struct EditSplitView: View {
     }
 
     private func payerDisplayName() -> String {
-        if let guest = activeGuests.first(where: { $0.id == payerGuestId }) {
+        if let guest = activeGuests.first(where: { $0.id == payerID }) {
             return displayName(for: guest)
         }
         return "Guest"
     }
 
-    private func allIndex(for id: UUID) -> Int? {
+    private func allIndex(for id: PersonID) -> Int? {
         guests.firstIndex(where: { $0.id == id })
     }
 
@@ -553,7 +568,7 @@ struct EditSplitView: View {
         return colorForGuestId(activeGuests[i].id)
     }
 
-    private func colorForGuestId(_ id: UUID) -> Color {
+    private func colorForGuestId(_ id: PersonID) -> Color {
         guard let idx = guests.firstIndex(where: { $0.id == id }) else {
             return BadgeColors.palette[0]
         }
@@ -561,12 +576,13 @@ struct EditSplitView: View {
     }
 
 
-    private func byItemsGuestCents(for guestId: UUID) -> Int {
+    private func byItemsGuestCents(for guestId: PersonID) -> Int {
         byItemsGuestSubtotalCents(
-            guestId: guestId,
+            guestID: guestId,
             guestOrder: guests.map(\.id),
             items: byItemItems.map { item in
-                (priceCents: item.priceCents, assignedGuestIds: Array(item.assignedGuestIds))
+                let assignees = item.assignedGuestIds.compactMap { PersonID(rawValue: $0.uuidString) }
+                return (priceCents: item.priceCents, assignedGuestIDs: assignees)
             }
         )
     }
@@ -594,7 +610,7 @@ struct EditSplitView: View {
             }
         }
         if newMode == .byItems {
-            byItemSelectedGuestId = activeGuests.first?.id ?? UUID()
+            byItemSelectedGuestID = activeGuests.first?.id ?? PersonID(rawValue: "")
         }
     }
 
@@ -675,13 +691,15 @@ struct EditSplitView: View {
         guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
         guard byItemItems[idx].isComplete else { return }
 
-        let guestId = byItemSelectedGuestId
+        let guestId = byItemSelectedGuestID
         guard activeGuests.contains(where: { $0.id == guestId }) else { return }
 
-        if byItemItems[idx].assignedGuestIds.contains(guestId) {
-            byItemItems[idx].assignedGuestIds.remove(guestId)
+        // Bridge: LineItemForm.assignedGuestIds is Set<UUID> until commit 3.
+        guard let bridgeUUID = UUID(uuidString: guestId.rawValue) else { return }
+        if byItemItems[idx].assignedGuestIds.contains(bridgeUUID) {
+            byItemItems[idx].assignedGuestIds.remove(bridgeUUID)
         } else {
-            byItemItems[idx].assignedGuestIds.insert(guestId)
+            byItemItems[idx].assignedGuestIds.insert(bridgeUUID)
         }
     }
 }

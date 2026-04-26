@@ -415,7 +415,7 @@ struct RootContainerView: View {
         // Prefer the shared source used by sending; fall back to local confirmation mirror.
         guard var draft = uiModel.currentSplitDraft ?? splitDraft else { return }
 
-        let activeGuests = draft.guests.filter { $0.isIncluded }
+        let activeGuests = draft.includedGuests
         guard !activeGuests.isEmpty else { return }
 
         let previousTotal = draft.totalCents
@@ -432,8 +432,8 @@ struct RootContainerView: View {
         }
 
         // Keep payer valid if guest membership changed earlier in the flow.
-        if !draft.guests.contains(where: { $0.id == draft.payerGuestId && $0.isIncluded }) {
-            draft.payerGuestId = activeGuests.first?.id ?? draft.payerGuestId
+        if !draft.guests.contains(where: { $0.id == draft.payerID && draft.includedIDs.contains($0.id) }) {
+            draft.payerID = activeGuests.first?.id ?? draft.payerID
         }
 
         uiModel.currentSplitDraft = draft
@@ -472,13 +472,13 @@ struct RootContainerView: View {
             switch effectiveDraft.mode {
             case .byItems:
                 return effectiveDraft.items.map { it in
-                    // PersonID raw value: guest's Keychain uid when present,
+                    // PersonID raw value: guest's Keychain userId when present,
                     // otherwise "slot-N" so the wire encoder's slotIndex(for:)
                     // helper can reverse it.
                     let assigneeIDs: [PersonID] = it.assignedGuestIds.compactMap { gid in
                         guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
                         let g = effectiveDraft.guests[idx]
-                        let raw = (g.uid?.isEmpty == false) ? g.uid! : "slot-\(idx)"
+                        let raw = (g.userId?.isEmpty == false) ? g.userId! : "slot-\(idx)"
                         return PersonID(rawValue: raw)
                     }
 
@@ -1135,16 +1135,18 @@ struct RootContainerView: View {
                     splitDraft = draft
                     uiModel.currentSplitDraft = draft
                 } else {
+                    let myUid = KeychainHelper.getOrCreateUserId()
                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                    var seededGuests: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
+                    var seededGuests: [Person] = [Person.identified(userId: myUid, displayName: meName)]
                     if participantCount > 1 {
                         for _ in 1..<participantCount {
-                            seededGuests.append(SplitGuest(name: "", isIncluded: true, isMe: false))
+                            seededGuests.append(Person.newGuest(displayName: ""))
                         }
                     }
                     let newDraft = SplitDraft(
                         guests: seededGuests,
-                        payerGuestId: seededGuests.first?.id ?? UUID(),
+                        includedIDs: Set(seededGuests.map(\.id)),
+                        payerID: seededGuests.first?.id ?? PersonID(rawValue: myUid),
                         mode: newMode,
                         totalCents: stringToCents(totalAmount),
                         perGuestCents: [],
@@ -1158,16 +1160,18 @@ struct RootContainerView: View {
                     uiModel.currentSplitDraft = newDraft
                 }
             },
-            onGuestsChanged: { newGuests, newPayerId in
+            onGuestsChanged: { newGuests, newIncludedIDs, newPayerId in
                 if var draft = splitDraft {
                     draft.guests = newGuests
-                    draft.payerGuestId = newPayerId
+                    draft.includedIDs = newIncludedIDs
+                    draft.payerID = newPayerId
                     splitDraft = draft
                     uiModel.currentSplitDraft = draft
                 } else {
                     let newDraft = SplitDraft(
                         guests: newGuests,
-                        payerGuestId: newPayerId,
+                        includedIDs: newIncludedIDs,
+                        payerID: newPayerId,
                         mode: .equally,
                         totalCents: stringToCents(totalAmount),
                         perGuestCents: [],

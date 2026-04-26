@@ -31,22 +31,27 @@ struct SplitGuestDrawer: View {
     @Binding var mode: GuestEditorMode?
 
     // Working draft bindings (changes auto-save via bindings)
-    @Binding var guests: [SplitGuest]
-    @Binding var payerGuestId: UUID
+    @Binding var guests: [Person]
+    @Binding var includedIDs: Set<PersonID>
+    @Binding var payerID: PersonID
 
     private let collapsedHeight: CGFloat = 132
-    
-    @FocusState private var focusedGuestId: UUID?
-    @State private var pendingPayerGuestId: UUID?  // Track guest we're trying to make payer (waiting for name)
-    
+
+    @FocusState private var focusedGuestID: PersonID?
+    @State private var pendingPayerID: PersonID?  // Track guest we're trying to make payer (waiting for name)
+
     // Keyboard height tracking
     @State private var keyboardHeight: CGFloat = 0
 
+    private var localUserId: String { KeychainHelper.getOrCreateUserId() }
+
     // MARK: - Header computed values
-    private var splitCount: Int { guests.filter { $0.isIncluded }.count }
+    private var splitCount: Int { includedIDs.count }
     private var payerName: String {
-        if let g = guests.first(where: { $0.id == payerGuestId }) {
-            return g.isMe ? "Me" : (g.trimmedName.isEmpty ? "Select payer" : g.trimmedName)
+        if let g = guests.first(where: { $0.id == payerID }) {
+            if g.isMe(localUserId: localUserId) { return "Me" }
+            let trimmed = g.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "Select payer" : trimmed
         }
         return "Select payer"
     }
@@ -68,153 +73,164 @@ struct SplitGuestDrawer: View {
     }
 
     private func addGuest() {
-        let new = SplitGuest(name: "", isIncluded: true, isMe: false)
+        let new = Person.newGuest(displayName: "")
         guests.append(new)
+        includedIDs.insert(new.id)
     }
 
     private func removeGuest(at index: Int) {
-        guard guests.indices.contains(index), !guests[index].isMe else { return }
+        guard guests.indices.contains(index),
+              !guests[index].isMe(localUserId: localUserId)
+        else { return }
         let removedId = guests[index].id
         guests.remove(at: index)
+        includedIDs.remove(removedId)
 
-        if payerGuestId == removedId {
-            if let me = guests.first(where: { $0.isMe }) { payerGuestId = me.id }
-            else if let first = guests.first { payerGuestId = first.id }
+        if payerID == removedId {
+            if let me = guests.first(where: { $0.isMe(localUserId: localUserId) }) { payerID = me.id }
+            else if let first = guests.first { payerID = first.id }
         }
     }
 
     private func toggleMode(_ m: GuestEditorMode) {
         // Check pending payer before any mode change
         checkPendingPayerChange()
-        
+
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
             if mode == m {
                 // pressing same button again -> turn off + collapse
                 mode = nil
                 isExpanded = false
-                focusedGuestId = nil  // Dismiss keyboard
+                focusedGuestID = nil  // Dismiss keyboard
             } else {
                 // switch to other mode -> expand
                 mode = m
                 isExpanded = true
-                focusedGuestId = nil  // Dismiss keyboard when switching
+                focusedGuestID = nil  // Dismiss keyboard when switching
             }
         }
     }
 
     private func toggleIncluded(at index: Int) {
         guard guests.indices.contains(index) else { return }
-        let includedCount = guests.filter { $0.isIncluded }.count
-        if guests[index].isIncluded && includedCount <= 1 { return } // keep at least 1
+        let g = guests[index]
+        let isIncluded = includedIDs.contains(g.id)
+        if isIncluded && includedIDs.count <= 1 { return } // keep at least 1
 
-        guests[index].isIncluded.toggle()
+        if isIncluded {
+            includedIDs.remove(g.id)
+        } else {
+            includedIDs.insert(g.id)
+        }
 
         // if payer excluded, move payer to an included guest
-        if !guests.contains(where: { $0.id == payerGuestId && $0.isIncluded }) {
-            if let me = guests.first(where: { $0.isMe && $0.isIncluded }) { payerGuestId = me.id }
-            else if let first = guests.first(where: { $0.isIncluded }) { payerGuestId = first.id }
+        if !includedIDs.contains(payerID) {
+            if let me = guests.first(where: { $0.isMe(localUserId: localUserId) && includedIDs.contains($0.id) }) {
+                payerID = me.id
+            } else if let first = guests.first(where: { includedIDs.contains($0.id) }) {
+                payerID = first.id
+            }
         }
     }
 
     private func tapPaidBy(at index: Int) {
         guard guests.indices.contains(index) else { return }
         let g = guests[index]
-        
+        let trimmed = g.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+
         // If guest has no name and isn't "Me", focus field and set as pending payer
-        if g.trimmedName.isEmpty && !g.isMe {
-            pendingPayerGuestId = g.id
+        if trimmed.isEmpty && !g.isMe(localUserId: localUserId) {
+            pendingPayerID = g.id
             // Defer focus slightly so TextField disabled state updates first
             DispatchQueue.main.async {
-                focusedGuestId = g.id
+                focusedGuestID = g.id
             }
             return
         }
-        
+
         // Guest has a name (or is "Me"), set as payer immediately
-        if !guests[index].isIncluded {
-            guests[index].isIncluded = true
-        }
-        payerGuestId = g.id
-        pendingPayerGuestId = nil  // Clear any pending payer
+        includedIDs.insert(g.id)
+        payerID = g.id
+        pendingPayerID = nil  // Clear any pending payer
     }
-    
+
     // MARK: - Keyboard navigation
-    private func focusNextGuest(after currentId: UUID) {
+    private func focusNextGuest(after currentId: PersonID) {
         guard let currentIndex = guests.firstIndex(where: { $0.id == currentId }) else { return }
-        
+
         // Find next editable guest (excluding "Me")
         let nextEditableIndex = guests[(currentIndex + 1)...].firstIndex { guest in
-            !guest.isMe
+            !guest.isMe(localUserId: localUserId)
         }
-        
+
         if let nextIndex = nextEditableIndex {
-            focusedGuestId = guests[nextIndex].id
+            focusedGuestID = guests[nextIndex].id
         } else {
             // No more guests, dismiss keyboard
-            focusedGuestId = nil
+            focusedGuestID = nil
         }
     }
-    
-    private func focusPreviousGuest(before currentId: UUID) {
+
+    private func focusPreviousGuest(before currentId: PersonID) {
         guard let currentIndex = guests.firstIndex(where: { $0.id == currentId }) else { return }
-        
+
         // Find previous editable guest (excluding "Me")
         // Search backwards from current index
         var prevIndex: Int? = nil
         for i in (0..<currentIndex).reversed() {
-            if !guests[i].isMe {
+            if !guests[i].isMe(localUserId: localUserId) {
                 prevIndex = i
                 break
             }
         }
-        
+
         if let index = prevIndex {
-            focusedGuestId = guests[index].id
+            focusedGuestID = guests[index].id
         }
     }
-    
-    private func toolbarDisplayName(for guestId: UUID) -> String {
+
+    private func toolbarDisplayName(for guestId: PersonID) -> String {
         guard let index = guests.firstIndex(where: { $0.id == guestId }) else { return "" }
         let guest = guests[index]
-        
-        let trimmed = guest.trimmedName
+
+        let trimmed = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             return trimmed
         }
-        
+
         // Default to "Guest #"
         return defaultLabel(for: index)
     }
-    
+
     private func checkPendingPayerChange() {
         // If we have a pending payer and they now have a name, set them as payer
-        if let pendingId = pendingPayerGuestId,
+        if let pendingId = pendingPayerID,
            let index = guests.firstIndex(where: { $0.id == pendingId }) {
-            
+
             let guest = guests[index]
-            if !guest.trimmedName.isEmpty {
+            let trimmed = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
                 // Guest now has a name, set as payer
-                if !guests[index].isIncluded {
-                    guests[index].isIncluded = true
-                }
-                payerGuestId = guest.id
+                includedIDs.insert(guest.id)
+                payerID = guest.id
             }
             // If still no name, do nothing (payer doesn't change)
-            
+
             // Clear pending payer
-            pendingPayerGuestId = nil
+            pendingPayerID = nil
         }
-        
+
         // Also check if current payer has no name - if so, revert to default
-        let payerId = payerGuestId
-        if let index = guests.firstIndex(where: { $0.id == payerId }) {
+        let currentPayer = payerID
+        if let index = guests.firstIndex(where: { $0.id == currentPayer }) {
             let payer = guests[index]
-            if payer.trimmedName.isEmpty && !payer.isMe {
+            let trimmed = payer.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty && !payer.isMe(localUserId: localUserId) {
                 // Current payer has no name, revert to Me or first guest
-                if let me = guests.first(where: { $0.isMe && $0.isIncluded }) {
-                    payerGuestId = me.id
-                } else if let first = guests.first(where: { $0.isIncluded }) {
-                    payerGuestId = first.id
+                if let me = guests.first(where: { $0.isMe(localUserId: localUserId) && includedIDs.contains($0.id) }) {
+                    payerID = me.id
+                } else if let first = guests.first(where: { includedIDs.contains($0.id) }) {
+                    payerID = first.id
                 }
             }
         }
@@ -255,11 +271,11 @@ struct SplitGuestDrawer: View {
                         .onTapGesture {
                             // Check pending payer before closing
                             checkPendingPayerChange()
-                            
+
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                                 isExpanded = false
                                 mode = nil
-                                focusedGuestId = nil  // Dismiss keyboard
+                                focusedGuestID = nil  // Dismiss keyboard
                             }
                         }
                 }
@@ -345,38 +361,41 @@ struct SplitGuestDrawer: View {
                 List {
                     ForEach(Array(guests.enumerated()), id: \.element.id) { (idx, _) in
                         let g = guests[idx]
-                        
+                        let isMe = g.isMe(localUserId: localUserId)
+                        let trimmed = g.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+
                         HStack(spacing: 12) {
                             ZStack(alignment: .leading) {
-                                if g.trimmedName.isEmpty && !g.isMe {
+                                if trimmed.isEmpty && !isMe {
                                     Text(defaultLabel(for: idx))
                                         .foregroundStyle(.secondary)
                                 }
                                 TextField("", text: Binding(
-                                    get: { guests[idx].name },
-                                    set: { guests[idx].name = $0 }
+                                    get: { guests[idx].displayName },
+                                    set: { guests[idx].displayName = $0 }
                                 ))
-                                .disabled(g.isMe || (mode == .paidBy && pendingPayerGuestId != g.id))
+                                .disabled(isMe || (mode == .paidBy && pendingPayerID != g.id))
                                 .textInputAutocapitalization(.words)
-                                .focused($focusedGuestId, equals: g.id)
+                                .focused($focusedGuestID, equals: g.id)
                                 .submitLabel(.done)  // Use .done to prevent default behavior
-                                .foregroundStyle((g.trimmedName.isEmpty && !g.isMe) ? .secondary : .primary)
+                                .foregroundStyle((trimmed.isEmpty && !isMe) ? .secondary : .primary)
                             }
-                            
+
                             Spacer(minLength: 8)
-                            
+
                             // Right side - consistent height container
                             ZStack(alignment: .trailing) {
                                 if mode == .splitWith {
+                                    let isIncluded = includedIDs.contains(g.id)
                                     Button { toggleIncluded(at: idx) } label: {
-                                        Image(systemName: guests[idx].isIncluded ? "checkmark.circle.fill" : "circle")
+                                        Image(systemName: isIncluded ? "checkmark.circle.fill" : "circle")
                                             .font(.system(size: 22, weight: .semibold))
-                                            .foregroundStyle(guests[idx].isIncluded ? Color.blue : .secondary)
+                                            .foregroundStyle(isIncluded ? Color.blue : .secondary)
                                     }
                                     .buttonStyle(.plain)
                                 } else {
                                     // In Paid by mode
-                                    if payerGuestId == g.id {
+                                    if payerID == g.id {
                                         Text("Payer")
                                             .font(.system(size: 12, weight: .semibold))
                                             .padding(.horizontal, 10)
@@ -397,18 +416,18 @@ struct SplitGuestDrawer: View {
                         .onTapGesture {
                             // Handle taps on entire row
                             if mode == .splitWith {
-                                if !g.isMe { focusedGuestId = g.id }
+                                if !isMe { focusedGuestID = g.id }
                             } else if mode == .paidBy {
                                 tapPaidBy(at: idx)
                             }
                         }
                         .id(g.id)  // For ScrollViewReader
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            if mode == .splitWith, !g.isMe {
+                            if mode == .splitWith, !isMe {
                                 Button(role: .destructive) {
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                                         // clear focus if needed (prevents "focused index" bugs)
-                                        if focusedGuestId == g.id { focusedGuestId = nil }
+                                        if focusedGuestID == g.id { focusedGuestID = nil }
                                         removeGuest(at: idx)
                                     }
                                 } label: {
@@ -422,13 +441,13 @@ struct SplitGuestDrawer: View {
                     .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
                 }
                 .listStyle(.plain)
-                .onChange(of: focusedGuestId) { oldValue, newValue in
+                .onChange(of: focusedGuestID) { oldValue, newValue in
                     // Check if we should apply pending payer change
                     // (when navigating away from a pending payer field)
-                    if let pendingId = pendingPayerGuestId, oldValue == pendingId, newValue != pendingId {
+                    if let pendingId = pendingPayerID, oldValue == pendingId, newValue != pendingId {
                         checkPendingPayerChange()
                     }
-                    
+
                     // Scroll to focused field when keyboard appears
                     if let guestId = newValue {
                         withAnimation {
@@ -436,17 +455,16 @@ struct SplitGuestDrawer: View {
                         }
                     }
                 }
-                .onChange(of: guests) { oldValue, newValue in
+                .onChange(of: guests) { _, newValue in
                     // Watch for changes to pending payer's name
-                    if let pendingId = pendingPayerGuestId,
+                    if let pendingId = pendingPayerID,
                        let index = newValue.firstIndex(where: { $0.id == pendingId }) {
                         let guest = newValue[index]
-                        if !guest.trimmedName.isEmpty {
+                        let trimmed = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
                             // Guest now has a name, set as payer immediately
-                            if !guests[index].isIncluded {
-                                guests[index].isIncluded = true
-                            }
-                            payerGuestId = guest.id
+                            includedIDs.insert(guest.id)
+                            payerID = guest.id
                         }
                     }
                 }
@@ -454,11 +472,11 @@ struct SplitGuestDrawer: View {
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     // Only show toolbar when editing a non-Me guest
-                    if let currentFocusedId = focusedGuestId,
+                    if let currentFocusedId = focusedGuestID,
                        let currentIndex = guests.firstIndex(where: { $0.id == currentFocusedId }),
-                       !guests[currentIndex].isMe,
+                       !guests[currentIndex].isMe(localUserId: localUserId),
                        mode == .splitWith {
-                        
+
                         // Previous button
                         Button {
                             focusPreviousGuest(before: currentFocusedId)
@@ -466,18 +484,18 @@ struct SplitGuestDrawer: View {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 17, weight: .semibold))
                         }
-                        .disabled(currentIndex == 0 || guests[..<currentIndex].allSatisfy { $0.isMe })
-                        
+                        .disabled(currentIndex == 0 || guests[..<currentIndex].allSatisfy { $0.isMe(localUserId: localUserId) })
+
                         Spacer()
-                        
+
                         // Current guest name (live updating)
                         Text(toolbarDisplayName(for: currentFocusedId))
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
-                        
+
                         Spacer()
-                        
+
                         // Next button
                         Button {
                             focusNextGuest(after: currentFocusedId)
@@ -485,7 +503,7 @@ struct SplitGuestDrawer: View {
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 17, weight: .semibold))
                         }
-                        .disabled(guests[(currentIndex + 1)...].allSatisfy { $0.isMe })
+                        .disabled(guests[(currentIndex + 1)...].allSatisfy { $0.isMe(localUserId: localUserId) })
                     }
                 }
             }
