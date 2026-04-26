@@ -950,8 +950,20 @@ struct ConfirmationView: View {
             handleItemsLoadingStateChange(isNowLoading: isNowLoading)
         }
         .onChange(of: introAnimationDone) { _, isDone in handleIntroAnimationDoneChange(isDone) }
-        .onChange(of: uiModel.activeTab?.members) { _, _ in mergeLiveTabMembers() }
+        .onChange(of: liveTabMembersFingerprint) { _, _ in mergeLiveTabMembers() }
         .sheet(isPresented: $showEditReceipt) { editReceiptSheet }
+    }
+
+    /// Identity for the live tab's member set. Cheap, value-typed, and
+    /// type-inferred without optional chaining gymnastics — keeps SwiftUI's
+    /// `.onChange(of:)` away from the type-checker timeout that
+    /// `uiModel.activeTab?.members` triggers when threaded through the long
+    /// `bodyStack` modifier chain.
+    private var liveTabMembersFingerprint: String {
+        guard let tab = uiModel.activeTab else { return "" }
+        return tab.members
+            .map { "\($0.memberId):\($0.displayName):\($0.isActive ? 1 : 0)" }
+            .joined(separator: "|")
     }
 
     /// When `uiModel.activeTab` updates (e.g. another participant accepted the

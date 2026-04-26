@@ -228,8 +228,19 @@ struct TabSettingsView: View {
                 Text("This will permanently delete the tab and all its history. This cannot be undone.")
             }
             .onAppear { mergeLiveMembers() }
-            .onChange(of: uiModel.activeTab?.members) { _, _ in mergeLiveMembers() }
+            .onChange(of: liveTabMembersFingerprint) { _, _ in mergeLiveMembers() }
         }
+    }
+
+    /// Compact identity string for `uiModel.activeTab.members` so SwiftUI's
+    /// `.onChange(of:)` has a simple value-typed expression to type-check.
+    /// `uiModel.activeTab?.members` would otherwise blow the type-checker
+    /// budget when this Form body is already large.
+    private var liveTabMembersFingerprint: String {
+        guard let tab = uiModel.activeTab, tab.id == self.tab.id else { return "" }
+        return tab.members
+            .map { "\($0.memberId):\($0.displayName):\($0.isActive ? 1 : 0)" }
+            .joined(separator: "|")
     }
 
     // MARK: - Actions
