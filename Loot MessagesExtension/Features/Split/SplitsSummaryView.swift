@@ -802,10 +802,24 @@ struct SplitsSummaryView: View {
                                     Spacer(minLength: 8)
 
                                     HStack(spacing: 6) {
-                                        ForEach(item.responsible, id: \.slotIndex) { who in
+                                        // Phase 2.7c: prefer canonical assigneeIDs;
+                                        // fall back to legacy responsible for older
+                                        // data that hasn't been re-encoded yet.
+                                        let assignees: [(slot: Int, name: String)] = {
+                                            if !item.assigneeIDs.isEmpty {
+                                                let myUid = KeychainHelper.getOrCreateUserId()
+                                                return item.assigneeIDs.map { pid in
+                                                    let slot = split.g.slotIndex(for: pid) ?? 0
+                                                    let name = split.g.displayName(for: pid, meUid: myUid)
+                                                    return (slot, name)
+                                                }
+                                            }
+                                            return item.responsible.map { (slot: $0.slotIndex, name: $0.displayName) }
+                                        }()
+                                        ForEach(Array(assignees.enumerated()), id: \.offset) { _, who in
                                             ColoredCircleBadge(
-                                                text: who.badgeText,
-                                                color: BadgeColors.color(for: who.slotIndex)
+                                                text: BadgeColors.initials(from: who.name, fallback: who.slot),
+                                                color: BadgeColors.color(for: who.slot)
                                             )
                                         }
                                     }
