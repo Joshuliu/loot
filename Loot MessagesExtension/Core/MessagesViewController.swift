@@ -528,7 +528,9 @@ extension MessagesViewController {
 
     private func sendBillUpdate(payload: LootMessagePayload, docId: String, action: BillUpdateAction, conversation: MSConversation) {
         let signature = splitSignature(for: payload.s)
-        if !signature.isEmpty, lastSentSplitSignatureByDocId[docId] == signature {
+        if !signature.isEmpty,
+           !action.bypassesSplitSignatureDedup,
+           lastSentSplitSignatureByDocId[docId] == signature {
             return
         }
 

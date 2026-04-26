@@ -200,6 +200,11 @@ struct MessageReceiptViewer: View {
         else { return }
 
         let docId = uiModel.openedMessageDocId ?? currentPayload.r.id
+        // Capture the tab name BEFORE we strip the association — used in the
+        // bubble's summaryText so the receiver sees "<sender> removed a bill
+        // from <tabName>" instead of a generic "removed from a tab".
+        let removedTabName = currentPayload.tab?.n
+            ?? (uiModel.activeTab?.id == tabId ? uiModel.activeTab?.name : nil)
 
         currentPayload.tid = nil
         currentPayload.trid = nil
@@ -210,6 +215,15 @@ struct MessageReceiptViewer: View {
                 try await SharedReceiptService.shared.clearTabAssociation(docId: docId)
 
                 await MainActor.run {
+                    // Re-broadcast the bubble in place via the anchored
+                    // MSSession so the recipient's bubble loses its tab badge
+                    // and the transcript shows a "removed a bill from
+                    // <tabName>" notice. Fires only after the Firestore write
+                    // succeeds — otherwise sender and receiver would diverge.
+                    // Bypasses the split-signature dedup since the
+                    // SplitPayload itself is unchanged.
+                    uiModel.sendBillUpdate?(currentPayload, docId, .removedFromTab(tabName: removedTabName))
+
                     uiModel.openedMessagePayload = currentPayload
                     uiModel.currentReceipt = currentPayload.toReceiptDisplay()
                     uiModel.tabReceiptsRefreshNonce += 1

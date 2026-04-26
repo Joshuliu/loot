@@ -185,6 +185,7 @@ enum BillUpdateAction {
     case optedOut
     case paidToggled(paid: Bool)
     case edited
+    case removedFromTab(tabName: String?)
 
     var summaryText: String {
         switch self {
@@ -192,6 +193,22 @@ enum BillUpdateAction {
         case .optedOut: return "left a bill"
         case .paidToggled(let paid): return paid ? "marked a payment paid" : "marked a payment unpaid"
         case .edited: return "updated a bill"
+        case .removedFromTab(let tabName):
+            if let tabName, !tabName.isEmpty {
+                return "removed a bill from \(tabName)"
+            }
+            return "removed a bill from a tab"
+        }
+    }
+
+    /// True when the bill-update transport must NOT short-circuit on an
+    /// unchanged SplitPayload signature. Tab-association changes leave the
+    /// split untouched but still need to re-broadcast the bubble (so the
+    /// recipient's bubble sheds its tab badge / picks up the new metadata).
+    var bypassesSplitSignatureDedup: Bool {
+        switch self {
+        case .removedFromTab: return true
+        default: return false
         }
     }
 }
