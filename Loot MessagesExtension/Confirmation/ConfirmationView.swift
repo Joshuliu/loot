@@ -915,107 +915,26 @@ struct ConfirmationView: View {
 
     var body: some View {
         GeometryReader { geo in
-        let topPad: CGFloat = uiModel.isExpanded ? 20 : 4
-        // Cap the panel height in expanded mode so the guestList below has immediate room.
-        let panelH: CGFloat = min(geo.size.height * 0.55, 500)
+            bodyStack(panelH: min(geo.size.height * 0.55, 500),
+                      topPad: uiModel.isExpanded ? 20 : 4)
+        }
+    }
+
+    @ViewBuilder
+    private func bodyStack(panelH: CGFloat, topPad: CGFloat) -> some View {
         ZStack {
-            // Main content
-            ScrollView {
-                VStack(spacing: 0) {
-
-                    // Single ZStack keeps view identity so animations survive the
-                    // compact↔expanded transition. In expanded, minHeight==maxHeight==panelH
-                    // pins the frame (Spacer fills, buttons land at a consistent position).
-                    // In compact, min=0/max=∞ lets it size naturally so nothing gets clipped.
-                    ZStack(alignment: .top) { panelViews }
-                        .frame(
-                            minHeight: uiModel.isExpanded ? panelH : 0,
-                            maxHeight: uiModel.isExpanded ? panelH : .infinity
-                        )
-
-                    // Expanded content below the ZStack
-                    if uiModel.isExpanded {
-                        guestList()
-                            .padding(.horizontal, 10)
-                            .padding(.top, 16)
-                            .padding(.bottom, 50)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-                }
-                .padding(.top, topPad)
-            }
-            .scrollDismissesKeyboard(.interactively)
-
-            // Amount editing overlay — follows keyboard by offsetting up
-            VStack {
-                Spacer()
-                amountEditingOverlay()
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.9), value: isEditingAmount)
-            }
-            .offset(y: -keyboardHeight)
-            .animation(.easeOut(duration: 0.22), value: keyboardHeight)
-            .ignoresSafeArea(edges: .bottom)
-
-//            // Trash swipe indicator — pops up on the right when dragging left to delete
-//            if dragIntent == .left && leftButtonIsTrash && !hasSent {
-//                HStack {
-//                    Spacer()
-//                    ZStack {
-//                        Circle()
-//                            .fill(.regularMaterial)
-//                            .frame(width: 62, height: 62)
-//                            .shadow(color: Color.red.opacity(0.25), radius: 14, x: 0, y: 4)
-//                        Image(systemName: "trash.fill")
-//                            .font(.system(size: 22, weight: .semibold))
-//                            .foregroundColor(.red)
-//                    }
-//                    .scaleEffect(
-//                        min(1.0, Double(leftProgress) * 1.4),
-//                        anchor: .center
-//                    )
-//                    .animation(.spring(response: 0.28, dampingFraction: 0.5), value: leftProgress)
-//                    .padding(.trailing, 28)
-//                }
-//                .allowsHitTesting(false)
-//                .transition(.opacity)
-//            }
-
-            // Success overlay
-            if showSuccess {
-                VStack {
-                    Text("Sent!")
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color(.systemBackground))
-                        .cornerRadius(12)
-                        .shadow(radius: 6)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(hex: "#06A77D"))
-                .transition(.opacity)
-            }
+            mainScrollContent(panelH: panelH, topPad: topPad)
+            keyboardOverlay
+            successOverlay
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background {
-            ZStack {
-                Color.black.opacity(0.10)
-
-                Color(hex: "#06A77D").opacity(dragIntent == .up ? Double(upProgress) : 0)
-                Color(hex: "#C76767").opacity(dragIntent == .left ? Double(leftProgress) : 0)
-                Color(hex: "#5f8bc9").opacity(dragIntent == .right ? Double(rightProgress) : 0)
-                Color(hex: "#D5C67A").opacity(dragIntent == .down ? Double(downProgress) : 0)
-            }
-        }
+        .background { dragBackground }
         .ignoresSafeArea()
         .ignoresSafeArea(edges: .bottom)
         .animation(.easeInOut(duration: 0.12), value: dragIntent)
         .animation(.easeInOut(duration: 0.12), value: cardOffset)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification), perform: handleKeyboardWillShow)
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            keyboardHeight = 0
-        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardHeight = 0 }
         .task { onRequestCollapse() }
         .onAppear(perform: handleOnAppear)
         .onChange(of: draftGuests) { _, _ in notifyGuestsChanged() }
@@ -1032,7 +951,87 @@ struct ConfirmationView: View {
         }
         .onChange(of: introAnimationDone) { _, isDone in handleIntroAnimationDoneChange(isDone) }
         .sheet(isPresented: $showEditReceipt) { editReceiptSheet }
-        } // GeometryReader
+    }
+
+    @ViewBuilder
+    private func mainScrollContent(panelH: CGFloat, topPad: CGFloat) -> some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                // Single ZStack keeps view identity so animations survive the
+                // compact↔expanded transition. In expanded, minHeight==maxHeight==panelH
+                // pins the frame (Spacer fills, buttons land at a consistent position).
+                // In compact, min=0/max=∞ lets it size naturally so nothing gets clipped.
+                ZStack(alignment: .top) { panelViews }
+                    .frame(
+                        minHeight: uiModel.isExpanded ? panelH : 0,
+                        maxHeight: uiModel.isExpanded ? panelH : .infinity
+                    )
+
+                if uiModel.isExpanded {
+                    guestList()
+                        .padding(.horizontal, 10)
+                        .padding(.top, 16)
+                        .padding(.bottom, 50)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .padding(.top, topPad)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    @ViewBuilder
+    private var keyboardOverlay: some View {
+        // Amount editing overlay — follows keyboard by offsetting up
+        VStack {
+            Spacer()
+            amountEditingOverlay()
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.spring(response: 0.35, dampingFraction: 0.9), value: isEditingAmount)
+        }
+        .offset(y: -keyboardHeight)
+        .animation(.easeOut(duration: 0.22), value: keyboardHeight)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    @ViewBuilder
+    private var successOverlay: some View {
+        if showSuccess {
+            VStack {
+                Text("Sent!")
+                    .font(.system(size: 16, weight: .semibold))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color(.systemBackground))
+                    .cornerRadius(12)
+                    .shadow(radius: 6)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(hex: "#06A77D"))
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private var dragBackground: some View {
+        ZStack {
+            Color.black.opacity(0.10)
+            Color(hex: "#06A77D").opacity(dragBackgroundOpacity(for: .up))
+            Color(hex: "#C76767").opacity(dragBackgroundOpacity(for: .left))
+            Color(hex: "#5f8bc9").opacity(dragBackgroundOpacity(for: .right))
+            Color(hex: "#D5C67A").opacity(dragBackgroundOpacity(for: .down))
+        }
+    }
+
+    private func dragBackgroundOpacity(for intent: DragIntent) -> Double {
+        guard dragIntent == intent else { return 0 }
+        switch intent {
+        case .up: return Double(upProgress)
+        case .left: return Double(leftProgress)
+        case .right: return Double(rightProgress)
+        case .down: return Double(downProgress)
+        case .none: return 0
+        }
     }
 
     @ViewBuilder
