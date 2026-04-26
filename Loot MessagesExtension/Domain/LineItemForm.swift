@@ -19,13 +19,11 @@ import Foundation
 struct LineItemForm: Identifiable, Equatable, Hashable {
     var line: LineItem
     var priceText: String
-    /// Working set of assigned guest UUIDs during by-items editing. Stored
+    /// Working set of assigned PersonIDs during by-items editing. Stored
     /// (not computed) so SwiftUI @State + array-subscript + Set.insert
     /// mutations propagate cleanly. Synced to `line.assigneeIDs` at
     /// construction and on `committed()`.
-    /// Phase 2.6 bridge: SplitGuest.id is still UUID-based; Phase 2.8
-    /// (SplitGuest -> Person) collapses this back to `line.assigneeIDs`.
-    var assignedGuestIds: Set<UUID>
+    var assignedGuestIds: Set<PersonID>
 
     var id: UUID { line.id }
 
@@ -38,7 +36,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(line: LineItem, priceText: String) {
         self.line = line
         self.priceText = priceText
-        self.assignedGuestIds = Set(line.assigneeIDs.compactMap { UUID(uuidString: $0.rawValue) })
+        self.assignedGuestIds = Set(line.assigneeIDs)
     }
 
     /// Convenience for editor flows that work with an id + label + raw text.
@@ -50,8 +48,8 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
         self.assignedGuestIds = []
     }
 
-    /// Convenience for split-by-items flows that supply assigned-guest UUIDs.
-    init(id: UUID = UUID(), label: String, priceText: String, assignedGuestIds: Set<UUID>) {
+    /// Convenience for split-by-items flows that supply assigned-guest PersonIDs.
+    init(id: UUID = UUID(), label: String, priceText: String, assignedGuestIds: Set<PersonID>) {
         self.line = LineItem(id: id, label: label, priceCents: 0)
         self.priceText = priceText
         self.assignedGuestIds = assignedGuestIds
@@ -62,7 +60,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(from line: LineItem) {
         self.line = line
         self.priceText = Money(cents: line.priceCents).inputString
-        self.assignedGuestIds = Set(line.assigneeIDs.compactMap { UUID(uuidString: $0.rawValue) })
+        self.assignedGuestIds = Set(line.assigneeIDs)
     }
 
     /// Construct a blank form with a fresh ID.
@@ -95,7 +93,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
             label: line.label.trimmingCharacters(in: .whitespacesAndNewlines),
             priceCents: priceCents,
             quantity: line.quantity,
-            assigneeIDs: assignedGuestIds.map { PersonID(rawValue: $0.uuidString) }
+            assigneeIDs: Array(assignedGuestIds)
         )
     }
 }

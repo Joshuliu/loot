@@ -68,13 +68,11 @@ struct EditSplitView: View {
 
         _byItemSelectedGuestID = State(initialValue: active.first?.id ?? PersonID(rawValue: ""))
         _byItemItems = State(initialValue: draft.items.map { item in
-            // Bridge: LineItemForm.assignedGuestIds is still Set<UUID> until commit 3.
-            let bridgeUUIDs = Set(item.assignedGuestIds.compactMap { UUID(uuidString: $0.rawValue) })
-            return LineItemForm(
+            LineItemForm(
                 id: item.id,
                 label: item.label,
                 priceText: Money(cents: item.priceCents).inputString,
-                assignedGuestIds: bridgeUUIDs
+                assignedGuestIds: Set(item.assignedGuestIds)
             )
         })
     }
@@ -147,14 +145,11 @@ struct EditSplitView: View {
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
-                let assignees = it.assignedGuestIds
-                    .map { PersonID(rawValue: $0.uuidString) }
-                    .sorted { $0.rawValue < $1.rawValue }
-                return SplitDraft.Item(
+                SplitDraft.Item(
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: assignees
+                    assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
                 )
             }
 
@@ -193,7 +188,7 @@ struct EditSplitView: View {
                 var updated = item
                 if byItemItems.indices.contains(idx) {
                     updated.rs = byItemItems[idx].assignedGuestIds
-                        .compactMap { slotIndexByPersonID[PersonID(rawValue: $0.uuidString)] }
+                        .compactMap { slotIndexByPersonID[$0] }
                         .sorted()
                 }
                 return updated
@@ -388,14 +383,12 @@ struct EditSplitView: View {
                         Spacer()
 
                         HStack(spacing: 6) {
-                            ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
-                                // Bridge: LineItemForm.assignedGuestIds is Set<UUID> until commit 3.
-                                let pid = PersonID(rawValue: gid.uuidString)
-                                let fallbackIndex = guests.firstIndex(where: { $0.id == pid }) ?? 0
-                                let name = guests.first(where: { $0.id == pid }).map { displayName(for: $0) } ?? "Guest"
+                            ForEach(item.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }, id: \.self) { gid in
+                                let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
+                                let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0) } ?? "Guest"
                                 ColoredCircleBadge(
                                     text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                    color: colorForGuestId(pid)
+                                    color: colorForGuestId(gid)
                                 )
                             }
                         }
@@ -581,8 +574,7 @@ struct EditSplitView: View {
             guestID: guestId,
             guestOrder: guests.map(\.id),
             items: byItemItems.map { item in
-                let assignees = item.assignedGuestIds.compactMap { PersonID(rawValue: $0.uuidString) }
-                return (priceCents: item.priceCents, assignedGuestIDs: assignees)
+                (priceCents: item.priceCents, assignedGuestIDs: Array(item.assignedGuestIds))
             }
         )
     }
@@ -694,12 +686,10 @@ struct EditSplitView: View {
         let guestId = byItemSelectedGuestID
         guard activeGuests.contains(where: { $0.id == guestId }) else { return }
 
-        // Bridge: LineItemForm.assignedGuestIds is Set<UUID> until commit 3.
-        guard let bridgeUUID = UUID(uuidString: guestId.rawValue) else { return }
-        if byItemItems[idx].assignedGuestIds.contains(bridgeUUID) {
-            byItemItems[idx].assignedGuestIds.remove(bridgeUUID)
+        if byItemItems[idx].assignedGuestIds.contains(guestId) {
+            byItemItems[idx].assignedGuestIds.remove(guestId)
         } else {
-            byItemItems[idx].assignedGuestIds.insert(bridgeUUID)
+            byItemItems[idx].assignedGuestIds.insert(guestId)
         }
     }
 }

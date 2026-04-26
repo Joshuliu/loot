@@ -75,22 +75,17 @@ final class LineItemFormTests: XCTestCase {
     }
 
     func testCommittedPreservesAssignees() {
-        // LineItemForm stores assignedGuestIds as UUIDs (matching SplitGuest.id
-        // until Phase 2.8). Construction from a LineItem seeds the working set
-        // from line.assigneeIDs; committed() writes it back. Editing the
-        // label should not disturb assignees.
-        let u1 = UUID()
-        let u2 = UUID()
+        // Construction from a LineItem seeds the working set from line.assigneeIDs;
+        // committed() writes it back. Editing the label should not disturb assignees.
+        let p1 = PersonID(rawValue: "alice")
+        let p2 = PersonID(rawValue: "bob")
         var f = LineItemForm(
-            line: LineItem(label: "Pizza", priceCents: 0,
-                           assigneeIDs: [PersonID(rawValue: u1.uuidString),
-                                         PersonID(rawValue: u2.uuidString)]),
+            line: LineItem(label: "Pizza", priceCents: 0, assigneeIDs: [p1, p2]),
             priceText: "18.00"
         )
         f.line.label = "Margherita"
         let committed = f.committed()
-        XCTAssertEqual(Set(committed.assigneeIDs.map(\.rawValue)),
-                       [u1.uuidString, u2.uuidString])
+        XCTAssertEqual(Set(committed.assigneeIDs), [p1, p2])
         XCTAssertEqual(committed.priceCents, 1800)
     }
 
@@ -111,14 +106,14 @@ final class LineItemFormTests: XCTestCase {
         XCTAssertEqual(set.count, 1)
     }
 
-    // MARK: - assignedGuestIds working set (Phase 2.6 transitional)
+    // MARK: - assignedGuestIds working set
 
     func testAssignedGuestIdsRoundTrip() {
-        let u1 = UUID()
-        let u2 = UUID()
+        let p1 = PersonID(rawValue: "alice")
+        let p2 = PersonID(rawValue: "bob")
         var f = LineItemForm.empty()
-        f.assignedGuestIds = [u1, u2]
-        XCTAssertEqual(f.assignedGuestIds, [u1, u2])
+        f.assignedGuestIds = [p1, p2]
+        XCTAssertEqual(f.assignedGuestIds, [p1, p2])
     }
 
     func testAssignedGuestIdsEmptyDefault() {
@@ -127,19 +122,19 @@ final class LineItemFormTests: XCTestCase {
     }
 
     func testAssignedGuestIdsInsertThenContains() {
-        let u1 = UUID()
-        let u2 = UUID()
+        let p1 = PersonID(rawValue: "alice")
+        let p2 = PersonID(rawValue: "bob")
         var f = LineItemForm.empty()
-        f.assignedGuestIds.insert(u1)
-        f.assignedGuestIds.insert(u2)
-        XCTAssertTrue(f.assignedGuestIds.contains(u1))
-        XCTAssertTrue(f.assignedGuestIds.contains(u2))
+        f.assignedGuestIds.insert(p1)
+        f.assignedGuestIds.insert(p2)
+        XCTAssertTrue(f.assignedGuestIds.contains(p1))
+        XCTAssertTrue(f.assignedGuestIds.contains(p2))
     }
 
     func testAssignedGuestIdsConvenienceInit() {
-        let u = UUID()
-        let f = LineItemForm(label: "Pizza", priceText: "18.00", assignedGuestIds: [u])
-        XCTAssertEqual(f.assignedGuestIds, [u])
+        let p = PersonID(rawValue: "alice")
+        let f = LineItemForm(label: "Pizza", priceText: "18.00", assignedGuestIds: [p])
+        XCTAssertEqual(f.assignedGuestIds, [p])
         XCTAssertEqual(f.label, "Pizza")
         XCTAssertEqual(f.priceText, "18.00")
     }
@@ -147,23 +142,21 @@ final class LineItemFormTests: XCTestCase {
     func testInitFromLineSeedsAssignedGuestIdsFromAssigneeIDs() {
         // When constructed from a canonical LineItem, the working set should
         // mirror line.assigneeIDs (so existing assignments survive seeding).
-        let u1 = UUID()
-        let li = LineItem(label: "Pizza", priceCents: 1800,
-                          assigneeIDs: [PersonID(rawValue: u1.uuidString)])
+        let p1 = PersonID(rawValue: "alice")
+        let li = LineItem(label: "Pizza", priceCents: 1800, assigneeIDs: [p1])
         let f = LineItemForm(from: li)
-        XCTAssertEqual(f.assignedGuestIds, [u1])
+        XCTAssertEqual(f.assignedGuestIds, [p1])
     }
 
     func testCommittedSyncsAssignedGuestIdsToAssigneeIDs() {
         // committed() must reflect the working set into line.assigneeIDs.
-        let u1 = UUID()
-        let u2 = UUID()
+        let p1 = PersonID(rawValue: "alice")
+        let p2 = PersonID(rawValue: "bob")
         var f = LineItemForm(label: "Pizza", priceText: "18.00")
-        f.assignedGuestIds.insert(u1)
-        f.assignedGuestIds.insert(u2)
+        f.assignedGuestIds.insert(p1)
+        f.assignedGuestIds.insert(p2)
         let committed = f.committed()
-        let committedSet = Set(committed.assigneeIDs.map(\.rawValue))
-        XCTAssertEqual(committedSet, [u1.uuidString, u2.uuidString])
+        XCTAssertEqual(Set(committed.assigneeIDs), [p1, p2])
     }
 
     func testEditingWorkingSetDoesNotMutateLineUntilCommit() {
@@ -171,7 +164,7 @@ final class LineItemFormTests: XCTestCase {
         // until commit — the snapshot reflects the original LineItem.
         let original = LineItem(label: "X", priceCents: 100, assigneeIDs: [])
         var f = LineItemForm(line: original, priceText: "1.00")
-        f.assignedGuestIds.insert(UUID())
+        f.assignedGuestIds.insert(PersonID(rawValue: "fresh"))
         XCTAssertTrue(f.line.assigneeIDs.isEmpty)
     }
 }

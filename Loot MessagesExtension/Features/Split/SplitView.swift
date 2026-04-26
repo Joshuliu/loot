@@ -216,8 +216,7 @@ extension ConfirmationView {
             guestID: guestId,
             guestOrder: guests.map(\.id),
             items: byItemItems.map { item in
-                let assignees = item.assignedGuestIds.compactMap { PersonID(rawValue: $0.uuidString) }
-                return (priceCents: item.priceCents, assignedGuestIDs: assignees)
+                (priceCents: item.priceCents, assignedGuestIDs: Array(item.assignedGuestIds))
             }
         )
     }
@@ -415,14 +414,10 @@ extension ConfirmationView {
         let guestId = byItemSelectedGuestID
         guard activeGuests.contains(where: { $0.id == guestId }) else { return }
 
-        // Bridge during Phase 2.8: LineItemForm.assignedGuestIds is still Set<UUID>
-        // until commit 3 collapses it to Set<PersonID>. Convert via uuidString —
-        // every PersonID rawValue in this codebase is a Keychain UUID string.
-        guard let bridgeUUID = UUID(uuidString: guestId.rawValue) else { return }
-        if byItemItems[idx].assignedGuestIds.contains(bridgeUUID) {
-            byItemItems[idx].assignedGuestIds.remove(bridgeUUID)
+        if byItemItems[idx].assignedGuestIds.contains(guestId) {
+            byItemItems[idx].assignedGuestIds.remove(guestId)
         } else {
-            byItemItems[idx].assignedGuestIds.insert(bridgeUUID)
+            byItemItems[idx].assignedGuestIds.insert(guestId)
         }
 
         // Push the updated assignments through to currentSplitDraft so the
@@ -440,14 +435,11 @@ extension ConfirmationView {
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
-                let assignees = it.assignedGuestIds
-                    .map { PersonID(rawValue: $0.uuidString) }
-                    .sorted { $0.rawValue < $1.rawValue }
-                return SplitDraft.Item(
+                SplitDraft.Item(
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: assignees
+                    assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
                 )
             }
 
@@ -515,14 +507,11 @@ extension ConfirmationView {
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
-                let assignees = it.assignedGuestIds
-                    .map { PersonID(rawValue: $0.uuidString) }
-                    .sorted { $0.rawValue < $1.rawValue }
-                return SplitDraft.Item(
+                SplitDraft.Item(
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: assignees
+                    assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
                 )
             }
 
@@ -580,11 +569,10 @@ extension ConfirmationView {
                 byItemSelectedGuestID = first.id
             }
         }
-        // Bridge: LineItemForm.assignedGuestIds is still Set<UUID> until commit 3.
-        let activeUUIDSet: Set<UUID> = Set(newActive.compactMap { UUID(uuidString: $0.id.rawValue) })
+        let activePersonIDSet = Set(newActive.map { $0.id })
         byItemItems = byItemItems.map { it in
             var copy = it
-            copy.assignedGuestIds = copy.assignedGuestIds.intersection(activeUUIDSet)
+            copy.assignedGuestIds = copy.assignedGuestIds.intersection(activePersonIDSet)
             return copy
         }
         syncByItemsToSplitDraft()
@@ -910,14 +898,12 @@ extension ConfirmationView {
                                         Spacer()
 
                                         HStack(spacing: 6) {
-                                            ForEach(item.assignedGuestIds.sorted { $0.uuidString < $1.uuidString }, id: \.self) { gid in
-                                                // Bridge: LineItemForm.assignedGuestIds is Set<UUID> until commit 3.
-                                                let pid = PersonID(rawValue: gid.uuidString)
-                                                let fallbackIndex = guests.firstIndex(where: { $0.id == pid }) ?? 0
-                                                let name = guests.first(where: { $0.id == pid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
+                                            ForEach(item.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }, id: \.self) { gid in
+                                                let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
+                                                let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
                                                 ColoredCircleBadge(
                                                     text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                                    color: colorForGuestId(pid)
+                                                    color: colorForGuestId(gid)
                                                 )
                                             }
                                         }
@@ -1516,15 +1502,11 @@ extension ConfirmationView {
                 if !existingDraft.items.isEmpty {
                     didInitByItem = true
                     byItemItems = existingDraft.items.map { it in
-                        // Bridge: LineItemForm.assignedGuestIds is still Set<UUID>
-                        // until commit 3 collapses it to Set<PersonID>. PersonIDs
-                        // here always have rawValues that are UUID strings.
-                        let bridgeUUIDs = Set(it.assignedGuestIds.compactMap { UUID(uuidString: $0.rawValue) })
-                        return LineItemForm(
+                        LineItemForm(
                             id: it.id,
                             label: it.label,
                             priceText: Money(cents: it.priceCents).inputString,
-                            assignedGuestIds: bridgeUUIDs
+                            assignedGuestIds: Set(it.assignedGuestIds)
                         )
                     }
                 } else if !didInitByItem {
