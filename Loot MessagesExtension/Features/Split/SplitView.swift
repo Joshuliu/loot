@@ -1433,6 +1433,16 @@ extension ConfirmationView {
             if let existingDraft = splitDraft, !existingDraft.guests.isEmpty {
                 guests = existingDraft.guests
                 payerGuestId = existingDraft.payerGuestId
+            } else if !draftGuests.isEmpty {
+                // onAppear has already seeded draftGuests (with whatever UUIDs
+                // were appropriate for this conversation/tab/fallback).
+                // Reuse those UUIDs verbatim — otherwise this branch would
+                // generate a fresh set, and byItemSelectedGuestId
+                // (sourced from `guests`) would never match
+                // currentSplitDraft.guests (sourced from draftGuests via
+                // onGuestsChanged), breaking byItems assignment lookup.
+                guests = draftGuests
+                payerGuestId = draftPayerGuestId
             } else if let tab = uiModel.activeTab {
                 let myUid = KeychainHelper.getOrCreateUserId()
                 let seeded = tab.members.filter { $0.isActive }.map { member in
