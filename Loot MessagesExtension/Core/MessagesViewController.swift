@@ -251,6 +251,20 @@ final class MessagesViewController: MSMessagesAppViewController {
         var updated = original
         updated.s.g[claimIndex].uid = myUid
 
+        // Embed the joiner's local display name when the slot's name is
+        // empty. Without this, the broadcast bubble carries an unnamed
+        // slot, and the sender's view falls through to "Guest N" until
+        // the Firestore users/{uid} lookup resolves (which can fail
+        // silently if the joiner's user doc isn't synced yet).
+        // A manually-entered name from the bill creator wins.
+        let trimmedExisting = updated.s.g[claimIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedExisting.isEmpty {
+            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !myName.isEmpty {
+                updated.s.g[claimIndex].n = myName
+            }
+        }
+
         let cardImage = renderCardImage(
             receiptName: updated.r.t,
             displayAmount: ReceiptDisplay.money(updated.r.tot),
