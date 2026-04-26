@@ -8,10 +8,9 @@
 //  ReceiptItemPayload (wire), EditableItem, EditableLineItem,
 //  DraftReceiptItem).
 //
-//  The denormalized `responsible: [Responsible]` slot/displayName pair on the
-//  legacy ReceiptDisplay.Item is replaced by `assigneeIDs: [PersonID]` —
-//  callers can resolve names via the parent Receipt's participant list rather
-//  than carrying a stale snapshot.
+//  ReceiptDisplay.Item carries `assigneeIDs: [PersonID]` for by-items
+//  assignment data. Consumers resolve display names via the parent split
+//  payload's participant list rather than carrying a stale snapshot.
 //
 
 import Foundation

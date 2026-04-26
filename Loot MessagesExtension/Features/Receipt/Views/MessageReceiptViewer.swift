@@ -85,9 +85,10 @@ struct MessageReceiptViewer: View {
         // Rebuild receipt payload from the updated receipt
         currentPayload.r = ReceiptPayload.from(receipt: updatedReceipt, split: currentPayload.s)
 
-        // Preserve existing byItems assignments — EditReceiptView always saves items with
-        // responsible: [], so ReceiptPayload.from clears rs for every item. Re-apply the
-        // original slot assignments for items that already existed.
+        // Preserve existing byItems assignments — EditReceiptView always saves
+        // items with empty assigneeIDs, so ReceiptPayload.from emits no rs
+        // slots. Re-apply the original slot assignments for items that
+        // already existed in the wire payload.
         if currentPayload.s.m == .byItems {
             let oldRsByItemId = Dictionary(uniqueKeysWithValues: oldItems.map { ($0.id, $0.rs) })
             currentPayload.r.i = currentPayload.r.i.map { item in

@@ -471,33 +471,10 @@ struct RootContainerView: View {
         let updatedItems: [ReceiptDisplay.Item] = {
             switch effectiveDraft.mode {
             case .byItems:
-                // Use full-guest index (matches SplitPayload.g / SplitsSummaryView slot lookup)
-                func displayName(_ g: SplitGuest, at allIndex: Int) -> String {
-                    let t = g.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !t.isEmpty { return t }
-                    if g.isMe {
-                        let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                        return me.isEmpty ? "Me" : me
-                    }
-                    return "Guest \(allIndex + 1)"
-                }
-
                 return effectiveDraft.items.map { it in
-                    let responsible = it.assignedGuestIds.compactMap { gid -> ReceiptDisplay.Responsible? in
-                        guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
-                        return ReceiptDisplay.Responsible(
-                            slotIndex: idx,
-                            displayName: displayName(effectiveDraft.guests[idx], at: idx)
-                        )
-                    }.sorted(by: { $0.slotIndex < $1.slotIndex })
-
-                    // Phase 2.7b: also populate canonical PersonID list. Prefer
-                    // the guest's Keychain uid; fall back to "slot-N" so the
-                    // wire encoder's slotIndex(for:) helper can reverse it.
-                    // Using the SplitGuest UUID here is wrong because the wire
-                    // payload's Guest.uid is nil for unidentified guests, so
-                    // the lookup would miss and the item would lose its
-                    // assignment.
+                    // PersonID raw value: guest's Keychain uid when present,
+                    // otherwise "slot-N" so the wire encoder's slotIndex(for:)
+                    // helper can reverse it.
                     let assigneeIDs: [PersonID] = it.assignedGuestIds.compactMap { gid in
                         guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
                         let g = effectiveDraft.guests[idx]
@@ -506,10 +483,9 @@ struct RootContainerView: View {
                     }
 
                     return ReceiptDisplay.Item(
-                        id: it.id.uuidString, // adjust if your Item.id type differs
+                        id: it.id.uuidString,
                         label: it.label,
                         priceCents: it.priceCents,
-                        responsible: responsible,
                         assigneeIDs: assigneeIDs
                     )
                 }
@@ -517,7 +493,7 @@ struct RootContainerView: View {
             case .equally, .custom:
                 return r.items.map { old in
                     ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents,
-                                        responsible: [], assigneeIDs: [])
+                                        assigneeIDs: [])
                 }
             }
         }()

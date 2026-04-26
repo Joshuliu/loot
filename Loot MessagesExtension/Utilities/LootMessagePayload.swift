@@ -442,22 +442,10 @@ extension LootMessagePayload {
         let splitData = s
 
         let items: [ReceiptDisplay.Item] = receiptData.i.map { it in
-            let responsible: [ReceiptDisplay.Responsible] = it.rs.map { slot in
-                let nm: String = {
-                    guard splitData.g.indices.contains(slot) else { return "Guest \(slot + 1)" }
-                    let g = splitData.g[slot]
-                    let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !t.isEmpty { return t }
-                    return g.uid == payloadCurrentUserId() ? "Me" : "Guest \(slot + 1)"
-                }()
-                return ReceiptDisplay.Responsible(slotIndex: slot, displayName: nm)
-            }
-            .sorted(by: { $0.slotIndex < $1.slotIndex })
-
-            // Phase 2.7b: also populate canonical PersonID list. Use the guest's
-            // Keychain uid when available; fall back to a synthesized "slot-N"
-            // raw value so the index can still round-trip back to a slot for
-            // wire-format encoding.
+            // Map wire slot indices to canonical PersonIDs. Use the guest's
+            // Keychain uid when available; fall back to a synthesized
+            // "slot-N" raw value so the slotIndex(for:) helper can reverse
+            // it for wire-format encoding.
             let assigneeIDs: [PersonID] = it.rs.map { slot in
                 if splitData.g.indices.contains(slot),
                    let uid = splitData.g[slot].uid, !uid.isEmpty {
@@ -470,7 +458,6 @@ extension LootMessagePayload {
                 id: it.id,
                 label: it.l,
                 priceCents: it.p,
-                responsible: responsible,
                 assigneeIDs: assigneeIDs
             )
         }
@@ -614,19 +601,11 @@ extension ReceiptPayload {
 
         let items: [ReceiptItemPayload] = {
             return receipt.items.map { it in
-                let slots: [Int] = {
-                    guard isByItems else { return [] }
-                    // Phase 2.7c: prefer the canonical assigneeIDs list.
-                    // Fall back to the legacy responsible[].slotIndex values
-                    // when assigneeIDs is empty (e.g. SessionPersistence data
-                    // saved before Phase 2.7a/b).
-                    if !it.assigneeIDs.isEmpty {
-                        return it.assigneeIDs
-                            .compactMap { split.g.slotIndex(for: $0) }
-                            .sorted()
-                    }
-                    return it.responsible.map { $0.slotIndex }.sorted()
-                }()
+                let slots: [Int] = isByItems
+                    ? it.assigneeIDs
+                        .compactMap { split.g.slotIndex(for: $0) }
+                        .sorted()
+                    : []
                 return ReceiptItemPayload(
                     id: it.id,
                     l: it.label,

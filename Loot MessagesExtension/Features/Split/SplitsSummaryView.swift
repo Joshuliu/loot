@@ -802,20 +802,12 @@ struct SplitsSummaryView: View {
                                     Spacer(minLength: 8)
 
                                     HStack(spacing: 6) {
-                                        // Phase 2.7c: prefer canonical assigneeIDs;
-                                        // fall back to legacy responsible for older
-                                        // data that hasn't been re-encoded yet.
-                                        let assignees: [(slot: Int, name: String)] = {
-                                            if !item.assigneeIDs.isEmpty {
-                                                let myUid = KeychainHelper.getOrCreateUserId()
-                                                return item.assigneeIDs.map { pid in
-                                                    let slot = split.g.slotIndex(for: pid) ?? 0
-                                                    let name = split.g.displayName(for: pid, meUid: myUid)
-                                                    return (slot, name)
-                                                }
-                                            }
-                                            return item.responsible.map { (slot: $0.slotIndex, name: $0.displayName) }
-                                        }()
+                                        let myUid = KeychainHelper.getOrCreateUserId()
+                                        let assignees: [(slot: Int, name: String)] = item.assigneeIDs.map { pid in
+                                            let slot = split.g.slotIndex(for: pid) ?? 0
+                                            let name = split.g.displayName(for: pid, meUid: myUid)
+                                            return (slot, name)
+                                        }
                                         ForEach(Array(assignees.enumerated()), id: \.offset) { _, who in
                                             ColoredCircleBadge(
                                                 text: BadgeColors.initials(from: who.name, fallback: who.slot),

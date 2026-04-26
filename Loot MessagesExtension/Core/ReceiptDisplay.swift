@@ -31,43 +31,27 @@ enum LoadingState<T> {
 
 struct ReceiptDisplay: Identifiable, Codable, Equatable {
 
-    struct Responsible: Hashable, Codable {
-        let slotIndex: Int
-        let displayName: String
-
-        var badgeText: String {
-            BadgeColors.initials(from: displayName, fallback: slotIndex)
-        }
-    }
-
     struct Item: Identifiable, Codable, Equatable {
         let id: String
         let label: String
         let priceCents: Int
-        /// Legacy denormalized assignment data (slot index + cached display
-        /// name). Phase 2.7 keeps this field while migrating consumers to
-        /// read `assigneeIDs`. Will be removed once SplitsSummaryView and
-        /// ReceiptPayload.from no longer reference it.
-        let responsible: [Responsible]
-        /// Canonical assignment data — PersonID list. Populated at
-        /// construction sites alongside `responsible` during the migration.
-        /// New consumers read this; old consumers continue to read
-        /// `responsible` until they're migrated.
+        /// Canonical assignment data — PersonID list. By-items consumers
+        /// (SplitsSummaryView, ReceiptPayload.from) read this directly.
         let assigneeIDs: [PersonID]
 
         init(id: String, label: String, priceCents: Int,
-             responsible: [Responsible] = [], assigneeIDs: [PersonID] = []) {
+             assigneeIDs: [PersonID] = []) {
             self.id = id
             self.label = label
             self.priceCents = priceCents
-            self.responsible = responsible
             self.assigneeIDs = assigneeIDs
         }
 
-        // Custom Codable: assigneeIDs defaults to [] when missing, so
-        // SessionPersistence data written before Phase 2.7 still decodes.
+        // Custom Codable: assigneeIDs defaults to [] when missing.
+        // Pre-Phase-2.7 SessionPersistence data with `responsible` keys is
+        // tolerated — that key is silently dropped during decode.
         private enum CodingKeys: String, CodingKey {
-            case id, label, priceCents, responsible, assigneeIDs
+            case id, label, priceCents, assigneeIDs
         }
 
         init(from decoder: Decoder) throws {
@@ -75,7 +59,6 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
             self.id = try c.decode(String.self, forKey: .id)
             self.label = try c.decode(String.self, forKey: .label)
             self.priceCents = try c.decode(Int.self, forKey: .priceCents)
-            self.responsible = try c.decodeIfPresent([Responsible].self, forKey: .responsible) ?? []
             self.assigneeIDs = try c.decodeIfPresent([PersonID].self, forKey: .assigneeIDs) ?? []
         }
 
@@ -84,7 +67,6 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
             try c.encode(id, forKey: .id)
             try c.encode(label, forKey: .label)
             try c.encode(priceCents, forKey: .priceCents)
-            try c.encode(responsible, forKey: .responsible)
             if !assigneeIDs.isEmpty {
                 try c.encode(assigneeIDs, forKey: .assigneeIDs)
             }
@@ -432,8 +414,7 @@ extension ParsedReceipt {
             return ReceiptDisplay.Item(
                 id: UUID().uuidString,
                 label: labelWithQty,
-                priceCents: itemCents(it),
-                responsible: []
+                priceCents: itemCents(it)
             )
         }
         .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

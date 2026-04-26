@@ -457,8 +457,7 @@ struct EditReceiptView: View {
                 ReceiptDisplay.Item(
                     id: item.id.uuidString,
                     label: item.label,
-                    priceCents: item.priceCents,
-                    responsible: []
+                    priceCents: item.priceCents
                 )
             },
             lineItems: feeLineItems
