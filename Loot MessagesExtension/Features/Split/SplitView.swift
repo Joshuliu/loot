@@ -517,6 +517,14 @@ extension ConfirmationView {
             if !didInitByItem { seedByItemsFromReceipt() }
             byItemSelectedGuestId = activeGuests.first?.id ?? UUID()
         }
+
+        // Push the mode change through to currentSplitDraft so the ring math
+        // and send pipeline use it. Previously this only happened on the
+        // explicit "Save" button tap inside the split editor — if a user
+        // selected by-items, edited the receipt, then assigned items, the
+        // draft's mode would still read .equally and SplitMath would fall
+        // through to the wrong branch (assignments silently ignored).
+        onSelectMode(newMode)
     }
 
     // MARK: - Build result
