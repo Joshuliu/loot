@@ -204,11 +204,10 @@ struct TabReceipt: Codable, Identifiable {
     var messagePayloadId: String?
 }
 
-enum SplitMode: String, Codable {
-    case equally
-    case byItems
-    case custom
-}
+// SplitMode is now defined in Domain/SplitConfiguration.swift as the canonical
+// enum (Hashable + Sendable + CaseIterable on top of String + Codable). Raw
+// values are unchanged, so existing Firestore documents and decoded
+// LootMessagePayload data continue to round-trip cleanly.
 
 struct ReceiptSplit: Codable {
     var memberId: String
