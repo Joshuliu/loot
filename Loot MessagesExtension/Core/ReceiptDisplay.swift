@@ -291,6 +291,12 @@ final class LootUIModel: ObservableObject {
             // hop; only adopt updates for the still-listened tab.
             guard let self, self.activeTabListenerId == updated.id else { return }
             self.activeTab = updated
+            // Mirror to UserDefaults cache so an extension restart picks up the
+            // freshest member set immediately rather than briefly showing stale
+            // data while the listener round-trips.
+            if let convKey = self.conversationKey {
+                TabService.shared.cacheTab(updated, for: convKey)
+            }
         }
     }
     @Published var tabReceiptsRefreshNonce: Int = 0

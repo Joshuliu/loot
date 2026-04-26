@@ -358,13 +358,15 @@ struct LootTabView: View {
                                         Text(tab.name)
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(.primary)
-                                        Text(tab.members.count == 1 ? "1 member" : "\(tab.members.count) members")
+                                        let activeMembers = tab.members.filter(\.isActive)
+                                        Text(activeMembers.count == 1 ? "1 member" : "\(activeMembers.count) members")
                                             .font(.system(size: 13))
                                             .foregroundColor(.secondary)
                                     }
                                     Spacer()
                                     HStack(spacing: 8) {
-                                        ForEach(Array(tab.members.enumerated()), id: \.offset) { index, member in
+                                        let activeMembers = tab.members.filter(\.isActive)
+                                        ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
                                             ColoredCircleBadge(
                                                     text: BadgeColors.initials(from: member.displayName, fallback: index),
                                                     color: BadgeColors.color(for: index)
@@ -657,9 +659,12 @@ struct LootTabView: View {
 
     private func membersList(for tab: LootTab) -> some View {
         let currentUserId = KeychainHelper.getOrCreateUserId()
+        // Past members (left the tab) stay in `tab.members` for historical
+        // balance lookups but should not appear in the live members list.
+        let activeMembers = tab.members.filter(\.isActive)
 
         return VStack(spacing: 0) {
-            ForEach(Array(tab.members.enumerated()), id: \.element.id) { index, member in
+            ForEach(Array(activeMembers.enumerated()), id: \.element.id) { index, member in
                 HStack {
                     Text(member.displayName + (member.memberId == currentUserId ? " (You)" : ""))
                         .font(.system(size: 16, weight: .medium))
@@ -671,7 +676,7 @@ struct LootTabView: View {
                 .padding(.vertical, 12)
                 .padding(.horizontal, 14)
 
-                if index < tab.members.count - 1 {
+                if index < activeMembers.count - 1 {
                     Divider()
                         .padding(.horizontal, 14)
                 }

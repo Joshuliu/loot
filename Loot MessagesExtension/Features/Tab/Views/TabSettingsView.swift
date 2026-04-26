@@ -99,7 +99,11 @@ struct TabSettingsView: View {
 
                 // MARK: Members
                 Section {
-                    ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
+                    // Past members (left the tab) are preserved in `members`
+                    // for historical balance/name lookups but should not show
+                    // up in the live list.
+                    let activeMembers = members.filter(\.isActive)
+                    ForEach(Array(activeMembers.enumerated()), id: \.element.id) { index, member in
                         HStack(spacing: 12) {
                             ColoredCircleBadge(
                                 text: BadgeColors.initials(from: member.displayName, fallback: index),
