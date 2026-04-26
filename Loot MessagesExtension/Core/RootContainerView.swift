@@ -1033,13 +1033,19 @@ struct RootContainerView: View {
 
     @ViewBuilder
     private var confirmationContent: some View {
+        // Prefer uiModel.currentSplitDraft (the canonical store) so live updates
+        // from the split editor (toggleAssignment / syncByItemsToSplitDraft)
+        // are visible to ConfirmationView's owedAmounts and ring rendering.
+        // Falls back to the local @State mirror only when the model is nil
+        // (e.g. before the first split-mode selection).
+        let activeSplitDraft = uiModel.currentSplitDraft ?? splitDraft
         ConfirmationView(
             uiModel: uiModel,
             receiptName: receiptName,
             amount: totalAmount,
             participantCount: participantCount,
-            splitMode: splitDraft?.mode,
-            splitDraft: splitDraft,
+            splitMode: activeSplitDraft?.mode,
+            splitDraft: activeSplitDraft,
             tipAmount: tipAmount,
             cameFromManual: confirmationCameFromManual,
             onBack: {
