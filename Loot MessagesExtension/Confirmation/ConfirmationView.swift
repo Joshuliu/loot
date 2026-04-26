@@ -950,7 +950,35 @@ struct ConfirmationView: View {
             handleItemsLoadingStateChange(isNowLoading: isNowLoading)
         }
         .onChange(of: introAnimationDone) { _, isDone in handleIntroAnimationDoneChange(isDone) }
+        .onChange(of: uiModel.activeTab?.members) { _, _ in mergeLiveTabMembers() }
         .sheet(isPresented: $showEditReceipt) { editReceiptSheet }
+    }
+
+    /// When `uiModel.activeTab` updates (e.g. another participant accepted the
+    /// invite mid-flow), append any newly-arrived tab members into the working
+    /// guest lists so the user doesn't have to bail out and restart the
+    /// receipt. Existing guests are preserved verbatim — this is additive only.
+    private func mergeLiveTabMembers() {
+        guard let tab = uiModel.activeTab else { return }
+        let existingUserIds = Set(draftGuests.compactMap(\.userId))
+        let newMembers = tab.members.filter { member in
+            guard member.isActive else { return false }
+            let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
+            return !existingUserIds.contains(uid)
+        }
+        guard !newMembers.isEmpty else { return }
+        let newPersons: [Person] = newMembers.map { member in
+            let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
+            return Person.identified(userId: uid, displayName: member.displayName)
+        }
+        draftGuests.append(contentsOf: newPersons)
+        draftIncludedIDs.formUnion(newPersons.map(\.id))
+        // Also reflect the new members into the split-panel mirror (which
+        // initializeSplitState() set from draftGuests on first appear and is
+        // otherwise independent until applyGuestEdits()).
+        guests.append(contentsOf: newPersons)
+        includedIDs.formUnion(newPersons.map(\.id))
+        ensureGuestArrays()
     }
 
     @ViewBuilder

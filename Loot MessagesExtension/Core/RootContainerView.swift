@@ -817,6 +817,7 @@ struct RootContainerView: View {
     private var tabviewContent: some View {
         LootTabView(
             tabName: Binding(get: { receiptName }, set: { receiptName = $0 }),
+            uiModel: uiModel,
             onUpload: { startPhotoLibraryFlow() },
             onScan: { startScanFlow() },
             onFill: {

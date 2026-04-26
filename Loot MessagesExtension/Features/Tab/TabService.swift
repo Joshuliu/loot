@@ -170,6 +170,30 @@ final class TabService {
         return tab
     }
 
+    /// Subscribes to live updates for a tab document. The handler fires on the
+    /// main actor with the freshest decoded LootTab whenever the underlying
+    /// Firestore document changes (other members joining, name/color edits,
+    /// receipts being added that bump derived state). Returns a registration —
+    /// call `.remove()` to stop listening.
+    func listenToTab(tabId: String, onChange: @escaping @MainActor (LootTab) -> Void) -> ListenerRegistration {
+        Task { try? await SharedReceiptService.shared.ensureAnonymousAuth() }
+
+        return db.collection("tabs").document(tabId).addSnapshotListener { snapshot, error in
+            if let error {
+                print("[TabService] listenToTab(\(tabId)) error: \(error)")
+                return
+            }
+            guard let snapshot, snapshot.exists else { return }
+            guard let tab = try? snapshot.data(as: LootTab.self) else {
+                print("[TabService] listenToTab(\(tabId)) decode failed")
+                return
+            }
+            Task { @MainActor in
+                onChange(tab)
+            }
+        }
+    }
+
     func associateConversation(tabId: String, conversationKey: String) async throws {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
         try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)

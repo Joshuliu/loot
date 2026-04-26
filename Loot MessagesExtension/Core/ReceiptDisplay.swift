@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UIKit
 import Messages
+import FirebaseFirestore
 
 // MARK: - Loading State for async operations
 
@@ -239,9 +240,42 @@ final class LootUIModel: ObservableObject {
     @Published var isLoadingReceipt: Bool = false
 
     // MARK: - Loot Tabs state
-    @Published var activeTab: LootTab? = nil
+
+    /// Live tab document for the conversation. A Firestore snapshot listener
+    /// (managed below) keeps this in sync with remote changes — when another
+    /// participant joins, edits the tab, or adds a receipt, this updates
+    /// automatically without requiring a manual refresh.
+    @Published var activeTab: LootTab? = nil {
+        didSet { syncActiveTabListener(oldId: oldValue?.id, newId: activeTab?.id) }
+    }
     /// Tab that belongs to the currently-opened receipt (may differ from activeTab).
     @Published var receiptTab: LootTab? = nil
+
+    private var activeTabListener: ListenerRegistration? = nil
+    /// Tracks which tabId the current listener is bound to, so listener-fed
+    /// updates (which assign back to `activeTab` and re-trigger didSet) don't
+    /// tear down and re-attach the listener for the same id.
+    private var activeTabListenerId: String? = nil
+
+    private func syncActiveTabListener(oldId: String?, newId: String?) {
+        // Same id (or both nil) means the listener-fed update is what triggered
+        // didSet — leave the existing subscription alone.
+        guard oldId != newId else { return }
+
+        activeTabListener?.remove()
+        activeTabListener = nil
+        activeTabListenerId = nil
+
+        guard let newId, !newId.isEmpty else { return }
+
+        activeTabListenerId = newId
+        activeTabListener = TabService.shared.listenToTab(tabId: newId) { [weak self] updated in
+            // Tab might have changed/cleared between snapshot fire and the main-queue
+            // hop; only adopt updates for the still-listened tab.
+            guard let self, self.activeTabListenerId == updated.id else { return }
+            self.activeTab = updated
+        }
+    }
     @Published var tabReceiptsRefreshNonce: Int = 0
     @Published var userTabs: [LootTab] = []
     @Published var localParticipantId: String? = nil

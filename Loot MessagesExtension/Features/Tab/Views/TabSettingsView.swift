@@ -7,6 +7,7 @@ import SwiftUI
 
 struct TabSettingsView: View {
     let tab: LootTab
+    @ObservedObject var uiModel: LootUIModel
     let onSave: (LootTab) -> Void
     var onLeft: (() -> Void)? = nil
     var onDeleted: (() -> Void)? = nil
@@ -27,14 +28,29 @@ struct TabSettingsView: View {
 
     private let myId = KeychainHelper.getOrCreateUserId()
 
-    init(tab: LootTab, onSave: @escaping (LootTab) -> Void, onLeft: (() -> Void)? = nil, onDeleted: (() -> Void)? = nil) {
+    init(tab: LootTab,
+         uiModel: LootUIModel,
+         onSave: @escaping (LootTab) -> Void,
+         onLeft: (() -> Void)? = nil,
+         onDeleted: (() -> Void)? = nil) {
         self.tab = tab
+        self.uiModel = uiModel
         self.onSave = onSave
         self.onLeft = onLeft
         self.onDeleted = onDeleted
         self._name = State(initialValue: tab.name)
         self._selectedColor = State(initialValue: tab.colorHex ?? TabColorOptions.defaultHex)
         self._members = State(initialValue: tab.members)
+    }
+
+    /// Merges live tab members from `uiModel.activeTab` into the local working
+    /// list. Preserves any locally-added (not-yet-saved) guests — those are
+    /// members with `userId == nil` whose memberId isn't in the remote list.
+    private func mergeLiveMembers() {
+        guard let liveTab = uiModel.activeTab, liveTab.id == tab.id else { return }
+        let remoteIds = Set(liveTab.members.map(\.memberId))
+        let localOnly = members.filter { $0.userId == nil && !remoteIds.contains($0.memberId) }
+        members = liveTab.members + localOnly
     }
 
     private var myBalance: Int {
@@ -211,6 +227,8 @@ struct TabSettingsView: View {
             } message: {
                 Text("This will permanently delete the tab and all its history. This cannot be undone.")
             }
+            .onAppear { mergeLiveMembers() }
+            .onChange(of: uiModel.activeTab?.members) { _, _ in mergeLiveMembers() }
         }
     }
 
