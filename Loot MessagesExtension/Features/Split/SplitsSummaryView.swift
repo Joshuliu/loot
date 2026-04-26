@@ -802,16 +802,21 @@ struct SplitsSummaryView: View {
                                     Spacer(minLength: 8)
 
                                     HStack(spacing: 6) {
-                                        let myUid = KeychainHelper.getOrCreateUserId()
-                                        let assignees: [(slot: Int, name: String)] = item.assigneeIDs.map { pid in
-                                            let slot = split.g.slotIndex(for: pid) ?? 0
-                                            let name = split.g.displayName(for: pid, meUid: myUid)
-                                            return (slot, name)
+                                        // Resolve the slot index from the canonical
+                                        // assigneeIDs, then defer to the local
+                                        // displayName(for idx:) helper so the badge
+                                        // text picks up the Firestore-cached name
+                                        // for joined members and `myDisplayName`
+                                        // for the local user. The wire payload's
+                                        // g.n alone would be stale for slots that
+                                        // joined after the bill was sent.
+                                        let assigneeSlots: [Int] = item.assigneeIDs.compactMap { pid in
+                                            split.g.slotIndex(for: pid)
                                         }
-                                        ForEach(Array(assignees.enumerated()), id: \.offset) { _, who in
+                                        ForEach(Array(assigneeSlots.enumerated()), id: \.offset) { _, slot in
                                             ColoredCircleBadge(
-                                                text: BadgeColors.initials(from: who.name, fallback: who.slot),
-                                                color: BadgeColors.color(for: who.slot)
+                                                text: BadgeColors.initials(from: displayName(for: slot), fallback: slot),
+                                                color: BadgeColors.color(for: slot)
                                             )
                                         }
                                     }
