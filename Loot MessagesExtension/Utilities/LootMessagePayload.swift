@@ -454,11 +454,24 @@ extension LootMessagePayload {
             }
             .sorted(by: { $0.slotIndex < $1.slotIndex })
 
+            // Phase 2.7b: also populate canonical PersonID list. Use the guest's
+            // Keychain uid when available; fall back to a synthesized "slot-N"
+            // raw value so the index can still round-trip back to a slot for
+            // wire-format encoding.
+            let assigneeIDs: [PersonID] = it.rs.map { slot in
+                if splitData.g.indices.contains(slot),
+                   let uid = splitData.g[slot].uid, !uid.isEmpty {
+                    return PersonID(rawValue: uid)
+                }
+                return PersonID(rawValue: "slot-\(slot)")
+            }
+
             return ReceiptDisplay.Item(
                 id: it.id,
                 label: it.l,
                 priceCents: it.p,
-                responsible: responsible
+                responsible: responsible,
+                assigneeIDs: assigneeIDs
             )
         }
 

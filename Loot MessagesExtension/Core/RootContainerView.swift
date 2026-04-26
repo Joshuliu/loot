@@ -490,17 +490,30 @@ struct RootContainerView: View {
                             displayName: displayName(effectiveDraft.guests[idx], at: idx)
                         )
                     }.sorted(by: { $0.slotIndex < $1.slotIndex })
+
+                    // Phase 2.7b: also populate canonical PersonID list. Prefer
+                    // the guest's Keychain uid; fall back to the SplitGuest.id
+                    // UUID string so this is reversible to a slot index when
+                    // needed.
+                    let assigneeIDs: [PersonID] = it.assignedGuestIds.compactMap { gid in
+                        guard let g = effectiveDraft.guests.first(where: { $0.id == gid }) else { return nil }
+                        let raw = (g.uid?.isEmpty == false) ? g.uid! : g.id.uuidString
+                        return PersonID(rawValue: raw)
+                    }
+
                     return ReceiptDisplay.Item(
                         id: it.id.uuidString, // adjust if your Item.id type differs
                         label: it.label,
                         priceCents: it.priceCents,
-                        responsible: responsible
+                        responsible: responsible,
+                        assigneeIDs: assigneeIDs
                     )
                 }
 
             case .equally, .custom:
                 return r.items.map { old in
-                    ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents, responsible: [])
+                    ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents,
+                                        responsible: [], assigneeIDs: [])
                 }
             }
         }()

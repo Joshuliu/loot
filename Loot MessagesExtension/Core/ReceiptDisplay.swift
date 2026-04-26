@@ -44,7 +44,51 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
         let id: String
         let label: String
         let priceCents: Int
+        /// Legacy denormalized assignment data (slot index + cached display
+        /// name). Phase 2.7 keeps this field while migrating consumers to
+        /// read `assigneeIDs`. Will be removed once SplitsSummaryView and
+        /// ReceiptPayload.from no longer reference it.
         let responsible: [Responsible]
+        /// Canonical assignment data — PersonID list. Populated at
+        /// construction sites alongside `responsible` during the migration.
+        /// New consumers read this; old consumers continue to read
+        /// `responsible` until they're migrated.
+        let assigneeIDs: [PersonID]
+
+        init(id: String, label: String, priceCents: Int,
+             responsible: [Responsible] = [], assigneeIDs: [PersonID] = []) {
+            self.id = id
+            self.label = label
+            self.priceCents = priceCents
+            self.responsible = responsible
+            self.assigneeIDs = assigneeIDs
+        }
+
+        // Custom Codable: assigneeIDs defaults to [] when missing, so
+        // SessionPersistence data written before Phase 2.7 still decodes.
+        private enum CodingKeys: String, CodingKey {
+            case id, label, priceCents, responsible, assigneeIDs
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.id = try c.decode(String.self, forKey: .id)
+            self.label = try c.decode(String.self, forKey: .label)
+            self.priceCents = try c.decode(Int.self, forKey: .priceCents)
+            self.responsible = try c.decodeIfPresent([Responsible].self, forKey: .responsible) ?? []
+            self.assigneeIDs = try c.decodeIfPresent([PersonID].self, forKey: .assigneeIDs) ?? []
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(label, forKey: .label)
+            try c.encode(priceCents, forKey: .priceCents)
+            try c.encode(responsible, forKey: .responsible)
+            if !assigneeIDs.isEmpty {
+                try c.encode(assigneeIDs, forKey: .assigneeIDs)
+            }
+        }
     }
 
     /// Individual tax/fee/discount line items for display (e.g. "Tax $2.50", "Discount -$5.00").
