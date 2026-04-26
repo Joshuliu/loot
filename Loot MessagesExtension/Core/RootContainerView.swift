@@ -492,12 +492,16 @@ struct RootContainerView: View {
                     }.sorted(by: { $0.slotIndex < $1.slotIndex })
 
                     // Phase 2.7b: also populate canonical PersonID list. Prefer
-                    // the guest's Keychain uid; fall back to the SplitGuest.id
-                    // UUID string so this is reversible to a slot index when
-                    // needed.
+                    // the guest's Keychain uid; fall back to "slot-N" so the
+                    // wire encoder's slotIndex(for:) helper can reverse it.
+                    // Using the SplitGuest UUID here is wrong because the wire
+                    // payload's Guest.uid is nil for unidentified guests, so
+                    // the lookup would miss and the item would lose its
+                    // assignment.
                     let assigneeIDs: [PersonID] = it.assignedGuestIds.compactMap { gid in
-                        guard let g = effectiveDraft.guests.first(where: { $0.id == gid }) else { return nil }
-                        let raw = (g.uid?.isEmpty == false) ? g.uid! : g.id.uuidString
+                        guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
+                        let g = effectiveDraft.guests[idx]
+                        let raw = (g.uid?.isEmpty == false) ? g.uid! : "slot-\(idx)"
                         return PersonID(rawValue: raw)
                     }
 
