@@ -353,6 +353,26 @@ struct SplitsSummaryView: View {
         return max(0, split.o[idx])
     }
 
+    /// Fetches Firestore displayNames for any uid in the current split that
+    /// hasn't been resolved yet. Idempotent — runs once on .task and again
+    /// whenever the payload changes (e.g. a Firestore refresh adds a
+    /// joiner's uid that wasn't in the original inline payload).
+    @MainActor
+    private func fetchMissingDisplayNames() async {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let candidates = Set(split.g.compactMap(\.uid))
+            .filter { $0 != myUid && !$0.isEmpty && uidDisplayNames[$0] == nil }
+        for uid in candidates {
+            do {
+                if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
+                    uidDisplayNames[uid] = name
+                }
+            } catch {
+                print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
+            }
+        }
+    }
+
     // MARK: - Paid status
 
     private func isPaid(guestIndex: Int) -> Bool {
@@ -1287,17 +1307,7 @@ struct SplitsSummaryView: View {
                 tabMembershipState = .member
             }
 
-            // Fetch display names for all uids in the guest list (except self)
-            let otherUids = Set(split.g.compactMap(\.uid)).filter { $0 != myUid && !$0.isEmpty }
-            for uid in otherUids {
-                do {
-                    if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
-                        uidDisplayNames[uid] = name
-                    }
-                } catch {
-                    print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
-                }
-            }
+            await fetchMissingDisplayNames()
 
             // Fetch payer's payment methods (only if I'm not the payer, and not a tab receipt)
             if !isTabReceipt, let payerUid = split.g[split.pi].uid, payerUid != myUid {
@@ -1308,6 +1318,12 @@ struct SplitsSummaryView: View {
         .onChange(of: uiModel.openedMessagePayload?.s) { _, newSplit in
             if let newSplit {
                 split = newSplit
+                // The fresh payload may have introduced new uids
+                // (e.g. a joiner who auto-claimed a slot after we first
+                // appeared). Trigger a non-blocking fetch so their
+                // displayName populates uidDisplayNames and badges stop
+                // showing "Guest N".
+                Task { await fetchMissingDisplayNames() }
             }
         }
         .onChange(of: payerPaymentMethods) { _, _ in
