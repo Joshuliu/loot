@@ -216,6 +216,75 @@ struct ConfirmationView: View {
     private func equalSplit(total: Int, count: Int) -> [Int] {
         splitCentsEvenly(total: total, count: count)
     }
+
+    // MARK: - onAppear / onChange helpers (extracted to keep body's
+    // type-checker workload bounded — three onChange closures plus an
+    // inline seeding block was past the limit).
+
+    private func notifyGuestsChanged() {
+        onGuestsChanged(draftGuests, draftIncludedIDs, draftPayerID)
+    }
+
+    private func handleOnAppear() {
+        cardOffset = .zero
+        cardRotation = 0
+        hasSent = false
+        showSuccess = false
+        billCardBounceToken += 1
+        billCardBounceYOffset = 0
+        sendHintAnimating = false
+        withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
+            sendHintAnimating = true
+        }
+
+        // Reset loading animation state each time screen appears.
+        // For manual entry, skip loading card immediately.
+        if cameFromManual || !uiModel.isLoadingReceipt {
+            introAnimationDone = true
+        } else {
+            introAnimationDone = false
+        }
+
+        seedDraftGuestsIfNeeded()
+        initializeSplitState()
+    }
+
+    private func seedDraftGuestsIfNeeded() {
+        guard draftGuests.isEmpty else { return }
+
+        if let draft = splitDraft, !draft.guests.isEmpty {
+            draftGuests = draft.guests
+            draftIncludedIDs = draft.includedIDs
+            draftPayerID = draft.payerID
+            return
+        }
+
+        let myUid = KeychainHelper.getOrCreateUserId()
+
+        if let tab = uiModel.activeTab {
+            let seeded: [Person] = tab.members.filter(\.isActive).map { member in
+                let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
+                return Person.identified(userId: uid, displayName: member.displayName)
+            }
+            draftGuests = seeded
+            draftIncludedIDs = Set(seeded.map(\.id))
+            draftPayerID = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
+                ?? seeded.first?.id
+                ?? PersonID(rawValue: myUid)
+            return
+        }
+
+        let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+        var seeded: [Person] = [Person.identified(userId: myUid, displayName: meName)]
+        if participantCount > 1 {
+            for _ in 1..<participantCount {
+                seeded.append(Person.newGuest(displayName: ""))
+            }
+        }
+        draftGuests = seeded
+        draftIncludedIDs = Set(seeded.map(\.id))
+        draftPayerID = seeded.first?.id ?? PersonID(rawValue: myUid)
+    }
     
     private func formatAmount(_ str: String) -> String {
         let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -904,69 +973,10 @@ struct ConfirmationView: View {
         .task {
             onRequestCollapse()
         }
-        .onAppear {
-            cardOffset = .zero
-            cardRotation = 0
-            hasSent = false
-            showSuccess = false
-            billCardBounceToken += 1
-            billCardBounceYOffset = 0
-            sendHintAnimating = false
-            withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
-                sendHintAnimating = true
-            }
-
-            // Reset loading animation state each time screen appears.
-            // For manual entry, skip loading card immediately.
-            if cameFromManual || !uiModel.isLoadingReceipt {
-                introAnimationDone = true
-            } else {
-                introAnimationDone = false
-            }
-
-            if draftGuests.isEmpty {
-                if let draft = splitDraft, !draft.guests.isEmpty {
-                    draftGuests = draft.guests
-                    draftIncludedIDs = draft.includedIDs
-                    draftPayerID = draft.payerID
-                } else if let tab = uiModel.activeTab {
-                    let myUid = KeychainHelper.getOrCreateUserId()
-                    let seeded = tab.members.filter { $0.isActive }.map { member in
-                        let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
-                        return Person.identified(userId: uid, displayName: member.displayName)
-                    }
-                    draftGuests = seeded
-                    draftIncludedIDs = Set(seeded.map(\.id))
-                    draftPayerID = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
-                        ?? seeded.first?.id
-                        ?? PersonID(rawValue: myUid)
-                } else {
-                    let myUid = KeychainHelper.getOrCreateUserId()
-                    let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                    var seeded: [Person] = [Person.identified(userId: myUid, displayName: meName)]
-                    if participantCount > 1 {
-                        for _ in 1..<participantCount {
-                            seeded.append(Person.newGuest(displayName: ""))
-                        }
-                    }
-                    draftGuests = seeded
-                    draftIncludedIDs = Set(seeded.map(\.id))
-                    draftPayerID = seeded.first?.id ?? PersonID(rawValue: myUid)
-                }
-            }
-
-            // Initialize split state
-            initializeSplitState()
-        }
-        .onChange(of: draftGuests) { _, newGuests in
-            onGuestsChanged(newGuests, draftIncludedIDs, draftPayerID)
-        }
-        .onChange(of: draftIncludedIDs) { _, newIncluded in
-            onGuestsChanged(draftGuests, newIncluded, draftPayerID)
-        }
-        .onChange(of: draftPayerID) { _, newPayerId in
-            onGuestsChanged(draftGuests, draftIncludedIDs, newPayerId)
-        }
+        .onAppear(perform: handleOnAppear)
+        .onChange(of: draftGuests) { _, _ in notifyGuestsChanged() }
+        .onChange(of: draftIncludedIDs) { _, _ in notifyGuestsChanged() }
+        .onChange(of: draftPayerID) { _, _ in notifyGuestsChanged() }
         .onChange(of: confirmed) { _, newValue in
             if newValue {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
