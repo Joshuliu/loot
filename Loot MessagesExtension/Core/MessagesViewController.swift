@@ -711,6 +711,11 @@ extension MessagesViewController {
             requestPresentationStyle(.expanded)
             uiModel.pendingTabInviteId = tabId
             uiModel.currentScreen = .joinTab
+            // Bump the nonce so re-tapping the SAME invite while JoinTabView
+            // is already on screen triggers a fresh fetch — without this,
+            // both `pendingTabInviteId` and `currentScreen` are unchanged
+            // and SwiftUI's `.task(id:)` doesn't re-fire.
+            uiModel.pendingTabInviteRefreshNonce &+= 1
             return
         }
 

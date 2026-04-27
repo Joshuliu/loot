@@ -110,8 +110,12 @@ struct JoinTabView: View {
                         Text("Members")
                             .font(.system(size: isExpanded ? 14 : 12, weight: .semibold))
                             .foregroundStyle(.secondary)
+                        // Past members (left the tab) stay in `tab.members` for
+                        // historical balance/name lookups but should not appear
+                        // in the invite preview.
+                        let activeMembers = tab.members.filter(\.isActive)
                         if isExpanded {
-                            ForEach(Array(tab.members.enumerated()), id: \.offset) { index, member in
+                            ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
                                 HStack(spacing: 8) {
                                     ColoredCircleBadge(
                                         text: BadgeColors.initials(from: member.displayName, fallback: index),
@@ -123,7 +127,7 @@ struct JoinTabView: View {
                             }
                         } else {
                             HStack(spacing: 8) {
-                                ForEach(Array(tab.members.enumerated()), id: \.offset) { index, member in
+                                ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
                                     ColoredCircleBadge(
                                             text: BadgeColors.initials(from: member.displayName, fallback: index),
                                             color: BadgeColors.color(for: index)
@@ -179,10 +183,19 @@ struct JoinTabView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isExpanded)
-        .task {
+        // Re-fire the load when either the invite id changes OR the refresh
+        // nonce bumps (re-tap of the same invite bubble). Without the nonce
+        // the user could re-tap a stale invite and see no UI change.
+        .task(id: TaskKey(id: uiModel.pendingTabInviteId ?? "",
+                          nonce: uiModel.pendingTabInviteRefreshNonce)) {
             onRequestExpand()
             await loadTab()
         }
+    }
+
+    private struct TaskKey: Hashable {
+        let id: String
+        let nonce: Int
     }
 
     private func loadTab() async {

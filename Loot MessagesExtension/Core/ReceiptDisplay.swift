@@ -309,6 +309,11 @@ final class LootUIModel: ObservableObject {
     /// Tracks whether a bill had an explicit ignoredUUIDs list in the inline payload envelope.
     @Published var hasIgnoredUUIDsListByBill: [String: Bool] = [:]
     @Published var pendingTabInviteId: String? = nil
+    /// Bumped every time `applyMessage` re-handles a tab-invite URL. Lets
+    /// JoinTabView's `.task(id:)` re-fire when the user re-taps the SAME
+    /// invite bubble (which doesn't change `pendingTabInviteId` and so
+    /// otherwise wouldn't trigger a fresh fetch).
+    @Published var pendingTabInviteRefreshNonce: Int = 0
     @Published var pendingPayRequest: PendingPayRequest? = nil
     /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
     /// Used to sort userTabs by relevance — most overlapping members shown first.
