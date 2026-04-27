@@ -1200,11 +1200,19 @@ extension MessagesViewController {
         } else {
             session = MSSession()
         }
-        let layout = MSMessageTemplateLayout()
-        layout.image = cardImage
+        // MSMessageLiveLayout (with the template as alternate) so iOS spawns a
+        // transcript-mode MessagesViewController per bubble. That controller's
+        // UITapGestureRecognizer fires on every tap — including re-taps of the
+        // same invite — and forwards to the drawer via
+        // `requestExpansionFromTranscriptTap`. Plain template layouts don't
+        // get this routing (iOS dedupes same-message taps natively), which is
+        // why a second tap on the same invite was a no-op.
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let message = MSMessage(session: session)
-        message.layout = layout
+        message.layout = liveLayout
         message.url = components.url
         // queryItemName == "tabInviteUpdate" is the same-session retract+replace
         // path used when someone joins an existing tab; the original "tabInvite"
