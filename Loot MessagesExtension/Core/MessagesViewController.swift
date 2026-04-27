@@ -378,7 +378,8 @@ final class MessagesViewController: MSMessagesAppViewController {
                 tabColorHex: tabColorHex ?? "#007AFF",
                 creatorName: "",
                 joinedCount: 0,
-                targetCount: 0
+                targetCount: 0,
+                showJoinPulse: true
             )
             embedTranscriptCard(AnyView(card))
             return
