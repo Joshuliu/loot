@@ -551,7 +551,10 @@ struct RootContainerView: View {
         }
         guard !orderedMemberIds.isEmpty else { return nil }
 
-        let memberById = Dictionary(uniqueKeysWithValues: tab.members.map { ($0.memberId, $0) })
+        let memberById = Dictionary(
+            tab.members.map { ($0.memberId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let guests = orderedMemberIds.map { memberId in
             let member = memberById[memberId]
             return SplitPayload.Guest(
@@ -562,7 +565,10 @@ struct RootContainerView: View {
         }
 
         let payerIndex = orderedMemberIds.firstIndex(of: receipt.payerMemberId) ?? 0
-        let owedByMemberId = Dictionary(uniqueKeysWithValues: receipt.splits.map { ($0.memberId, $0.owedCents) })
+        let owedByMemberId = Dictionary(
+            receipt.splits.map { ($0.memberId, $0.owedCents) },
+            uniquingKeysWith: { first, _ in first }
+        )
         let owedAmounts = orderedMemberIds.map { owedByMemberId[$0] ?? 0 }
 
         let splitMode: SplitPayload.Mode = {

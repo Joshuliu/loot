@@ -110,12 +110,17 @@ final class TabService {
             throw NSError(domain: "TabService", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Tab not found"])
         }
-        var tab = try snapshot.data(as: LootTab.self)
+        // Normalize on read so we never operate on (and never round-trip back)
+        // a tab whose `members` array contains duplicates.
+        var tab = try snapshot.data(as: LootTab.self).dedupedMembers()
 
         let myId = KeychainHelper.getOrCreateUserId()
 
-        // Don't add if already a member
-        guard !tab.memberIds.contains(myId) else {
+        // Already-a-member check looks at BOTH structures so a stale memberIds
+        // array missing the entry can't trigger a duplicate-member append.
+        let alreadyMember = tab.memberIds.contains(myId)
+            || tab.members.contains(where: { $0.memberId == myId || $0.userId == myId })
+        guard !alreadyMember else {
             try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
             return tab
         }
@@ -153,8 +158,14 @@ final class TabService {
             .whereField("memberIds", arrayContains: myId)
             .getDocuments()
 
-        let tabs = snapshot.documents.compactMap { doc in
-            try? doc.data(as: LootTab.self)
+        let tabs = snapshot.documents.compactMap { doc -> LootTab? in
+            guard let raw = try? doc.data(as: LootTab.self) else { return nil }
+            let cleaned = raw.dedupedMembers()
+            if cleaned.members.count != raw.members.count {
+                print("[TabService] fetchUserTabs deduped \(raw.members.count - cleaned.members.count) duplicate(s) in \(doc.documentID)")
+                Task { try? await healDuplicateMembers(tab: cleaned) }
+            }
+            return cleaned
         }
         print("[TabService] fetchUserTabs: \(tabs.count) tabs")
         return tabs
@@ -165,9 +176,27 @@ final class TabService {
 
         let snapshot = try await db.collection("tabs").document(id).getDocument()
         guard snapshot.exists else { return nil }
-        let tab = try snapshot.data(as: LootTab.self)
+        let raw = try snapshot.data(as: LootTab.self)
+        let tab = raw.dedupedMembers()
         print("[TabService] fetchTab: \(id)")
+        // If we just dropped duplicate members, write the cleaned tab back so
+        // every other client and every future fetch sees normalized data.
+        if tab.members.count != raw.members.count {
+            print("[TabService] fetchTab(\(id)) deduped \(raw.members.count - tab.members.count) duplicate member(s); writing back")
+            Task { try? await healDuplicateMembers(tab: tab) }
+        }
         return tab
+    }
+
+    private func healDuplicateMembers(tab: LootTab) async throws {
+        guard let tabId = tab.id else { return }
+        let encodedMembers = try tab.members.map { try Firestore.Encoder().encode($0) }
+        try await db.collection("tabs").document(tabId).updateData([
+            "members": encodedMembers,
+            "memberIds": tab.memberIds,
+            "updatedAt": FieldValue.serverTimestamp()
+        ])
+        print("[TabService] healDuplicateMembers wrote back \(tab.members.count) members for \(tabId)")
     }
 
     /// Subscribes to live updates for a tab document. The handler fires on the
@@ -184,10 +213,11 @@ final class TabService {
                 return
             }
             guard let snapshot, snapshot.exists else { return }
-            guard let tab = try? snapshot.data(as: LootTab.self) else {
+            guard let raw = try? snapshot.data(as: LootTab.self) else {
                 print("[TabService] listenToTab(\(tabId)) decode failed")
                 return
             }
+            let tab = raw.dedupedMembers()
             Task { @MainActor in
                 onChange(tab)
             }
@@ -467,9 +497,12 @@ final class TabService {
     func computeTabBalances(tabId: String, members: [TabMember]) async throws -> [String: Int] {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
 
-        // Start with zero for each known member
-        var balances: [String: Int] = Dictionary(uniqueKeysWithValues:
-            members.map { ($0.memberId, 0) })
+        // Start with zero for each known member; tolerate duplicate memberIds
+        // (corruption-recovery path also covered by `dedupedMembers()`).
+        var balances: [String: Int] = Dictionary(
+            members.map { ($0.memberId, 0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
 
