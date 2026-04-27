@@ -115,36 +115,59 @@ final class TabService {
         var tab = try snapshot.data(as: LootTab.self).dedupedMembers()
 
         let myId = KeychainHelper.getOrCreateUserId()
+        let myName = myDisplayNameFromDefaults()
+        let displayName = myName.isEmpty ? "Me" : myName
 
-        // Already-a-member check looks at BOTH structures so a stale memberIds
-        // array missing the entry can't trigger a duplicate-member append.
-        let alreadyMember = tab.memberIds.contains(myId)
-            || tab.members.contains(where: { $0.memberId == myId || $0.userId == myId })
-        guard !alreadyMember else {
+        let existingIdx = tab.members.firstIndex { member in
+            member.memberId == myId || member.userId == myId
+        }
+
+        // Already an ACTIVE member: nothing to do beyond the conversation
+        // mapping write. (Previously this also matched inactive past-member
+        // entries, so a leave + re-tap-invite would silently no-op and the
+        // joiner would never re-appear on either device.)
+        if let idx = existingIdx, tab.members[idx].isActive {
+            // Make sure memberIds is in sync with the active membership —
+            // some legacy paths drifted this apart and the arrayContains
+            // query in fetchUserTabs depends on memberIds.
+            if !tab.memberIds.contains(myId) {
+                tab.memberIds.append(myId)
+                try await docRef.updateData([
+                    "memberIds": tab.memberIds,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ])
+            }
             try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
+            print("[TabService] joinTab: \(tabId) (already active member, no-op)")
             return tab
         }
 
-        let myName = myDisplayNameFromDefaults()
-        let me = TabMember(
-            memberId: myId,
-            userId: myId,
-            displayName: myName.isEmpty ? "Me" : myName,
-            balanceCents: 0,
-            isActive: true
-        )
+        if let idx = existingIdx {
+            // Reactivate a past-member entry rather than appending a duplicate.
+            tab.members[idx].isActive = true
+            tab.members[idx].displayName = displayName
+            if tab.members[idx].userId == nil || tab.members[idx].userId?.isEmpty == true {
+                tab.members[idx].userId = myId
+            }
+            print("[TabService] joinTab: \(tabId) (reactivating past member)")
+        } else {
+            tab.members.append(TabMember(
+                memberId: myId,
+                userId: myId,
+                displayName: displayName,
+                balanceCents: 0,
+                isActive: true
+            ))
+            print("[TabService] joinTab: \(tabId) (new member)")
+        }
 
-        tab.members.append(me)
-        tab.memberIds.append(myId)
+        if !tab.memberIds.contains(myId) {
+            tab.memberIds.append(myId)
+        }
 
-        // Update the tab document
         let encoded = try Firestore.Encoder().encode(tab)
         try await docRef.setData(encoded)
-
-        // Write conversation → tab mapping
         try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
-
-        print("[TabService] joinTab: \(tabId)")
         return tab
     }
 

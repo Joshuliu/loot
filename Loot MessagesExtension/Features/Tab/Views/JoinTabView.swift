@@ -193,9 +193,15 @@ struct JoinTabView: View {
         isLoading = true
         do {
             if let fetched = try await TabService.shared.fetchTab(id: tabId) {
-                // Already a member — just select the tab and go back
+                // Active membership shortcut — but past members (left the tab)
+                // need to fall through to the join flow so joinTab() can
+                // reactivate them. Checking memberIds alone isn't enough since
+                // it can drift from the actual `members[].isActive` state.
                 let myId = KeychainHelper.getOrCreateUserId()
-                if fetched.memberIds.contains(myId) {
+                let isActiveMember = fetched.members.contains { member in
+                    (member.memberId == myId || member.userId == myId) && member.isActive
+                }
+                if isActiveMember {
                     uiModel.activeTab = fetched
                     uiModel.pendingTabInviteId = nil
                     onJoined(fetched)
