@@ -10,7 +10,7 @@ cd TestHarness
 swift test
 ```
 
-## What's covered (~144 tests)
+## What's covered (174 tests)
 
 The `LootDomain` target symlinks `Sources/LootDomain` →
 `../Loot MessagesExtension/Domain`. The same Swift files compiled here
@@ -24,6 +24,8 @@ ship in the iOS extension — no duplicated code.
 | `LineItemForm`, `AuxLineForm`     | 24    | `LineItemFormTests.swift` + `LineItemFormBridgeRegressionTests.swift` |
 | `ReceiptBreakdown`, `Receipt`     | 15    | `ReceiptTests.swift`              |
 | `SplitMode`, `SplitConfiguration` | 22    | `SplitConfigurationTests.swift`   |
+| `SplitDraft` Codable              | 8     | `SplitDraftCodableTests.swift`    |
+| `ReceiptDraft` (Phase 3.11)       | 23    | `ReceiptDraftTests.swift`         |
 
 ## What's NOT covered (and why)
 
