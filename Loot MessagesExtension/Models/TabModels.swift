@@ -132,6 +132,11 @@ enum PaymentMethodType: String, Codable, CaseIterable {
                 .replacingOccurrences(of: "http://", with: "https://"))
 
         case .applePay, .cash:
+            // Apple Pay handoff is not URL-driven — the call site detects
+            // `.applePay` and routes through `LootUIModel.sendApplePayHandoff`
+            // (settlement card sent; an in-extension confirmation tells the
+            // sender to use the iMessage Apple Cash drawer). Cash has no
+            // deep link by design.
             return nil
         }
     }
@@ -245,6 +250,16 @@ struct TabReceipt: Codable, Identifiable {
     var items: [ReceiptItem]?
     var imageUrl: String?
     var messagePayloadId: String?
+
+    // Payload-derived. Populated by TabReceipt.from() so render doesn't
+    // depend on activeTab.members being in sync at the moment of display.
+    var payerDisplayName: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, createdBy, createdAt
+        case totalCents, subtotalCents, taxCents, tipCents, feesCents, discountCents
+        case splitMode, payerMemberId, splits, items, imageUrl, messagePayloadId
+    }
 }
 
 // SplitMode is now defined in Domain/SplitConfiguration.swift as the canonical
@@ -301,6 +316,15 @@ extension TabReceipt {
         let payerUid = split.g[split.pi].uid ?? myId
         let payerMemberId = uidToMemberId[payerUid] ?? myId
 
+        // Carry the payer's display name straight from the payload so the UI
+        // doesn't depend on activeTab.members being in sync at render time
+        // (live listener catch-up race produced "Paid by <UUID>" rows).
+        let payerDisplayName: String? = {
+            guard split.g.indices.contains(split.pi) else { return nil }
+            let raw = split.g[split.pi].n.trimmingCharacters(in: .whitespacesAndNewlines)
+            return raw.isEmpty ? nil : raw
+        }()
+
         // Map split mode
         let splitMode: SplitMode = {
             switch split.m {
@@ -349,7 +373,8 @@ extension TabReceipt {
             splits: splits,
             items: items,
             imageUrl: nil,
-            messagePayloadId: messagePayloadId
+            messagePayloadId: messagePayloadId,
+            payerDisplayName: payerDisplayName
         )
     }
 }

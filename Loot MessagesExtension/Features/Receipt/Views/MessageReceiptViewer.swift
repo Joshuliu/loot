@@ -210,53 +210,58 @@ struct MessageReceiptViewer: View {
         currentPayload.trid = nil
         currentPayload.tab = nil
 
+        // STEP 1: Broadcast the bubble update SYNCHRONOUSLY while the drawer
+        // is still active and `conversation.selectedMessage` still points at
+        // this bill. `sendBillUpdate`'s FRESH-SELECTED path needs that to
+        // grab the live MSSession iOS treats as authoritative. If we defer
+        // the broadcast until after the Firestore write (async, ~hundreds of
+        // ms later), the user has already navigated to tabview, the drawer
+        // is gone, selectedMessage no longer matches this docId — the path
+        // falls back to a stale anchored session which iOS rejects, so the
+        // bubble doesn't retract in place; a duplicate appears instead.
+        // Trade-off: if step 3's Firestore write fails, the bubble update
+        // already broadcast carries tid=nil (so the receiver sees "removed
+        // from tab"), but `sharedReceipts/{docId}.tid` stays set on the
+        // server until the next successful retry — minor sender/receiver
+        // divergence in the failure case, vs guaranteed duplicate-bubble
+        // bug in the success case under the old ordering.
+        uiModel.sendBillUpdate?(currentPayload, docId, .removedFromTab(tabName: removedTabName))
+
+        // STEP 2: Optimistic local UI updates + navigate to tabview.
+        if let active = uiModel.activeTab, active.id == tabId {
+            var updated = active
+            updated.receiptCount = max(0, active.receiptCount - 1)
+            uiModel.activeTab = updated
+            if let ck = uiModel.conversationKey {
+                TabService.shared.cacheTab(updated, for: ck)
+            }
+        }
+        if let receiptTab = uiModel.receiptTab, receiptTab.id == tabId {
+            uiModel.receiptTab = nil
+        }
+        uiModel.openedMessagePayload = nil
+        uiModel.openedMessageDocId = nil
+        uiModel.messageLoadingState = .idle
+        uiModel.tabReceiptsRefreshNonce += 1
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            uiModel.currentScreen = .tabview
+        }
+
+        // STEP 3: Persist tid removal in Firestore + recompute tab balances
+        // in the background. The bubble update is already on its way.
         Task {
             do {
                 try await SharedReceiptService.shared.clearTabAssociation(docId: docId)
 
-                await MainActor.run {
-                    // Re-broadcast the bubble in place via the anchored
-                    // MSSession so the recipient's bubble loses its tab badge
-                    // and the transcript shows a "removed a bill from
-                    // <tabName>" notice. Fires only after the Firestore write
-                    // succeeds — otherwise sender and receiver would diverge.
-                    // Bypasses the split-signature dedup since the
-                    // SplitPayload itself is unchanged.
-                    uiModel.sendBillUpdate?(currentPayload, docId, .removedFromTab(tabName: removedTabName))
-
-                    uiModel.openedMessagePayload = currentPayload
-                    uiModel.currentReceipt = currentPayload.toReceiptDisplay()
-                    uiModel.tabReceiptsRefreshNonce += 1
-                    if let active = uiModel.activeTab, active.id == tabId {
-                        var updated = active
-                        updated.receiptCount = max(0, active.receiptCount - 1)
-                        uiModel.activeTab = updated
-                        if let ck = uiModel.conversationKey {
-                            TabService.shared.cacheTab(updated, for: ck)
-                        }
-                    }
-                    if let receiptTab = uiModel.receiptTab, receiptTab.id == tabId {
-                        uiModel.receiptTab = nil
-                    }
-                    uiModel.openedMessagePayload = nil
-                    uiModel.openedMessageDocId = nil
-                    uiModel.messageLoadingState = .idle
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .tabview
-                    }
-                }
-
-                Task {
-                    if let refreshed = try? await TabService.shared.syncTabDerivedState(tabId: tabId) {
-                        await MainActor.run {
-                            if self.uiModel.activeTab?.id == tabId {
-                                self.uiModel.activeTab = refreshed
-                                if let ck = self.uiModel.conversationKey {
-                                    TabService.shared.cacheTab(refreshed, for: ck)
-                                }
+                if let refreshed = try? await TabService.shared.syncTabDerivedState(tabId: tabId) {
+                    await MainActor.run {
+                        if self.uiModel.activeTab?.id == tabId {
+                            self.uiModel.activeTab = refreshed
+                            if let ck = self.uiModel.conversationKey {
+                                TabService.shared.cacheTab(refreshed, for: ck)
                             }
-                            self.uiModel.tabReceiptsRefreshNonce += 1
                         }
+                        self.uiModel.tabReceiptsRefreshNonce += 1
                     }
                 }
                 print("[MessageReceiptViewer] Removed receipt \(docId) from tab \(tabId)")

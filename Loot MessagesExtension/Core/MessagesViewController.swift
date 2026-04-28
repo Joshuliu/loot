@@ -90,6 +90,11 @@ final class MessagesViewController: MSMessagesAppViewController {
                                         tabColorHex: tabColorHex)
         }
 
+        uiModel.sendApplePayHandoff = { [weak self] fromName, toName, amountCents, tabColorHex in
+            self?.sendApplePayHandoff(fromName: fromName, toName: toName,
+                                      amountCents: amountCents, tabColorHex: tabColorHex)
+        }
+
         uiModel.sendRequestCard = { [weak self] creditorName, debtorName, amountCents, tabColorHex, metadata in
             self?.sendRequestMessage(creditorName: creditorName, debtorName: debtorName,
                                      amountCents: amountCents, tabColorHex: tabColorHex,
@@ -187,13 +192,27 @@ final class MessagesViewController: MSMessagesAppViewController {
 
         if currentId == newId {
             if currentId == nil, uiModel.activeTab == nil, tab == nil { return }
-            if let current = uiModel.activeTab, let tab,
-               current.name == tab.name,
-               current.colorHex == tab.colorHex,
-               current.memberIds == tab.memberIds,
-               current.receiptCount == tab.receiptCount,
-               current.status.rawValue == tab.status.rawValue {
-                return
+            if let current = uiModel.activeTab, let tab {
+                // Don't downgrade rich state to a minimal stub for the same tab.
+                // Settlement-card and bubble URL paths build a `LootTab.minimal`
+                // (empty members) so the UI can render immediately while full
+                // data loads in background. Without this guard, the stub would
+                // overwrite the populated `members` and `memberIds` from the
+                // live Firestore listener, leaving TabSettingsView empty and
+                // the bill card showing other participants as their UUIDs
+                // until the listener races back. The full-data callers
+                // (cached / fetched / onTabUpdated) always populate members,
+                // so they still apply and pass the idempotency check below.
+                if !current.members.isEmpty && tab.members.isEmpty {
+                    return
+                }
+                if current.name == tab.name,
+                   current.colorHex == tab.colorHex,
+                   current.memberIds == tab.memberIds,
+                   current.receiptCount == tab.receiptCount,
+                   current.status.rawValue == tab.status.rawValue {
+                    return
+                }
             }
         }
 
@@ -292,6 +311,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         outgoing.url = components.url
         outgoing.summaryText = BillUpdateAction.claimed.summaryText
 
+        print("[ConvSend] transcriptAutojoin: docId=\(docId) sessionPtr=\(ObjectIdentifier(session))")
         conversation.send(outgoing) { error in
             if let error {
                 print("[transcriptAutojoin] send failed for \(docId): \(error)")
@@ -453,11 +473,18 @@ extension MessagesViewController {
     }
 
     private func saveBillUpdateAnchor(from message: MSMessage) {
-        guard let docId = billUpdateDocId(from: message),
-              let session = message.session else { return }
+        let extractedDocId = billUpdateDocId(from: message)
+        let hasSession = message.session != nil
+        guard let docId = extractedDocId,
+              let session = message.session else {
+            print("[BillUpdate] saveBillUpdateAnchor SKIP: docId=\(extractedDocId ?? "nil") hasSession=\(hasSession)")
+            return
+        }
+        let previousDocId = activeBillUpdateDocId
         activeBillUpdateDocId = docId
         activeBillUpdateSession = session
         billUpdateSessionByDocId[docId] = session
+        print("[BillUpdate] saveBillUpdateAnchor: docId=\(docId) (was \(previousDocId ?? "nil")) sessionPtr=\(ObjectIdentifier(session))")
     }
 
     private func splitSignature(for split: SplitPayload) -> String {
@@ -509,8 +536,12 @@ extension MessagesViewController {
 
     private func bindBillUpdateAnchor(from message: MSMessage, docId: String, conversation: MSConversation) {
         guard activeBillUpdateDocId == docId,
-              let session = activeBillUpdateSession else { return }
+              let session = activeBillUpdateSession else {
+            print("[BillUpdate] bindBillUpdateAnchor MISMATCH: incomingDocId=\(docId) activeBillUpdateDocId=\(activeBillUpdateDocId ?? "nil") hasSession=\(activeBillUpdateSession != nil)")
+            return
+        }
         billUpdateSessionByDocId[docId] = session
+        print("[BillUpdate] bindBillUpdateAnchor: docId=\(docId) sessionPtr=\(ObjectIdentifier(session))")
         flushPendingBillUpdateIfNeeded(for: docId, conversation: conversation)
     }
 
@@ -529,19 +560,80 @@ extension MessagesViewController {
 
     private func sendBillUpdate(payload: LootMessagePayload, docId: String, action: BillUpdateAction, conversation: MSConversation) {
         let signature = splitSignature(for: payload.s)
+        let perDocSession = billUpdateSessionByDocId[docId]
+
+        // Prefer the FRESHEST session — `conversation.selectedMessage` is the
+        // bubble iOS currently considers selected. iOS rebuilds MSMessage
+        // objects (with new MSSession instances) on every transcript re-render,
+        // and after our own conversation.send fires it cascades 5+ more
+        // didSelect/willBecomeActive events with new session pointers each
+        // time. The session anchored at first-tap goes stale within
+        // milliseconds. Using the fresh selectedMessage session matches what
+        // `broadcastTranscriptAutojoinIfPossible` does — that path retracts
+        // bubbles in place reliably; this one didn't, until now.
+        let freshSelectedSession: MSSession? = {
+            guard let selected = conversation.selectedMessage,
+                  let selectedUrl = selected.url,
+                  messageDocId(from: selectedUrl) == docId,
+                  let session = selected.session else {
+                return nil
+            }
+            return session
+        }()
+
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let senderUid = payload.su
+        let iAmSender = (senderUid == myUid)
+
+        print("[BillUpdate] sendBillUpdate ENTER: docId=\(docId) action=\(action) activeDocId=\(activeBillUpdateDocId ?? "nil") activeSessionPtr=\(activeBillUpdateSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") perDocSessionPtr=\(perDocSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") freshSelectedSessionPtr=\(freshSelectedSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") autoSendReady=\(isConversationAutoSendReady) senderUid=\(senderUid ?? "nil") myUid=\(myUid) iAmSender=\(iAmSender)")
+
+        // iMessage's `conversation.send` only retracts a bubble in place when
+        // the local participant was the original sender of that message. If
+        // someone else sent it, the API silently creates a NEW bubble instead
+        // of replacing the existing one — the SDK gives us no error and no
+        // way to know besides observing the duplicate. canEdit (in
+        // LootMessagePayload) allows tab members to edit each other's bills
+        // locally + via Firestore, but the iMessage transport doesn't honor
+        // cross-sender retractions. So if we're not the original sender,
+        // skip the broadcast entirely — Firestore is the source of truth and
+        // the recipient will see fresh data on next tap. Cost: the bubble
+        // visually stays in its old form until tapped. Benefit: no duplicate
+        // bubble appears. Bills with no `su` field (legacy payloads) fall
+        // through to the broadcast path because we can't determine sender.
+        if let senderUid, !senderUid.isEmpty, !iAmSender {
+            print("[BillUpdate] sendBillUpdate SKIP-CROSS-SENDER: docId=\(docId) — I am not the original sender (\(senderUid)), iOS would create a duplicate bubble. Firestore already updated.")
+            return
+        }
+
         if !signature.isEmpty,
            !action.bypassesSplitSignatureDedup,
            lastSentSplitSignatureByDocId[docId] == signature {
+            print("[BillUpdate] sendBillUpdate DEDUP: same signature already sent for docId=\(docId)")
             return
         }
 
         guard isConversationAutoSendReady else {
             pendingBillUpdateByDocId[docId] = (payload, action)
-            print("[sendBillUpdate] Deferring update until conversation is fully active for doc: \(docId)")
+            print("[BillUpdate] sendBillUpdate DEFER: queued for docId=\(docId) until conversation auto-send ready")
+            return
+        }
+
+        // Fresh session from selectedMessage wins over anchored/per-doc.
+        if let session = freshSelectedSession {
+            print("[BillUpdate] sendBillUpdate FRESH-SELECTED: sending via sessionPtr=\(ObjectIdentifier(session))")
+            sendBillUpdateMessage(
+                payload: payload,
+                docId: docId,
+                signature: signature,
+                session: session,
+                action: action,
+                conversation: conversation
+            )
             return
         }
 
         if activeBillUpdateDocId == docId, let anchoredSession = activeBillUpdateSession {
+            print("[BillUpdate] sendBillUpdate ANCHOR-MATCH: sending via activeSessionPtr=\(ObjectIdentifier(anchoredSession))")
             sendBillUpdateMessage(
                 payload: payload,
                 docId: docId,
@@ -553,7 +645,20 @@ extension MessagesViewController {
             return
         }
 
-        print("[sendBillUpdate] Skipping update because no tapped message session is anchored for doc: \(docId)")
+        if let perDocSession {
+            print("[BillUpdate] sendBillUpdate FALLBACK-PER-DOC: active anchor is for \(activeBillUpdateDocId ?? "nil") but per-doc session exists for \(docId), sending via perDocSessionPtr=\(ObjectIdentifier(perDocSession))")
+            sendBillUpdateMessage(
+                payload: payload,
+                docId: docId,
+                signature: signature,
+                session: perDocSession,
+                action: action,
+                conversation: conversation
+            )
+            return
+        }
+
+        print("[BillUpdate] sendBillUpdate SKIP: no anchored session for docId=\(docId) (activeBillUpdateDocId=\(activeBillUpdateDocId ?? "nil"))")
     }
 
     private func sendBillUpdateMessage(
@@ -600,12 +705,16 @@ extension MessagesViewController {
         message.url = components.url
         message.summaryText = action.summaryText
 
+        print("[BillUpdate] sendBillUpdateMessage: docId=\(docId) sessionPtr=\(ObjectIdentifier(session)) layout=liveLayout url=\(components.url?.absoluteString.prefix(80) ?? "nil")")
+
         conversation.send(message) { [weak self] error in
             if let error {
                 if !signature.isEmpty, self?.lastSentSplitSignatureByDocId[docId] == signature {
                     self?.lastSentSplitSignatureByDocId.removeValue(forKey: docId)
                 }
-                print("[sendBillUpdate] Failed to send updated bill message: \(error)")
+                print("[BillUpdate] sendBillUpdateMessage FAILED: docId=\(docId) error=\(error)")
+            } else {
+                print("[BillUpdate] sendBillUpdateMessage COMPLETE: docId=\(docId) (no error — bubble should have replaced in place if session was valid)")
             }
         }
     }
@@ -957,8 +1066,36 @@ extension MessagesViewController {
         message.url = components.url
         message.summaryText = "sent a payment"
 
+        print("[ConvSend] sendSettlementMessage: NEW SESSION (will appear as new bubble) summaryText=\"sent a payment\"")
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendSettlementMessage error: \(error)") }
+        }
+    }
+
+    /// Apple Pay flow: send the settlement card to the chat. The "now open
+    /// the Apple Cash drawer" hint is shown by `TabPayNowSheet` after the
+    /// user taps Apple Pay — keeping it in-extension means it never leaks
+    /// to other participants and we don't have to rely on MSSession
+    /// replacement, which doesn't reliably carry through `insert`.
+    func sendApplePayHandoff(fromName: String, toName: String,
+                             amountCents: Int, tabColorHex: String?) {
+        guard let conversation = activeConversation else { return }
+
+        let card = SettlementCardView(fromName: fromName, toName: toName,
+                                      amountCents: amountCents,
+                                      methodName: "Apple Cash",
+                                      tabColorHex: tabColorHex)
+        let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
+
+        let message = MSMessage(session: MSSession())
+        message.layout = layout
+        message.url = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab).url
+        message.summaryText = "sent a payment"
+        print("[ConvSend] sendApplePayHandoff: NEW SESSION (will appear as new bubble) summaryText=\"sent a payment\"")
+        conversation.send(message) { error in
+            if let error { print("[MessagesViewController] sendApplePayHandoff send error: \(error)") }
         }
     }
 
@@ -997,6 +1134,7 @@ extension MessagesViewController {
         message.url = components.url
         message.summaryText = "requested a payment"
 
+        print("[ConvSend] sendRequestMessage: NEW SESSION (will appear as new bubble) summaryText=\"requested a payment\"")
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
         }
@@ -1134,6 +1272,7 @@ extension MessagesViewController {
         message.url = components.url
         message.summaryText = "shared a bill"
 
+        print("[ConvSend] sendBillMessage: NEW SESSION (will appear as new bubble) docId=\(docId) summaryText=\"shared a bill\"")
         conversation.send(message) { error in
             if let error { print("[sendBillMessage] Failed to send bill message: \(error)") }
         }
@@ -1220,6 +1359,7 @@ extension MessagesViewController {
         // name is the brand-new invite send.
         message.summaryText = (queryItemName == "tabInviteUpdate") ? "joined a tab" : "invited you to a tab"
 
+        print("[ConvSend] sendTabInvite: queryItem=\(queryItemName) sessionPtr=\(ObjectIdentifier(session)) usedSelectedSession=\(useSelectedMessageSession)")
         conversation.send(message) { error in
             if let error { print("[\(queryItemName)] send failed: \(error)") }
         }

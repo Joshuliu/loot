@@ -351,15 +351,12 @@ struct RootContainerView: View {
                             tipAmount = Money(cents: finalTipCents).inputString
                         }
 
+                        // Tip lives in tipCents alone; lineItems never carries a tip row,
+                        // otherwise TotalsBox renders both the lineItem and the breakdown row.
                         var displayLineItems = resolvedLineItems
-                        if finalTipCents != breakdown.tip {
-                            displayLineItems.removeAll {
-                                let normalized = $0.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                                return normalized.contains("tip") || normalized.contains("gratuity")
-                            }
-                            if finalTipCents > 0 {
-                                displayLineItems.append(.init(label: "Tip", cents: finalTipCents))
-                            }
+                        displayLineItems.removeAll {
+                            let normalized = $0.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            return normalized.contains("tip") || normalized.contains("gratuity")
                         }
 
                         // Update subtotal field used by manual/edit flows.
@@ -419,6 +416,7 @@ struct RootContainerView: View {
     ///
     /// Usage:
     /// - Called from phase completion events only (`isLoadingReceipt` and `itemsLoadingState` transitions).
+    ///
     @MainActor
     private func reconcileSplitDraftWithLiveReceipt(trigger: String) {
         guard let receipt = uiModel.currentReceipt else { return }
@@ -951,6 +949,7 @@ struct RootContainerView: View {
                 }
             },
             onSendSettlementCard: uiModel.sendSettlementCard,
+            onApplePayHandoff: uiModel.sendApplePayHandoff,
             onSendRequestCard: uiModel.sendRequestCard,
             openInSafari: uiModel.openInSafari,
             pendingPayRequest: uiModel.pendingPayRequest,

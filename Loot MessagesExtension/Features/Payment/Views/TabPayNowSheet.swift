@@ -39,15 +39,50 @@ struct TabPayNowSheet: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
 
-                Text("Selecting a payment method will automatically send a confirmation to this chat.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
+                methodSelectionView
+            }
+            .navigationTitle("Pay \(toName)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            myMethods = savedPaymentMethods()
+        }
+        .fullScreenCover(isPresented: $showingPaymentMethodSetup, onDismiss: {
+            myMethods = savedPaymentMethods()
+        }) {
+            PaymentMethodView(
+                onBack: {
+                    showingPaymentMethodSetup = false
+                },
+                onRequestExpand: {},
+                onSaved: {
+                    myMethods = savedPaymentMethods()
+                    showingPaymentMethodSetup = false
+                },
+                isPostSendPrompt: paymentSetupIsPostSendPrompt
+            )
+        }
+    }
 
-                ScrollView {
+    @ViewBuilder
+    private var methodSelectionView: some View {
+        VStack(spacing: 0) {
+            Text("Selecting a payment method will automatically send a confirmation to this chat.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16)
+
+            ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
-                        if myMethods.isEmpty {
+                        if myMethods.isEmpty && mutualMethods.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
                                 Text("Set up your payment methods first")
                                     .font(.system(size: 17, weight: .semibold))
@@ -123,36 +158,8 @@ struct TabPayNowSheet: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 20)
                     .padding(.bottom, 16)
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
             }
-            .navigationTitle("Pay \(toName)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-        .onAppear {
-            myMethods = savedPaymentMethods()
-        }
-        .fullScreenCover(isPresented: $showingPaymentMethodSetup, onDismiss: {
-            myMethods = savedPaymentMethods()
-        }) {
-            PaymentMethodView(
-                onBack: {
-                    showingPaymentMethodSetup = false
-                },
-                onRequestExpand: {},
-                onSaved: {
-                    myMethods = savedPaymentMethods()
-                    showingPaymentMethodSetup = false
-                },
-                isPostSendPrompt: paymentSetupIsPostSendPrompt
-            )
+            .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 

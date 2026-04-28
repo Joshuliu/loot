@@ -23,6 +23,8 @@ struct TabSettingsView: View {
     @State private var showingLeaveConfirm: Bool = false
     @State private var showingDeleteConfirm: Bool = false
     @State private var saveError: String? = nil
+    @State private var isRecomputing: Bool = false
+    @State private var recomputeMessage: String? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -153,6 +155,30 @@ struct TabSettingsView: View {
                     }
                 }
 
+                // MARK: Recompute Balances
+                Section {
+                    if isRecomputing {
+                        HStack {
+                            ProgressView().scaleEffect(0.8)
+                            Text("Recomputing…")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 15))
+                        }
+                    } else {
+                        Button("Recompute Balances") {
+                            performRecomputeBalances()
+                        }
+                    }
+                    if let recomputeMessage {
+                        Text(recomputeMessage)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Recalculates everyone's balance from scratch using the current receipts and settlements in the tab. Use this if amounts look wrong — for example after removing receipts that were sent in error.")
+                        .font(.system(size: 12))
+                }
+
                 // MARK: Leave / Delete Tab
                 Section {
                     if myBalance == 0 {
@@ -264,6 +290,31 @@ struct TabSettingsView: View {
                 await MainActor.run {
                     saveError = "Failed to leave: \(error.localizedDescription)"
                     isLeaving = false
+                }
+            }
+        }
+    }
+
+    private func performRecomputeBalances() {
+        guard let tabId = tab.id else { return }
+        isRecomputing = true
+        recomputeMessage = nil
+        saveError = nil
+        Task {
+            do {
+                _ = try await TabService.shared.syncTabDerivedState(tabId: tabId)
+                await MainActor.run {
+                    if let liveTab = uiModel.activeTab, liveTab.id == tab.id {
+                        members = liveTab.members
+                    }
+                    isRecomputing = false
+                    recomputeMessage = "Balances refreshed."
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            } catch {
+                await MainActor.run {
+                    saveError = "Failed to recompute: \(error.localizedDescription)"
+                    isRecomputing = false
                 }
             }
         }

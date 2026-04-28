@@ -527,28 +527,72 @@ final class TabService {
             uniquingKeysWith: { first, _ in first }
         )
 
+        print("[BalanceAudit] === computeTabBalances tabId=\(tabId) ===")
+        print("[BalanceAudit] members:")
+        for m in members {
+            print("[BalanceAudit]   memberId=\(m.memberId) name=\(m.displayName) userId=\(m.userId ?? "nil") active=\(m.isActive)")
+        }
+
         let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
+        print("[BalanceAudit] sharedReceipts attached to this tab: \(sharedPayloads.count)")
 
         for entry in sharedPayloads {
+            let before = balances
             applyBalanceDelta(from: entry.payload, into: &balances)
+            let split = entry.payload.s
+            let payerUid = split.g.indices.contains(split.pi) ? (split.g[split.pi].uid ?? "nil") : "out-of-bounds"
+            let guestSummary = split.g.enumerated().map { i, g in
+                "[\(i):\(g.n.isEmpty ? "<empty>" : g.n) inc=\(g.inc) uid=\(g.uid ?? "nil") owed=\(split.o.indices.contains(i) ? "\(split.o[i])" : "?")]"
+            }.joined(separator: " ")
+            print("[BalanceAudit] sharedReceipt docId=\(entry.docId) total=\(split.tot) payerUid=\(payerUid)")
+            print("[BalanceAudit]   guests: \(guestSummary)")
+            for (uid, after) in balances {
+                let beforeAmt = before[uid] ?? 0
+                if beforeAmt != after {
+                    print("[BalanceAudit]   delta uid=\(uid): \(beforeAmt) -> \(after) (\(after - beforeAmt >= 0 ? "+" : "")\(after - beforeAmt))")
+                }
+            }
         }
 
         // Legacy fallback: keep supporting old tab receipt docs that may still
         // exist without a linked shared receipt doc.
         let legacyReceipts = try await fetchLegacyTabReceiptsNeedingFallback(forTabId: tabId)
+        print("[BalanceAudit] legacy tab receipts (no linked shared doc): \(legacyReceipts.count)")
         for receipt in legacyReceipts {
+            let before = balances
             applyBalanceDelta(from: receipt, into: &balances)
+            print("[BalanceAudit] legacyReceipt id=\(receipt.id ?? "nil") title=\(receipt.title) total=\(receipt.totalCents) payer=\(receipt.payerMemberId)")
+            for split in receipt.splits {
+                print("[BalanceAudit]   split memberId=\(split.memberId) owed=\(split.owedCents)")
+            }
+            for (uid, after) in balances {
+                let beforeAmt = before[uid] ?? 0
+                if beforeAmt != after {
+                    print("[BalanceAudit]   delta uid=\(uid): \(beforeAmt) -> \(after)")
+                }
+            }
         }
 
         // Apply any recorded settlements
         if let settlementDocs = try? await db.collection("tabs").document(tabId)
             .collection("settlements").getDocuments() {
+            print("[BalanceAudit] settlements: \(settlementDocs.documents.count)")
             for doc in settlementDocs.documents {
-                guard let settlement = try? doc.data(as: Settlement.self) else { continue }
+                guard let settlement = try? doc.data(as: Settlement.self) else {
+                    print("[BalanceAudit]   settlement docId=\(doc.documentID) FAILED to decode; raw=\(doc.data())")
+                    continue
+                }
                 balances[settlement.fromMemberId, default: 0] += settlement.amountCents
                 balances[settlement.toMemberId, default: 0] -= settlement.amountCents
+                print("[BalanceAudit]   settlement docId=\(doc.documentID) from=\(settlement.fromMemberId) to=\(settlement.toMemberId) amount=\(settlement.amountCents)")
             }
         }
+
+        print("[BalanceAudit] === final balances ===")
+        for (uid, amt) in balances {
+            print("[BalanceAudit]   \(uid) = \(amt) cents")
+        }
+        print("[BalanceAudit] === end audit ===")
 
         return balances
     }

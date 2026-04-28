@@ -165,8 +165,19 @@ struct SplitsSummaryView: View {
     }
 
     private func openAssociatedTab() {
-        if let associatedTab {
-            uiModel.activeTab = associatedTab
+        if let target = associatedTab {
+            // Prefer the live activeTab when it points at the same tab id —
+            // the Firestore listener keeps it populated with full members and
+            // balances, whereas `associatedTab` may have fallen back to a
+            // payload-derived `LootTab.minimal` stub (empty members) that
+            // would briefly render "no members + UUID-as-name" until the
+            // listener races back. The property-level guard in LootUIModel
+            // also catches this, but skipping the write here is cleaner.
+            if let active = uiModel.activeTab, active.id == target.id {
+                // Same tab — no-op, preserve the live state.
+            } else {
+                uiModel.activeTab = target
+            }
         }
         onClose?()
     }
@@ -1267,6 +1278,10 @@ struct SplitsSummaryView: View {
                         VStack(spacing: 0) {
                             scrollHeaderSpacer
 
+                            if isTabReceipt {
+                                Color.clear.frame(height: 16)
+                            }
+
                             if selectedSection == .splits {
                                 splitDetailsSection
                             } else {
@@ -1338,6 +1353,36 @@ struct SplitsSummaryView: View {
                 methods: info.methods,
                 tabColorHex: nil,
                 onSelectMethod: { method in
+                    // Apple Pay: stage the compact-mode reminder, send the
+                    // settlement card, navigate back to tabview (the receipt
+                    // viewer would otherwise hide the compact reminder behind
+                    // it), then collapse the extension.
+                    if method.type == .applePay {
+                        let tabColor = associatedTab?.colorHex
+                        uiModel.pendingApplePayInfo = PendingApplePayInfo(
+                            toName: info.toName,
+                            amountCents: info.amountCents,
+                            tabColorHex: tabColor
+                        )
+                        uiModel.sendApplePayHandoff?(info.fromName, info.toName,
+                                                    info.amountCents, tabColor)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            togglePaid(guestIndex: info.guestIndex)
+                        }
+                        // Preserve the tab association so LootTabView can color
+                        // its compact strip with the same tab as the receipt.
+                        // Skip the write if activeTab already points at this
+                        // tab — `associatedTab` may be a payload-derived
+                        // minimal stub that would downgrade rich live state.
+                        if let target = associatedTab,
+                           uiModel.activeTab?.id != target.id {
+                            uiModel.activeTab = target
+                        }
+                        onClose?()
+                        onRequestCollapse?()
+                        return
+                    }
+
                     let effectiveBankURL: String?
                     if method.type == .zelle {
                         effectiveBankURL = savedPaymentMethods()
@@ -1356,7 +1401,9 @@ struct SplitsSummaryView: View {
                     sendSettlement?(info.fromName, info.toName,
                                     info.amountCents, method.type.displayName, nil)
                     if let url = deepLink {
-                        openURL(url)
+                        // extensionContext.open is required in iMessage extensions —
+                        // SwiftUI's openURL silently no-ops for non-http schemes here.
+                        if let opener = uiModel.openInSafari { opener(url) } else { openURL(url) }
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }
@@ -1379,6 +1426,11 @@ struct SplitsSummaryView: View {
 
 // MARK: - Totals box
 
+private func isTipLabel(_ label: String) -> Bool {
+    let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return normalized.contains("tip") || normalized.contains("gratuity")
+}
+
 struct TotalsBox: View {
     let receipt: ReceiptDisplay
 
@@ -1400,7 +1452,7 @@ struct TotalsBox: View {
                         TotalsRow(label: "Tax", value: receipt.taxCents)
                     }
                 } else {
-                    ForEach(receipt.lineItems) { line in
+                    ForEach(receipt.lineItems.filter { !isTipLabel($0.label) }) { line in
                         TotalsRow(label: line.label, value: line.cents)
                     }
                 }

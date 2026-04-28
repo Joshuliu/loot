@@ -176,6 +176,16 @@ struct RequestCardMetadata {
     var debtorId: String?
 }
 
+/// Payload for the compact-mode Apple Pay reminder. Set by the Pay Now flow
+/// after the sender selects Apple Pay; cleared when the sender dismisses the
+/// reminder. iOS 26+ wraps this with "tap the Apple Cash drawer below"; older
+/// iOS gets the "open a 1:1 chat" copy.
+struct PendingApplePayInfo: Equatable {
+    var toName: String
+    var amountCents: Int
+    var tabColorHex: String?
+}
+
 /// Identifies the kind of action that triggered a bill bubble update so the
 /// iMessage transcript notice ("X <verb>...") can be tailored. iOS prepends
 /// the sender's contact name automatically; the summaryText is just the
@@ -218,7 +228,20 @@ final class LootUIModel: ObservableObject {
     @Published var isExpanded: Bool = false
 
     // Screen state - persists across view recreations
-    @Published var currentScreen: AppScreen = .tabview
+    @Published var currentScreen: AppScreen = .tabview {
+        didSet {
+            guard oldValue != currentScreen else { return }
+            print("[Screen] \(oldValue) -> \(currentScreen)")
+            // Stack trace only for the specific bug under investigation:
+            // "click a receipt to open it but lands on .tabview instead."
+            // Captures any unexpected reversion to .tabview right after a
+            // navigation away from it.
+            if currentScreen == .tabview && oldValue == .messageViewer {
+                print("[Screen] WARN: .messageViewer -> .tabview — call stack:")
+                Thread.callStackSymbols.prefix(12).forEach { print("[Screen]   \($0)") }
+            }
+        }
+    }
 
     @Published var currentReceipt: ReceiptDisplay? = nil
     @Published var parsedReceipt: ParsedReceipt? = nil
@@ -263,8 +286,56 @@ final class LootUIModel: ObservableObject {
     /// participant joins, leaves, edits the tab, or adds a receipt, this
     /// updates automatically without requiring a manual refresh.
     @Published var activeTab: LootTab? = nil {
-        didSet { syncActiveTabListener(oldId: oldValue?.id, newId: activeTab?.id) }
+        willSet {
+            // Defensive guard: reject same-tab stub overwrites at the property
+            // setter level so every call site (including direct assignments
+            // that bypass `setActiveTabIfChanged`) is protected. Only triggers
+            // for SAME id with rich -> empty members downgrade. Different id
+            // (real tab switch) and full updates pass through unchanged.
+            if let current = activeTab,
+               let next = newValue,
+               current.id == next.id,
+               !current.members.isEmpty,
+               next.members.isEmpty {
+                // Cannot mutate `newValue` from willSet, so we log here and
+                // override in didSet by reverting to the previous value.
+                print("[ActiveTab] REJECT-STUB: would have overwritten \(current.members.count) members with empty stub for tab \(current.id ?? "nil")")
+                Thread.callStackSymbols.prefix(12).forEach { print("[ActiveTab]   \($0)") }
+            }
+        }
+        didSet {
+            // Revert if willSet flagged a stub overwrite. didSet already saw
+            // the new value land; we restore from oldValue, which itself
+            // triggers another didSet (now from empty -> full) that we DON'T
+            // want to revert. Use a guard so we only revert once.
+            if let old = oldValue,
+               let new = activeTab,
+               old.id == new.id,
+               !old.members.isEmpty,
+               new.members.isEmpty,
+               !isRevertingActiveTabStub {
+                isRevertingActiveTabStub = true
+                activeTab = old
+                isRevertingActiveTabStub = false
+                return
+            }
+
+            let oldDesc = oldValue.map { "id=\($0.id ?? "nil") membersCount=\($0.members.count) memberIdsCount=\($0.memberIds.count)" } ?? "nil"
+            let newDesc = activeTab.map { "id=\($0.id ?? "nil") membersCount=\($0.members.count) memberIdsCount=\($0.memberIds.count)" } ?? "nil"
+            print("[ActiveTab] didSet: \(oldDesc) -> \(newDesc)")
+            if let oldTab = oldValue,
+               let newTab = activeTab,
+               oldTab.id == newTab.id,
+               !oldTab.members.isEmpty,
+               newTab.members.isEmpty {
+                print("[ActiveTab] WARN: members vanished for same tab id — call stack:")
+                Thread.callStackSymbols.prefix(12).forEach { print("[ActiveTab]   \($0)") }
+            }
+            syncActiveTabListener(oldId: oldValue?.id, newId: activeTab?.id)
+        }
     }
+    /// Re-entrancy guard so the didSet revert doesn't recurse into itself.
+    private var isRevertingActiveTabStub: Bool = false
     /// Tab that belongs to the currently-opened receipt (may differ from activeTab).
     @Published var receiptTab: LootTab? = nil
 
@@ -292,6 +363,12 @@ final class LootUIModel: ObservableObject {
             // tab id.
             guard let self, self.activeTabListenerId == updated.id else { return }
             self.activeTab = updated
+            // The tab doc is rewritten on every receipt-add, receipt-edit, and
+            // settlement (see syncTabDerivedState + recordSettlement). Bumping
+            // the nonce here makes LootTabView and TabSettleUpCard reload their
+            // payments/settlements lists when a remote participant adds one,
+            // matching how the members list already updates from `activeTab`.
+            self.tabReceiptsRefreshNonce &+= 1
             // Mirror to UserDefaults cache so an extension restart picks up
             // the freshest member set immediately rather than briefly showing
             // stale data while the listener round-trips.
@@ -318,6 +395,11 @@ final class LootUIModel: ObservableObject {
     /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
     /// Used to sort userTabs by relevance — most overlapping members shown first.
     @Published var conversationMemberIds: Set<String> = []
+    /// When set, the LootTabView's compact strip swaps its normal "Add
+    /// Receipt" content for an Apple Pay reminder so the sender can see the
+    /// payment info while reaching the iMessage Apple Cash drawer. Cleared
+    /// by tapping the X on the reminder card.
+    @Published var pendingApplePayInfo: PendingApplePayInfo? = nil
 
     /// Opens a URL in Safari app (via extensionContext). Set by MessagesViewController.
     var openInSafari: ((URL) -> Void)?
@@ -325,6 +407,13 @@ final class LootUIModel: ObservableObject {
     /// Sends a styled settlement card into the active iMessage conversation.
     /// Args: (fromName, toName, amountCents, methodName, tabColorHex)
     var sendSettlementCard: ((String, String, Int, String, String?) -> Void)?
+
+    /// Apple Pay handoff: sends a settlement card AND inserts a how-to card
+    /// into the compose tray with a shared MSSession, so the user can either
+    /// open the Apple Cash drawer (and the how-to is harmlessly dropped) or
+    /// hit send on the how-to (which replaces the settlement card in chat).
+    /// Args: (fromName, toName, amountCents, tabColorHex)
+    var sendApplePayHandoff: ((String, String, Int, String?) -> Void)?
 
     /// Inserts a payment-request card into the iMessage draft box (user presses Send).
     /// Args: (creditorName, debtorName, amountCents, tabColorHex, request metadata)

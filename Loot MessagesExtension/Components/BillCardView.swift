@@ -146,6 +146,7 @@ struct SettlementCardView: View {
                     .font(.system(size: 11))
                     .foregroundColor(sub)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(toName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(fg)
