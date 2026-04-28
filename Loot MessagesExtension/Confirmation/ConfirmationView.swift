@@ -1088,41 +1088,49 @@ struct ConfirmationView: View {
             ? centsToDecimalString(updatedReceipt.tipCents)
             : ""
         onTipChanged(updatedTipAmount, centsToDecimalString(updatedReceipt.totalCents))
-        // Keep byItemItems in sync: update prices while preserving assignments
-        if mode == .byItems {
-            var matched = Set<UUID>()
-            byItemItems = updatedReceipt.items.map { newItem in
-                if let existing = byItemItems.first(where: {
-                    $0.label == newItem.label && !matched.contains($0.id)
-                }) {
-                    matched.insert(existing.id)
-                    var updated = existing
-                    updated.priceText = Money(cents: newItem.priceCents).inputString
-                    return updated
-                }
-                return LineItemForm(
-                    id: UUID(),
-                    label: newItem.label,
-                    priceText: Money(cents: newItem.priceCents).inputString,
-                    assignedGuestIds: []
-                )
+        // Keep byItemItems in sync even when currently in equally/custom mode.
+        // Otherwise, switching to by-items after editing receipt fields can show
+        // stale labels/prices until the user re-opens edit-receipt from by-items.
+        var matched = Set<UUID>()
+        byItemItems = updatedReceipt.items.map { newItem in
+            if let existing = byItemItems.first(where: {
+                $0.label == newItem.label && !matched.contains($0.id)
+            }) {
+                matched.insert(existing.id)
+                var updated = existing
+                updated.priceText = Money(cents: newItem.priceCents).inputString
+                return updated
             }
+            return LineItemForm(
+                id: UUID(),
+                label: newItem.label,
+                priceText: Money(cents: newItem.priceCents).inputString,
+                assignedGuestIds: []
+            )
         }
+        didInitByItem = true
         uiModel.currentReceipt = updatedReceipt
-        // Sync splitDraft non-item fields from the edited receipt.
+        // Sync splitDraft fields from the edited receipt.
         if var draft = uiModel.currentSplitDraft {
             draft.feesCents = updatedReceipt.feesCents
             draft.discountCents = updatedReceipt.discountCents
             draft.taxCents = updatedReceipt.taxCents
             draft.tipCents = updatedReceipt.tipCents
             draft.totalCents = updatedReceipt.totalCents
+            draft.items = byItemItems
+                .filter { $0.isComplete }
+                .map { item in
+                    SplitDraft.Item(
+                        id: item.id,
+                        label: item.label,
+                        priceCents: item.priceCents,
+                        assignedGuestIds: item.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
+                    )
+                }
             uiModel.currentSplitDraft = draft
         }
-        // In by-items mode, byItemItems has just been re-matched by
-        // label above (preserving assignedGuestIds). Push it through
-        // to currentSplitDraft.items so the send pipeline sees the
-        // up-to-date assignments. Out of by-items mode, items are
-        // not used downstream, so we skip the sync.
+        // In by-items mode, also run the canonical sync path so owed/ring state
+        // updates immediately while the panel is open.
         if mode == .byItems {
             syncByItemsToSplitDraft()
         }
