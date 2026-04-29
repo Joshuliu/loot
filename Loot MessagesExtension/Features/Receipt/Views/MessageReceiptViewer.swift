@@ -213,21 +213,26 @@ struct MessageReceiptViewer: View {
         // STEP 1: Broadcast the bubble update SYNCHRONOUSLY while the drawer
         // is still active and `conversation.selectedMessage` still points at
         // this bill. `sendBillUpdate`'s FRESH-SELECTED path needs that to
-        // grab the live MSSession iOS treats as authoritative. If we defer
-        // the broadcast until after the Firestore write (async, ~hundreds of
-        // ms later), the user has already navigated to tabview, the drawer
-        // is gone, selectedMessage no longer matches this docId — the path
-        // falls back to a stale anchored session which iOS rejects, so the
-        // bubble doesn't retract in place; a duplicate appears instead.
-        // Trade-off: if step 3's Firestore write fails, the bubble update
-        // already broadcast carries tid=nil (so the receiver sees "removed
-        // from tab"), but `sharedReceipts/{docId}.tid` stays set on the
-        // server until the next successful retry — minor sender/receiver
-        // divergence in the failure case, vs guaranteed duplicate-bubble
-        // bug in the success case under the old ordering.
+        // grab the live MSSession iOS treats as authoritative.
         uiModel.sendBillUpdate?(currentPayload, docId, .removedFromTab(tabName: removedTabName))
 
-        // STEP 2: Optimistic local UI updates + navigate to tabview.
+        // STEP 2: Update the in-place payload so the bill viewer re-renders
+        // without the tab badge — visual confirmation the action took. We
+        // intentionally DO NOT tear down the drawer (clear openedMessage*
+        // or change currentScreen). Cross-sender retraction depends on the
+        // MSSession iOS attached to the selected bubble staying valid until
+        // `conversation.send` completes; switching to .tabview synchronously
+        // dismounts MessageReceiptViewer and iOS treats that presentation
+        // change as a session invalidation, silently dropping the in-flight
+        // retract. (Same-sender retracts survive this because iOS keeps
+        // original-author sessions warmer, which is why the old code "worked"
+        // for own bills but not cross-sender.) The plain edit flow doesn't
+        // hit this because it never tears down the drawer either — keep the
+        // two flows symmetrical. User dismisses the drawer manually when
+        // ready; the "Remove from Tab" button hides itself once tid==nil.
+        uiModel.openedMessagePayload = currentPayload
+
+        // Optimistic local tab UI update.
         if let active = uiModel.activeTab, active.id == tabId {
             var updated = active
             updated.receiptCount = max(0, active.receiptCount - 1)
@@ -239,13 +244,7 @@ struct MessageReceiptViewer: View {
         if let receiptTab = uiModel.receiptTab, receiptTab.id == tabId {
             uiModel.receiptTab = nil
         }
-        uiModel.openedMessagePayload = nil
-        uiModel.openedMessageDocId = nil
-        uiModel.messageLoadingState = .idle
         uiModel.tabReceiptsRefreshNonce += 1
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            uiModel.currentScreen = .tabview
-        }
 
         // STEP 3: Persist tid removal in Firestore + recompute tab balances
         // in the background. The bubble update is already on its way.
