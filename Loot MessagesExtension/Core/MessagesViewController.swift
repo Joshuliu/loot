@@ -587,23 +587,17 @@ extension MessagesViewController {
 
         print("[BillUpdate] sendBillUpdate ENTER: docId=\(docId) action=\(action) activeDocId=\(activeBillUpdateDocId ?? "nil") activeSessionPtr=\(activeBillUpdateSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") perDocSessionPtr=\(perDocSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") freshSelectedSessionPtr=\(freshSelectedSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") autoSendReady=\(isConversationAutoSendReady) senderUid=\(senderUid ?? "nil") myUid=\(myUid) iAmSender=\(iAmSender)")
 
-        // iMessage's `conversation.send` only retracts a bubble in place when
-        // the local participant was the original sender of that message. If
-        // someone else sent it, the API silently creates a NEW bubble instead
-        // of replacing the existing one — the SDK gives us no error and no
-        // way to know besides observing the duplicate. canEdit (in
-        // LootMessagePayload) allows tab members to edit each other's bills
-        // locally + via Firestore, but the iMessage transport doesn't honor
-        // cross-sender retractions. So if we're not the original sender,
-        // skip the broadcast entirely — Firestore is the source of truth and
-        // the recipient will see fresh data on next tap. Cost: the bubble
-        // visually stays in its old form until tapped. Benefit: no duplicate
-        // bubble appears. Bills with no `su` field (legacy payloads) fall
-        // through to the broadcast path because we can't determine sender.
-        if let senderUid, !senderUid.isEmpty, !iAmSender {
-            print("[BillUpdate] sendBillUpdate SKIP-CROSS-SENDER: docId=\(docId) — I am not the original sender (\(senderUid)), iOS would create a duplicate bubble. Firestore already updated.")
-            return
-        }
+        // NOTE on cross-sender behavior: when a non-original-sender taps
+        // someone else's bill bubble and triggers `conversation.send` on the
+        // attached MSSession, iMessage RETRACTS the original bubble and
+        // inserts a new one authored by the local participant. The
+        // attribution flips, but the bubble count stays at one — which is
+        // exactly the behavior we want for cross-sender edits / removeFromTab.
+        // An earlier guard short-circuited this path on the assumption that
+        // it produced duplicate bubbles; device testing didn't confirm that,
+        // so the broadcast now runs for everyone. If duplicates ever DO
+        // appear cross-sender, narrow the skip to the specific failure mode
+        // (don't blanket-skip again) and capture a repro before doing so.
 
         if !signature.isEmpty,
            !action.bypassesSplitSignatureDedup,
