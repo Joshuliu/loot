@@ -16,6 +16,7 @@ struct ReceiptView: View {
     var showBackRow: Bool = true
     var showCaptureButton: Bool = true
     var compactCaptureButton: Bool = false
+    var onReceiptEdited: ((ReceiptDisplay) -> Void)? = nil
     @State private var showCapture: Bool = false
     @State private var showEditReceipt: Bool = false
 
@@ -164,6 +165,7 @@ struct ReceiptView: View {
                 uiModel: uiModel,
                 onSave: { updatedReceipt in
                     uiModel.currentReceipt = updatedReceipt
+                    onReceiptEdited?(updatedReceipt)
                     showEditReceipt = false
                 },
                 onCancel: {

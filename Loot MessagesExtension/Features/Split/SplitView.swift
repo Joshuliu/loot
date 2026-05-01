@@ -517,6 +517,13 @@ extension ConfirmationView {
                 )
             }
 
+        // Source the breakdown from the receipt directly. The local
+        // feesString/taxString/tipString/discountString are seeded once when
+        // entering by-items mode and never re-bound to a TextField, so they
+        // can go stale if the user edits the receipt afterwards. Reading from
+        // the receipt here keeps the draft consistent with what the user just
+        // saved, regardless of which entry point opened EditReceiptView.
+        let r = uiModel.currentReceipt
         return SplitDraft(
             guests: guests,
             payerGuestId: payerGuestId,
@@ -524,10 +531,10 @@ extension ConfirmationView {
             totalCents: totalCents,
             perGuestCents: guestAmountsCents,
             items: items,
-            feesCents: stringToCents(feesString),
-            taxCents: stringToCents(taxString),
-            tipCents: stringToCents(tipString),
-            discountCents: stringToCents(discountString)
+            feesCents: r?.feesCents ?? stringToCents(feesString),
+            taxCents: r?.taxCents ?? stringToCents(taxString),
+            tipCents: r?.tipCents ?? stringToCents(tipString),
+            discountCents: r?.discountCents ?? stringToCents(discountString)
         )
     }
 
