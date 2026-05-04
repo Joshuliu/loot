@@ -17,6 +17,12 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        
+        #if DEBUG
+        TabBalanceTests.runAll()
+        SplitFlowTests.runAll()
+        #endif
+        
         SharedReceiptService.configureFirebaseIfNeeded()
 
         // Establish anonymous auth immediately so Firestore's WebSocket stream
@@ -598,7 +604,7 @@ private extension LootMessagePayload {
 
 // MARK: - Build SplitPayload / ReceiptPayload
 
-private extension SplitPayload {
+internal extension SplitPayload {
     static func from(draft: SplitDraft?, participantCount: Int, totalCents: Int) -> SplitPayload {
         // Seed guests if no draft
         let guests: [Guest] = {

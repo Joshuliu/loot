@@ -417,6 +417,23 @@ struct RootContainerView: View {
         if draft.mode == .equally {
             draft.perGuestCents = equalSplitCents(total: receipt.totalCents, count: activeGuests.count)
         }
+        
+        // For by-items, sync each draft item's price from the matching receipt item so
+        // EditReceiptView price changes flow through to the send-time math. Match by
+        // label, consuming each receipt slot once to handle duplicate labels safely.
+        if draft.mode == .byItems {
+            var consumed = Set<Int>()
+            draft.items = draft.items.map { it in
+                var updated = it
+                if let matchIdx = receipt.items.enumerated().first(where: { idx, ri in
+                    !consumed.contains(idx) && ri.label == it.label
+                })?.offset {
+                    consumed.insert(matchIdx)
+                    updated.priceCents = receipt.items[matchIdx].priceCents
+                }
+                return updated
+            }
+        }
 
         // Keep payer valid if guest membership changed earlier in the flow.
         if !draft.guests.contains(where: { $0.id == draft.payerGuestId && $0.isIncluded }) {
@@ -486,16 +503,22 @@ struct RootContainerView: View {
             }
         }()
 
+        // Receipt is the source of truth for tax/fees/tip/discount/total.
+        // Draft only contributes split assignments (items in by-items mode).
+        // Using draft fields here would clobber receipt edits made through any
+        // path that doesn't run reconcileSplitDraftWithLiveReceipt (e.g. saving
+        // EditReceiptView from ReceiptView).
+        let derivedSubtotal = updatedItems.reduce(0) { $0 + $1.priceCents }
         uiModel.currentReceipt = ReceiptDisplay(
             id: r.id,
             title: r.title,
             createdAt: r.createdAt,
-            subtotalCents: updatedItems.reduce(0) { $0 + $1.priceCents },
-            feesCents: effectiveDraft.feesCents,
-            taxCents: effectiveDraft.taxCents,
-            tipCents: effectiveDraft.tipCents,
-            discountCents: effectiveDraft.discountCents,
-            totalCents: effectiveDraft.totalCents,
+            subtotalCents: derivedSubtotal > 0 ? derivedSubtotal : r.subtotalCents,
+            feesCents: r.feesCents,
+            taxCents: r.taxCents,
+            tipCents: r.tipCents,
+            discountCents: r.discountCents,
+            totalCents: r.totalCents,
             items: updatedItems
         )
 
@@ -941,13 +964,9 @@ struct RootContainerView: View {
                         items: receipt.items
                     )
                 }
-                if var draft = uiModel.currentSplitDraft {
-                    let oldTip = draft.tipCents
-                    let newTip = stringToCents(tip)
-                    draft.tipCents = newTip
-                    draft.totalCents = draft.totalCents - oldTip + newTip
-                    uiModel.currentSplitDraft = draft
-                }
+                // Pull every draft total from the live receipt so EditReceiptView's
+                // override-total / item-price changes flow through
+                reconcileSplitDraftWithLiveReceipt(trigger: "tip/edit change")
             },
             onSelectMode: { newMode in
                 if var draft = uiModel.currentSplitDraft {
@@ -1013,11 +1032,22 @@ struct RootContainerView: View {
     @ViewBuilder
     private var receiptContent: some View {
         if let receipt = uiModel.currentReceipt {
-            ReceiptView(uiModel: uiModel, receipt: receipt) {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = returnScreen
+            ReceiptView(
+                uiModel: uiModel,
+                receipt: receipt,
+                onBack: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        uiModel.currentScreen = returnScreen
+                    }
+                },
+                onReceiptEdited: { updatedReceipt in
+                    // Pre-send: keep tipAmount and the split draft in sync with edits
+                    // made from the receipt preview, so the bill card and send-time
+                    // payload reflect the new tax/fees/tip.
+                    tipAmount = updatedReceipt.tipCents > 0 ? centsToDecimalString(updatedReceipt.tipCents) : ""
+                    reconcileSplitDraftWithLiveReceipt(trigger: "receipt preview edit")
                 }
-            }
+            )
             .ignoresSafeArea(edges: .bottom)
         } else {
             ProgressView("Loading…")

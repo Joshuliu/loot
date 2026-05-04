@@ -991,6 +991,14 @@ struct ConfirmationView: View {
                     //uiModel.currentReceipt = updatedReceipt
                     let updatedTipAmount = updatedReceipt.tipCents > 0 ? centsToDecimalString(updatedReceipt.tipCents) : ""
                     onTipChanged(updatedTipAmount, centsToDecimalString(updatedReceipt.totalCents))
+                    // Re-seed SplitView's breakdown strings so buildSplitDraft picks up
+                    // tax/fees/tip/discount that were just edited. Without this, the next
+                    // buildSplitDraft reads stale "" values and the by-items math allocates
+                    // only tip — leaving tax+fees fully absorbed by the payer.
+                    feesString = updatedReceipt.feesCents > 0 ? ReceiptDisplay.money(updatedReceipt.feesCents) : ""
+                    taxString = updatedReceipt.taxCents > 0 ? ReceiptDisplay.money(updatedReceipt.taxCents) : ""
+                    tipString = updatedReceipt.tipCents > 0 ? ReceiptDisplay.money(updatedReceipt.tipCents) : ""
+                    discountString = updatedReceipt.discountCents > 0 ? ReceiptDisplay.money(updatedReceipt.discountCents) : ""
                     // Keep byItemItems in sync: update prices while preserving assignments
                     if mode == .byItems {
                         var matched = Set<UUID>()
