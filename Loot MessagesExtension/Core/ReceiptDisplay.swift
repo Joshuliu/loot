@@ -2,6 +2,7 @@ import Foundation
 import Combine
 import UIKit
 import Messages
+import FirebaseFirestore
 
 // MARK: - Loading State for async operations
 
@@ -31,20 +32,46 @@ enum LoadingState<T> {
 
 struct ReceiptDisplay: Identifiable, Codable, Equatable {
 
-    struct Responsible: Hashable, Codable {
-        let slotIndex: Int
-        let displayName: String
-
-        var badgeText: String {
-            BadgeColors.initials(from: displayName, fallback: slotIndex)
-        }
-    }
-
     struct Item: Identifiable, Codable, Equatable {
         let id: String
         let label: String
         let priceCents: Int
-        let responsible: [Responsible]
+        /// Canonical assignment data — PersonID list. By-items consumers
+        /// (SplitsSummaryView, ReceiptPayload.from) read this directly.
+        let assigneeIDs: [PersonID]
+
+        init(id: String, label: String, priceCents: Int,
+             assigneeIDs: [PersonID] = []) {
+            self.id = id
+            self.label = label
+            self.priceCents = priceCents
+            self.assigneeIDs = assigneeIDs
+        }
+
+        // Custom Codable: assigneeIDs defaults to [] when missing.
+        // Pre-Phase-2.7 SessionPersistence data with `responsible` keys is
+        // tolerated — that key is silently dropped during decode.
+        private enum CodingKeys: String, CodingKey {
+            case id, label, priceCents, assigneeIDs
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            self.id = try c.decode(String.self, forKey: .id)
+            self.label = try c.decode(String.self, forKey: .label)
+            self.priceCents = try c.decode(Int.self, forKey: .priceCents)
+            self.assigneeIDs = try c.decodeIfPresent([PersonID].self, forKey: .assigneeIDs) ?? []
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(label, forKey: .label)
+            try c.encode(priceCents, forKey: .priceCents)
+            if !assigneeIDs.isEmpty {
+                try c.encode(assigneeIDs, forKey: .assigneeIDs)
+            }
+        }
     }
 
     /// Individual tax/fee/discount line items for display (e.g. "Tax $2.50", "Discount -$5.00").
@@ -149,12 +176,72 @@ struct RequestCardMetadata {
     var debtorId: String?
 }
 
+/// Payload for the compact-mode Apple Pay reminder. Set by the Pay Now flow
+/// after the sender selects Apple Pay; cleared when the sender dismisses the
+/// reminder. iOS 26+ wraps this with "tap the Apple Cash drawer below"; older
+/// iOS gets the "open a 1:1 chat" copy.
+struct PendingApplePayInfo: Equatable {
+    var toName: String
+    var amountCents: Int
+    var tabColorHex: String?
+}
+
+/// Identifies the kind of action that triggered a bill bubble update so the
+/// iMessage transcript notice ("X <verb>...") can be tailored. iOS prepends
+/// the sender's contact name automatically; the summaryText is just the
+/// suffix verb phrase.
+enum BillUpdateAction {
+    case claimed
+    case optedOut
+    case paidToggled(paid: Bool)
+    case edited
+    case removedFromTab(tabName: String?)
+
+    var summaryText: String {
+        switch self {
+        case .claimed: return "joined a bill"
+        case .optedOut: return "left a bill"
+        case .paidToggled(let paid): return paid ? "marked a payment paid" : "marked a payment unpaid"
+        case .edited: return "updated a bill"
+        case .removedFromTab(let tabName):
+            if let tabName, !tabName.isEmpty {
+                return "removed a bill from \(tabName)"
+            }
+            return "removed a bill from a tab"
+        }
+    }
+
+    /// True when the bill-update transport must NOT short-circuit on an
+    /// unchanged SplitPayload signature. Tab-association changes leave the
+    /// split untouched but still need to re-broadcast the bubble (so the
+    /// recipient's bubble sheds its tab badge / picks up the new metadata).
+    var bypassesSplitSignatureDedup: Bool {
+        switch self {
+        case .removedFromTab: return true
+        default: return false
+        }
+    }
+}
+
 @MainActor
 final class LootUIModel: ObservableObject {
     @Published var isExpanded: Bool = false
 
     // Screen state - persists across view recreations
-    @Published var currentScreen: AppScreen = .tabview
+    @Published var currentScreen: AppScreen = .tabview {
+        didSet {
+            guard oldValue != currentScreen else { return }
+            print("[Screen] \(oldValue) -> \(currentScreen)")
+            // Stack trace only for the specific bug under investigation:
+            // "click a receipt to open it but lands on .tabview instead."
+            // Captures any unexpected reversion to .tabview right after a
+            // navigation away from it.
+            if currentScreen == .tabview && oldValue == .messageViewer {
+                print("[Screen] WARN: .messageViewer -> .tabview — call stack:")
+                Thread.callStackSymbols.prefix(12).forEach { print("[Screen]   \($0)") }
+            }
+        }
+    }
 
     @Published var currentReceipt: ReceiptDisplay? = nil
     @Published var parsedReceipt: ParsedReceipt? = nil
@@ -193,9 +280,103 @@ final class LootUIModel: ObservableObject {
     @Published var isLoadingReceipt: Bool = false
 
     // MARK: - Loot Tabs state
-    @Published var activeTab: LootTab? = nil
+
+    /// Live tab document for the conversation. A Firestore snapshot listener
+    /// (managed below) keeps this in sync with remote changes — when another
+    /// participant joins, leaves, edits the tab, or adds a receipt, this
+    /// updates automatically without requiring a manual refresh.
+    @Published var activeTab: LootTab? = nil {
+        willSet {
+            // Defensive guard: reject same-tab stub overwrites at the property
+            // setter level so every call site (including direct assignments
+            // that bypass `setActiveTabIfChanged`) is protected. Only triggers
+            // for SAME id with rich -> empty members downgrade. Different id
+            // (real tab switch) and full updates pass through unchanged.
+            if let current = activeTab,
+               let next = newValue,
+               current.id == next.id,
+               !current.members.isEmpty,
+               next.members.isEmpty {
+                // Cannot mutate `newValue` from willSet, so we log here and
+                // override in didSet by reverting to the previous value.
+                print("[ActiveTab] REJECT-STUB: would have overwritten \(current.members.count) members with empty stub for tab \(current.id ?? "nil")")
+                Thread.callStackSymbols.prefix(12).forEach { print("[ActiveTab]   \($0)") }
+            }
+        }
+        didSet {
+            // Revert if willSet flagged a stub overwrite. didSet already saw
+            // the new value land; we restore from oldValue, which itself
+            // triggers another didSet (now from empty -> full) that we DON'T
+            // want to revert. Use a guard so we only revert once.
+            if let old = oldValue,
+               let new = activeTab,
+               old.id == new.id,
+               !old.members.isEmpty,
+               new.members.isEmpty,
+               !isRevertingActiveTabStub {
+                isRevertingActiveTabStub = true
+                activeTab = old
+                isRevertingActiveTabStub = false
+                return
+            }
+
+            let oldDesc = oldValue.map { "id=\($0.id ?? "nil") membersCount=\($0.members.count) memberIdsCount=\($0.memberIds.count)" } ?? "nil"
+            let newDesc = activeTab.map { "id=\($0.id ?? "nil") membersCount=\($0.members.count) memberIdsCount=\($0.memberIds.count)" } ?? "nil"
+            print("[ActiveTab] didSet: \(oldDesc) -> \(newDesc)")
+            if let oldTab = oldValue,
+               let newTab = activeTab,
+               oldTab.id == newTab.id,
+               !oldTab.members.isEmpty,
+               newTab.members.isEmpty {
+                print("[ActiveTab] WARN: members vanished for same tab id — call stack:")
+                Thread.callStackSymbols.prefix(12).forEach { print("[ActiveTab]   \($0)") }
+            }
+            syncActiveTabListener(oldId: oldValue?.id, newId: activeTab?.id)
+        }
+    }
+    /// Re-entrancy guard so the didSet revert doesn't recurse into itself.
+    private var isRevertingActiveTabStub: Bool = false
     /// Tab that belongs to the currently-opened receipt (may differ from activeTab).
     @Published var receiptTab: LootTab? = nil
+
+    private var activeTabListener: ListenerRegistration? = nil
+    /// Tracks which tabId the current listener is bound to so listener-fed
+    /// updates (which assign back to `activeTab` and re-trigger didSet) don't
+    /// tear down and re-attach the listener for the same id.
+    private var activeTabListenerId: String? = nil
+
+    private func syncActiveTabListener(oldId: String?, newId: String?) {
+        // Same id (or both nil) means the listener-fed update is what
+        // triggered didSet — leave the existing subscription alone.
+        guard oldId != newId else { return }
+
+        activeTabListener?.remove()
+        activeTabListener = nil
+        activeTabListenerId = nil
+
+        guard let newId, !newId.isEmpty else { return }
+
+        activeTabListenerId = newId
+        activeTabListener = TabService.shared.listenToTab(tabId: newId) { [weak self] updated in
+            // Tab might have been swapped/cleared between the snapshot fire
+            // and the main-actor hop; only adopt updates for the still-bound
+            // tab id.
+            guard let self, self.activeTabListenerId == updated.id else { return }
+            self.activeTab = updated
+            // The tab doc is rewritten on every receipt-add, receipt-edit, and
+            // settlement (see syncTabDerivedState + recordSettlement). Bumping
+            // the nonce here makes LootTabView and TabSettleUpCard reload their
+            // payments/settlements lists when a remote participant adds one,
+            // matching how the members list already updates from `activeTab`.
+            self.tabReceiptsRefreshNonce &+= 1
+            // Mirror to UserDefaults cache so an extension restart picks up
+            // the freshest member set immediately rather than briefly showing
+            // stale data while the listener round-trips.
+            if let convKey = self.conversationKey {
+                TabService.shared.cacheTab(updated, for: convKey)
+            }
+        }
+    }
     @Published var tabReceiptsRefreshNonce: Int = 0
     @Published var userTabs: [LootTab] = []
     @Published var localParticipantId: String? = nil
@@ -205,10 +386,20 @@ final class LootUIModel: ObservableObject {
     /// Tracks whether a bill had an explicit ignoredUUIDs list in the inline payload envelope.
     @Published var hasIgnoredUUIDsListByBill: [String: Bool] = [:]
     @Published var pendingTabInviteId: String? = nil
+    /// Bumped every time `applyMessage` re-handles a tab-invite URL. Lets
+    /// JoinTabView's `.task(id:)` re-fire when the user re-taps the SAME
+    /// invite bubble (which doesn't change `pendingTabInviteId` and so
+    /// otherwise wouldn't trigger a fresh fetch).
+    @Published var pendingTabInviteRefreshNonce: Int = 0
     @Published var pendingPayRequest: PendingPayRequest? = nil
     /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
     /// Used to sort userTabs by relevance — most overlapping members shown first.
     @Published var conversationMemberIds: Set<String> = []
+    /// When set, the LootTabView's compact strip swaps its normal "Add
+    /// Receipt" content for an Apple Pay reminder so the sender can see the
+    /// payment info while reaching the iMessage Apple Cash drawer. Cleared
+    /// by tapping the X on the reminder card.
+    @Published var pendingApplePayInfo: PendingApplePayInfo? = nil
 
     /// Opens a URL in Safari app (via extensionContext). Set by MessagesViewController.
     var openInSafari: ((URL) -> Void)?
@@ -217,13 +408,20 @@ final class LootUIModel: ObservableObject {
     /// Args: (fromName, toName, amountCents, methodName, tabColorHex)
     var sendSettlementCard: ((String, String, Int, String, String?) -> Void)?
 
+    /// Apple Pay handoff: sends a settlement card AND inserts a how-to card
+    /// into the compose tray with a shared MSSession, so the user can either
+    /// open the Apple Cash drawer (and the how-to is harmlessly dropped) or
+    /// hit send on the how-to (which replaces the settlement card in chat).
+    /// Args: (fromName, toName, amountCents, tabColorHex)
+    var sendApplePayHandoff: ((String, String, Int, String?) -> Void)?
+
     /// Inserts a payment-request card into the iMessage draft box (user presses Send).
     /// Args: (creditorName, debtorName, amountCents, tabColorHex, request metadata)
     var sendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)?
 
     /// Sends an updated live receipt card on the current session so Messages replaces the bubble in place.
-    /// Args: (payload, Firestore docId)
-    var sendBillUpdate: ((LootMessagePayload, String) -> Void)?
+    /// Args: (payload, Firestore docId, action that triggered the update)
+    var sendBillUpdate: ((LootMessagePayload, String, BillUpdateAction) -> Void)?
 
     func hasIgnoredUUIDsList(for billId: String?) -> Bool {
         guard let billId else { return false }
@@ -368,8 +566,7 @@ extension ParsedReceipt {
             return ReceiptDisplay.Item(
                 id: UUID().uuidString,
                 label: labelWithQty,
-                priceCents: itemCents(it),
-                responsible: []
+                priceCents: itemCents(it)
             )
         }
         .filter { !$0.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

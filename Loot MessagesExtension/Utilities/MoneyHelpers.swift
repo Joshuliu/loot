@@ -8,52 +8,56 @@
 import Foundation
 
 /// Parses a user-entered currency string (e.g. "$12.50", "12.50", "12") into integer cents.
+/// Negative values are clamped to 0; for signed parsing use `signedStringToCents`.
 func stringToCents(_ raw: String) -> Int {
-    let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        .replacingOccurrences(of: "$", with: "")
-        .replacingOccurrences(of: ",", with: "")
-    guard !s.isEmpty else { return 0 }
-    if s.contains(".") {
-        let parts = s.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        let dollars = Int(parts.first ?? "0") ?? 0
-        let centsRaw = parts.count > 1 ? String(parts[1]) : ""
-        let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
-        let cents = Int(String(cents2.prefix(2))) ?? 0
-        return max(0, dollars * 100 + cents)
-    }
-    return max(0, (Int(s) ?? 0) * 100)
+    Money(parsing: raw).cents
 }
 
 /// Formats cents as a plain decimal string for text field display (e.g. 1250 → "12.50", no $ sign).
 /// Preserves sign for negative values (e.g. -500 → "-5.00").
 func centsToDecimalString(_ cents: Int) -> String {
-    let dollars = abs(cents) / 100
-    let rem = abs(cents) % 100
-    let sign = cents < 0 ? "-" : ""
-    return "\(sign)\(dollars).\(String(format: "%02d", rem))"
+    Money(cents: cents).inputString
 }
 
 /// Parses a signed currency string (e.g. "-5.00", "12.50") into integer cents.
 /// Unlike stringToCents, this preserves negative values (used for fee/discount fields).
 func signedStringToCents(_ raw: String) -> Int {
-    let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        .replacingOccurrences(of: "$", with: "")
-        .replacingOccurrences(of: ",", with: "")
-    guard !s.isEmpty else { return 0 }
-    let isNegative = s.hasPrefix("-")
-    let abs = isNegative ? String(s.dropFirst()) : s
-    let value: Int
-    if abs.contains(".") {
-        let parts = abs.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
-        let dollars = Int(parts.first ?? "0") ?? 0
-        let centsRaw = parts.count > 1 ? String(parts[1]) : ""
-        let cents2 = centsRaw.padding(toLength: 2, withPad: "0", startingAt: 0)
-        let cents = Int(String(cents2.prefix(2))) ?? 0
-        value = dollars * 100 + cents
-    } else {
-        value = (Int(abs) ?? 0) * 100
+    Money(parsingSigned: raw).cents
+}
+
+/// Splits `total` cents across `count` participants, distributing remainder
+/// cents to the earliest indices so shares always sum back to `total`.
+func splitCentsEvenly(total: Int, count: Int) -> [Int] {
+    guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
+    var out = Array(repeating: total / count, count: count)
+    let remainder = total - out.reduce(0, +)
+    if remainder > 0 {
+        for i in 0..<min(remainder, count) { out[i] += 1 }
     }
-    return isNegative ? -value : value
+    return out
+}
+
+/// Computes one guest's by-items subtotal using deterministic remainder handling.
+/// Guest ordering defines which assignees receive remainder cents first.
+func byItemsGuestSubtotalCents(
+    guestID: PersonID,
+    guestOrder: [PersonID],
+    items: [(priceCents: Int, assignedGuestIDs: [PersonID])]
+) -> Int {
+    let orderIndex: [PersonID: Int] = Dictionary(uniqueKeysWithValues: guestOrder.enumerated().map { ($1, $0) })
+
+    return items.reduce(0) { acc, item in
+        let assignedUnique = Set(item.assignedGuestIDs)
+        let assignedSorted = assignedUnique.sorted { lhs, rhs in
+            let li = orderIndex[lhs] ?? Int.max
+            let ri = orderIndex[rhs] ?? Int.max
+            if li == ri { return lhs.rawValue < rhs.rawValue }
+            return li < ri
+        }
+        guard let guestPosition = assignedSorted.firstIndex(of: guestID) else { return acc }
+        let shares = splitCentsEvenly(total: max(0, item.priceCents), count: assignedSorted.count)
+        return acc + (shares.indices.contains(guestPosition) ? shares[guestPosition] : 0)
+    }
 }
 
 // MARK: - Split Math (equal/custom/by-items)
@@ -81,7 +85,7 @@ enum SplitMath {
 
         switch mode {
         case .equally:
-            let shares = splitEvenly(total: totalCents, count: included.count)
+            let shares = splitCentsEvenly(total: totalCents, count: included.count)
             for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
             return owed
 
@@ -89,7 +93,7 @@ enum SplitMath {
             if let perGuestActive, perGuestActive.count == included.count {
                 for (i, idx) in included.enumerated() { owed[idx] = max(0, perGuestActive[i]) }
             } else {
-                let shares = splitEvenly(total: totalCents, count: included.count)
+                let shares = splitCentsEvenly(total: totalCents, count: included.count)
                 for (i, idx) in included.enumerated() { owed[idx] = shares[i] }
             }
             return owed
@@ -100,7 +104,7 @@ enum SplitMath {
             for it in items {
                 let assigned = it.assignedSlots.filter { guests.indices.contains($0) && guests[$0].inc }
                 let targets = assigned.isEmpty ? [safePayer] : assigned.sorted()
-                let parts = splitEvenly(total: max(0, it.priceCents), count: targets.count)
+                let parts = splitCentsEvenly(total: max(0, it.priceCents), count: targets.count)
                 for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
             }
 
@@ -115,23 +119,13 @@ enum SplitMath {
         }
     }
 
-    private static func splitEvenly(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) { out[i] += 1 }
-        }
-        return out
-    }
-
     private static func allocateProportional(total: Int, base: [Int], included: [Int]) -> [Int] {
         var out = Array(repeating: 0, count: base.count)
         guard total != 0 else { return out }
 
         let sumBase = included.reduce(0) { $0 + max(0, base[$1]) }
         if sumBase <= 0 {
-            let shares = splitEvenly(total: total, count: included.count)
+            let shares = splitCentsEvenly(total: total, count: included.count)
             for (i, idx) in included.enumerated() { out[idx] = shares[i] }
             return out
         }

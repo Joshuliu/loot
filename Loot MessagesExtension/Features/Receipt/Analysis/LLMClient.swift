@@ -689,7 +689,7 @@ final class LLMClient {
         var taxCents = 0
         var tipCents = 0
         var feesCents = 0
-        var discountCents = 0
+        let discountCents = 0
         var issues: [String] = []
         var discountCandidates: [DiscountCandidate] = []
 
@@ -734,7 +734,7 @@ final class LLMClient {
 
         func apply(_ candidate: DiscountCandidate, mode: DiscountResolutionMode, to state: ResolutionState) -> ResolutionState {
             var nextItems = state.items
-            var nextFees = state.feesCents
+            let nextFees = state.feesCents
             var nextDiscount = state.discountCents
             var nextIssues = state.issues
             var nextDiscountModes = state.discountModes
@@ -835,17 +835,21 @@ final class LLMClient {
             guard let cents = item.cents else { return true }
             return cents != 0
         }
-        let derivedSubtotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents + resolved.discountCents
-        let subtotal = max(0, derivedSubtotal)
+        let subtotalFromRows = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+        let totalFromRows = subtotalFromRows + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+        let derivedSubtotalFromKnownTotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents + resolved.discountCents
+
+        // Prefer what phase 2 actually extracted from rows so the projected total can differ
+        // from phase 1 when the detailed pass finds better values.
+        let shouldUseRowProjection = totalFromRows > 0
+        let subtotal = shouldUseRowProjection ? max(0, subtotalFromRows) : max(0, derivedSubtotalFromKnownTotal)
 
         var finalIssues = resolved.issues
-        if derivedSubtotal < 0 {
+        if !shouldUseRowProjection && derivedSubtotalFromKnownTotal < 0 {
             finalIssues.append("Derived subtotal was negative; clamped to zero")
         }
-
-        let resolvedTotal = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) } + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
-        if resolvedTotal != knownTotalCents {
-            finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - resolvedTotal)) cents")
+        if totalFromRows != knownTotalCents {
+            finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - totalFromRows)) cents")
         }
 
         let finalLineItems = cleanedRows.compactMap { row -> ReceiptDisplay.LineItem? in

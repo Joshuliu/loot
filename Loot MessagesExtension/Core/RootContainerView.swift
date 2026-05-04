@@ -16,7 +16,6 @@ struct RootContainerView: View {
     @State private var paymentMethodsIsPostSend: Bool = false
 
     @State private var receiptName: String = ""
-    @State private var splitDraft: SplitDraft? = nil
     @State private var amountString: String = "0"
     @State private var tipAmount: String = ""
     @Namespace private var titleNamespace
@@ -25,17 +24,16 @@ struct RootContainerView: View {
     private var totalAmount: String {
         // If we have a receipt with breakdown, use its total (includes tax, fees, discounts, tip)
         if let receipt = uiModel.currentReceipt {
-            return String(format: "%.2f", Double(receipt.totalCents) / 100.0)
+            return Money(cents: receipt.totalCents).inputString
         }
-        
+
         // Otherwise, calculate from manual entry (subtotal + tip only, no tax/fees in manual flow)
         guard !tipAmount.isEmpty, tipAmount != "$0", tipAmount != "$0.00" else {
             return amountString
         }
-        let subtotal = stringToCents(amountString)
-        let tip = stringToCents(tipAmount)
-        let total = subtotal + tip
-        return String(format: "%.2f", Double(total) / 100.0)
+        let subtotal = Money(parsing: amountString)
+        let tip = Money(parsing: tipAmount)
+        return (subtotal + tip).inputString
     }
     
     let participantCount: Int
@@ -52,7 +50,7 @@ struct RootContainerView: View {
     @State private var pendingTabId: String = ""
     @State private var tabInviteCameFromTabView: Bool = false
 
-    // DEBUG: Set to true to only run VisionKit OCR and print JSON (no Gemini)
+    // DEBUG: Set to true to only run VisionKit OCR and print JSON (no AI)
     private let DEBUG_OCR_ONLY = false
     // DEBUG: Set to true to copy OCR transcript to clipboard after each scan
     private let DEBUG_COPY_TRANSCRIPT = true
@@ -76,7 +74,6 @@ struct RootContainerView: View {
 
     // Backend user restore state
     @State private var isCheckingBackendUser: Bool = true
-
     init(uiModel: LootUIModel) {
         self.uiModel = uiModel
         self.participantCount = 1
@@ -267,7 +264,7 @@ struct RootContainerView: View {
 
                 await MainActor.run {
                     // Update form fields with phase 1 data
-                    amountString = String(format: "%.2f", Double(total) / 100.0)
+                    amountString = Money(cents: total).inputString
 
                     if let merchant = phase1.merchant, !merchant.isEmpty {
                         receiptName = merchant
@@ -307,11 +304,21 @@ struct RootContainerView: View {
                         }
                         print("[Scan] Phase 2 complete: \(phase2.items.count) items")
 
-                        // Build full ParsedReceipt for compatibility
+                        let breakdown = (
+                            fees: max(0, phase2.fees_cents ?? 0),
+                            discount: max(0, phase2.discount_cents ?? 0),
+                            tax: max(0, phase2.tax_cents ?? 0),
+                            tip: max(0, phase2.tip_cents ?? 0)
+                        )
+                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees + breakdown.discount - breakdown.tip))
+                        let phase2ProjectedTotalCents = subtotal + breakdown.tax + breakdown.fees - breakdown.discount + breakdown.tip
+
+                        // Build full ParsedReceipt for compatibility, using the projected phase-2 total
+                        // (not the coarse phase-1 total) so downstream UI can reflect corrections.
                         let fullParsed = ParsedReceipt(
                             merchant: phase1.merchant,
-                            total_cents: knownTotal,
-                            subtotal_cents: phase2.subtotal_cents,
+                            total_cents: phase2ProjectedTotalCents,
+                            subtotal_cents: subtotal,
                             tax_cents: phase2.tax_cents,
                             tip_cents: phase2.tip_cents,
                             fees_cents: phase2.fees_cents,
@@ -321,42 +328,42 @@ struct RootContainerView: View {
                         )
                         uiModel.parsedReceipt = fullParsed
 
-                        // Extract breakdown
-                        let breakdown = fullParsed.breakdownDefaults()
-                        let subtotal = max(0, phase2.subtotal_cents ?? (knownTotal - breakdown.tax - breakdown.fees + breakdown.discount - breakdown.tip))
-
-                        // Check if user already added a tip manually (don't overwrite it)
+                        // If the user added their own tip during scanning (e.g. tapped "Add Tip"
+                        // before phase 2 landed), treat it as ADDITIONAL on top of any tip the
+                        // receipt itself had — keeps the total they explicitly approved sticky.
                         let userAddedTip = !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
                         let existingUserTip = uiModel.currentReceipt?.tipCents ?? 0
 
-                        // Only prefill tip from scan if user hasn't added one manually
-                        if !userAddedTip && existingUserTip == 0 && breakdown.tip > 0 {
-                            tipAmount = String(format: "%.2f", Double(breakdown.tip) / 100.0)
-                        }
-
-                        // Preserve user's tip if they added one, otherwise use scanned tip
-                        let finalTipCents: Int
+                        let userTipCents: Int
                         if userAddedTip {
-                            finalTipCents = stringToCents(tipAmount)
+                            userTipCents = stringToCents(tipAmount)
                         } else if existingUserTip > 0 {
-                            finalTipCents = existingUserTip
+                            userTipCents = existingUserTip
                         } else {
-                            finalTipCents = breakdown.tip
+                            userTipCents = 0
                         }
 
+                        let finalTipCents = userTipCents + breakdown.tip
+
+                        // Re-sync the form-field tipAmount so the inline tip panel + bill card
+                        // reflect the merged tip on the next render.
+                        if finalTipCents > 0 {
+                            tipAmount = Money(cents: finalTipCents).inputString
+                        }
+
+                        // Tip lives in tipCents alone; lineItems never carries a tip row,
+                        // otherwise TotalsBox renders both the lineItem and the breakdown row.
                         var displayLineItems = resolvedLineItems
-                        if finalTipCents != breakdown.tip {
-                            displayLineItems.removeAll {
-                                let normalized = $0.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-                                return normalized.contains("tip") || normalized.contains("gratuity")
-                            }
-                            if finalTipCents > 0 {
-                                displayLineItems.append(.init(label: "Tip", cents: finalTipCents))
-                            }
+                        displayLineItems.removeAll {
+                            let normalized = $0.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                            return normalized.contains("tip") || normalized.contains("gratuity")
                         }
 
-                        // Update subtotal field
-                        amountString = String(format: "%.2f", Double(subtotal) / 100.0)
+                        // Update subtotal field used by manual/edit flows.
+                        amountString = Money(cents: subtotal).inputString
+
+                        // Final total after phase 2 + local post-processing adjustments.
+                        let finalizedTotalCents = subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents
 
                         // Rebuild currentReceipt with items + breakdown, preserving user's tip
                         uiModel.currentReceipt = ReceiptDisplay(
@@ -368,10 +375,20 @@ struct RootContainerView: View {
                             discountCents: breakdown.discount,
                             taxCents: breakdown.tax,
                             tipCents: finalTipCents,
-                            totalCents: subtotal + breakdown.tax + breakdown.fees - breakdown.discount + finalTipCents,
+                            totalCents: finalizedTotalCents,
                             items: fullParsed.toDisplayItems(),
                             lineItems: displayLineItems
                         )
+
+                        // If the user opened split mode mid-scan, the draft's tip is stale
+                        // relative to the just-merged finalTipCents. Patch it so per-guest
+                        // amounts re-render against the new total.
+                        if var draft = uiModel.currentSplitDraft, draft.tipCents != finalTipCents {
+                            let oldTip = draft.tipCents
+                            draft.tipCents = finalTipCents
+                            draft.totalCents = draft.totalCents - oldTip + finalTipCents
+                            uiModel.currentSplitDraft = draft
+                        }
 
                         uiModel.itemsLoadingState = .loaded(phase2)
                     } catch {
@@ -391,20 +408,6 @@ struct RootContainerView: View {
         }
     }
 
-    /// Computes an exact-cents even split for active guest count.
-    /// Used by draft reconciliation so "Split evenly" stays consistent with live totals.
-    private func equalSplitCents(total: Int, count: Int) -> [Int] {
-        guard total > 0, count > 0 else { return Array(repeating: 0, count: max(0, count)) }
-        var out = Array(repeating: total / count, count: count)
-        let remainder = total - out.reduce(0, +)
-        if remainder > 0 {
-            for i in 0..<min(remainder, count) {
-                out[i] += 1
-            }
-        }
-        return out
-    }
-
     /// Reconciles split-draft totals with the latest receipt totals.
     ///
     /// Why this exists:
@@ -413,16 +416,15 @@ struct RootContainerView: View {
     ///
     /// Usage:
     /// - Called from phase completion events only (`isLoadingReceipt` and `itemsLoadingState` transitions).
-    /// - Keeps both the shared model draft and local draft mirror in sync.
+    ///
     @MainActor
     private func reconcileSplitDraftWithLiveReceipt(trigger: String) {
         guard let receipt = uiModel.currentReceipt else { return }
         guard receipt.totalCents > 0 else { return }
 
-        // Prefer the shared source used by sending; fall back to local confirmation mirror.
-        guard var draft = uiModel.currentSplitDraft ?? splitDraft else { return }
+        guard var draft = uiModel.currentSplitDraft else { return }
 
-        let activeGuests = draft.guests.filter { $0.isIncluded }
+        let activeGuests = draft.includedGuests
         guard !activeGuests.isEmpty else { return }
 
         let previousTotal = draft.totalCents
@@ -435,16 +437,15 @@ struct RootContainerView: View {
 
         // For default "split evenly", keep per-guest amounts aligned with the live total.
         if draft.mode == .equally {
-            draft.perGuestCents = equalSplitCents(total: receipt.totalCents, count: activeGuests.count)
+            draft.perGuestCents = splitCentsEvenly(total: receipt.totalCents, count: activeGuests.count)
         }
 
         // Keep payer valid if guest membership changed earlier in the flow.
-        if !draft.guests.contains(where: { $0.id == draft.payerGuestId && $0.isIncluded }) {
-            draft.payerGuestId = activeGuests.first?.id ?? draft.payerGuestId
+        if !draft.guests.contains(where: { $0.id == draft.payerID && draft.includedIDs.contains($0.id) }) {
+            draft.payerID = activeGuests.first?.id ?? draft.payerID
         }
 
         uiModel.currentSplitDraft = draft
-        splitDraft = draft
 
         if previousTotal != draft.totalCents {
             print("[SplitSync] Reconciled draft total after \(trigger): \(previousTotal) -> \(draft.totalCents)")
@@ -478,36 +479,29 @@ struct RootContainerView: View {
         let updatedItems: [ReceiptDisplay.Item] = {
             switch effectiveDraft.mode {
             case .byItems:
-                // Use full-guest index (matches SplitPayload.g / SplitsSummaryView slot lookup)
-                func displayName(_ g: SplitGuest, at allIndex: Int) -> String {
-                    let t = g.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !t.isEmpty { return t }
-                    if g.isMe {
-                        let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                        return me.isEmpty ? "Me" : me
-                    }
-                    return "Guest \(allIndex + 1)"
-                }
-
                 return effectiveDraft.items.map { it in
-                    let responsible = it.assignedGuestIds.compactMap { gid -> ReceiptDisplay.Responsible? in
+                    // PersonID raw value: guest's Keychain userId when present,
+                    // otherwise "slot-N" so the wire encoder's slotIndex(for:)
+                    // helper can reverse it.
+                    let assigneeIDs: [PersonID] = it.assignedGuestIds.compactMap { gid in
                         guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
-                        return ReceiptDisplay.Responsible(
-                            slotIndex: idx,
-                            displayName: displayName(effectiveDraft.guests[idx], at: idx)
-                        )
-                    }.sorted(by: { $0.slotIndex < $1.slotIndex })
+                        let g = effectiveDraft.guests[idx]
+                        let raw = (g.userId?.isEmpty == false) ? g.userId! : "slot-\(idx)"
+                        return PersonID(rawValue: raw)
+                    }
+
                     return ReceiptDisplay.Item(
-                        id: it.id.uuidString, // adjust if your Item.id type differs
+                        id: it.id.uuidString,
                         label: it.label,
                         priceCents: it.priceCents,
-                        responsible: responsible
+                        assigneeIDs: assigneeIDs
                     )
                 }
 
             case .equally, .custom:
                 return r.items.map { old in
-                    ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents, responsible: [])
+                    ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents,
+                                        assigneeIDs: [])
                 }
             }
         }()
@@ -544,9 +538,100 @@ struct RootContainerView: View {
             lineItems: r.lineItems
         )
 
-        // Keep both draft sources in sync so the send payload uses the same tip-adjusted values.
         uiModel.currentSplitDraft = effectiveDraft
-        splitDraft = effectiveDraft
+    }
+
+    private func optimisticMessagePayload(for receipt: TabReceipt) -> LootMessagePayload? {
+        guard let tab = uiModel.activeTab else { return nil }
+
+        var orderedMemberIds: [String] = []
+        func appendMemberId(_ memberId: String) {
+            guard !memberId.isEmpty, !orderedMemberIds.contains(memberId) else { return }
+            orderedMemberIds.append(memberId)
+        }
+
+        appendMemberId(receipt.payerMemberId)
+        receipt.splits.forEach { appendMemberId($0.memberId) }
+        receipt.items?.forEach { item in
+            item.assignedMemberIds.forEach { appendMemberId($0) }
+        }
+        guard !orderedMemberIds.isEmpty else { return nil }
+
+        let memberById = Dictionary(
+            tab.members.map { ($0.memberId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let guests = orderedMemberIds.map { memberId in
+            let member = memberById[memberId]
+            return SplitPayload.Guest(
+                n: member?.displayName ?? "Guest",
+                inc: true,
+                uid: member?.userId
+            )
+        }
+
+        let payerIndex = orderedMemberIds.firstIndex(of: receipt.payerMemberId) ?? 0
+        let owedByMemberId = Dictionary(
+            receipt.splits.map { ($0.memberId, $0.owedCents) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let owedAmounts = orderedMemberIds.map { owedByMemberId[$0] ?? 0 }
+
+        let splitMode: SplitPayload.Mode = {
+            switch receipt.splitMode {
+            case .equally: return .equally
+            case .custom: return .custom
+            case .byItems: return .byItems
+            }
+        }()
+
+        let items = (receipt.items ?? []).map { item in
+            ReceiptItemPayload(
+                id: UUID().uuidString,
+                l: item.label,
+                p: item.priceCents,
+                rs: item.assignedMemberIds.compactMap { orderedMemberIds.firstIndex(of: $0) }
+            )
+        }
+
+        let split = SplitPayload(
+            m: splitMode,
+            g: guests,
+            pi: payerIndex,
+            o: owedAmounts,
+            f: receipt.feesCents == 0 ? nil : receipt.feesCents,
+            tx: receipt.taxCents == 0 ? nil : receipt.taxCents,
+            tip: receipt.tipCents == 0 ? nil : receipt.tipCents,
+            d: (receipt.discountCents ?? 0) == 0 ? nil : receipt.discountCents,
+            tot: receipt.totalCents
+        )
+
+        let payloadReceipt = ReceiptPayload(
+            id: receipt.messagePayloadId ?? receipt.id ?? UUID().uuidString,
+            t: receipt.title,
+            c: Date().timeIntervalSince1970,
+            sub: receipt.subtotalCents,
+            f: receipt.feesCents,
+            d: receipt.discountCents ?? 0,
+            tx: receipt.taxCents,
+            tip: receipt.tipCents,
+            tot: receipt.totalCents,
+            i: items
+        )
+
+        let tabPayload: TabPayload? = {
+            guard let tabId = tab.id else { return nil }
+            return TabPayload(id: tabId, n: tab.name, c: tab.colorHex)
+        }()
+
+        return LootMessagePayload(
+            r: payloadReceipt,
+            s: split,
+            tid: tab.id,
+            trid: receipt.id,
+            tab: tabPayload,
+            su: nil
+        )
     }
 
     // MARK: - Body
@@ -664,7 +749,7 @@ struct RootContainerView: View {
             saveSession(screen: screen)
         }
         .onChange(of: uiModel.currentReceipt) { _, receipt in
-            if let receipt {
+            if uiModel.openedMessagePayload == nil, let receipt {
                 receiptName = receipt.title
             }
             saveSession(screen: uiModel.currentScreen)
@@ -744,9 +829,14 @@ struct RootContainerView: View {
     private var tabviewContent: some View {
         LootTabView(
             tabName: Binding(get: { receiptName }, set: { receiptName = $0 }),
+            uiModel: uiModel,
             onUpload: { startPhotoLibraryFlow() },
             onScan: { startScanFlow() },
             onFill: {
+                uiModel.resetForNewReceipt()
+                receiptName = ""
+                amountString = "0"
+                tipAmount = ""
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .fill
                 }
@@ -829,8 +919,14 @@ struct RootContainerView: View {
             },
             onPreviewSplits: { receipt in
                 guard let docId = receipt.messagePayloadId, !docId.isEmpty else { return }
-                uiModel.openedMessagePayload = nil
-                uiModel.messageLoadingState = .loading
+                if let optimisticPayload = optimisticMessagePayload(for: receipt) {
+                    uiModel.openedMessagePayload = optimisticPayload
+                    uiModel.currentReceipt = optimisticPayload.toReceiptDisplay()
+                    uiModel.messageLoadingState = .loaded(optimisticPayload)
+                } else {
+                    uiModel.openedMessagePayload = nil
+                    uiModel.messageLoadingState = .loading
+                }
                 uiModel.openedMessageDocId = docId
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                     uiModel.currentScreen = .messageViewer
@@ -846,11 +942,14 @@ struct RootContainerView: View {
                         uiModel.messageLoadingState = .loaded(payload)
                     } catch {
                         print("[LootTabView] Failed to load receipt payload: \(error)")
-                        uiModel.messageLoadingState = .failed(error)
+                        if uiModel.openedMessagePayload == nil {
+                            uiModel.messageLoadingState = .failed(error)
+                        }
                     }
                 }
             },
             onSendSettlementCard: uiModel.sendSettlementCard,
+            onApplePayHandoff: uiModel.sendApplePayHandoff,
             onSendRequestCard: uiModel.sendRequestCard,
             openInSafari: uiModel.openInSafari,
             pendingPayRequest: uiModel.pendingPayRequest,
@@ -940,13 +1039,14 @@ struct RootContainerView: View {
 
     @ViewBuilder
     private var confirmationContent: some View {
+        let activeSplitDraft = uiModel.currentSplitDraft
         ConfirmationView(
             uiModel: uiModel,
             receiptName: receiptName,
             amount: totalAmount,
             participantCount: participantCount,
-            splitMode: splitDraft?.mode,
-            splitDraft: splitDraft,
+            splitMode: activeSplitDraft?.mode,
+            splitDraft: activeSplitDraft,
             tipAmount: tipAmount,
             cameFromManual: confirmationCameFromManual,
             onBack: {
@@ -982,7 +1082,6 @@ struct RootContainerView: View {
                     receiptName = ""
                     amountString = "0"
                     tipAmount = ""
-                    splitDraft = nil
                     capturedImage = nil
                     photoLibraryImage = nil
                     analyzeError = nil
@@ -995,7 +1094,6 @@ struct RootContainerView: View {
                 receiptName = ""
                 amountString = "0"
                 tipAmount = ""
-                splitDraft = nil
                 capturedImage = nil
                 photoLibraryImage = nil
                 analyzeError = nil
@@ -1037,22 +1135,19 @@ struct RootContainerView: View {
                 if var draft = uiModel.currentSplitDraft {
                     draft.mode = newMode
                     uiModel.currentSplitDraft = draft
-                    splitDraft = draft
-                } else if var draft = splitDraft {
-                    draft.mode = newMode
-                    splitDraft = draft
-                    uiModel.currentSplitDraft = draft
                 } else {
+                    let myUid = KeychainHelper.getOrCreateUserId()
                     let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                    var seededGuests: [SplitGuest] = [SplitGuest(name: meName, isIncluded: true, isMe: true, uid: KeychainHelper.getOrCreateUserId())]
+                    var seededGuests: [Person] = [Person.identified(userId: myUid, displayName: meName)]
                     if participantCount > 1 {
                         for _ in 1..<participantCount {
-                            seededGuests.append(SplitGuest(name: "", isIncluded: true, isMe: false))
+                            seededGuests.append(Person.newGuest(displayName: ""))
                         }
                     }
                     let newDraft = SplitDraft(
                         guests: seededGuests,
-                        payerGuestId: seededGuests.first?.id ?? UUID(),
+                        includedIDs: Set(seededGuests.map(\.id)),
+                        payerID: seededGuests.first?.id ?? PersonID(rawValue: myUid),
                         mode: newMode,
                         totalCents: stringToCents(totalAmount),
                         perGuestCents: [],
@@ -1062,20 +1157,20 @@ struct RootContainerView: View {
                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
                         tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount)
                     )
-                    splitDraft = newDraft
                     uiModel.currentSplitDraft = newDraft
                 }
             },
-            onGuestsChanged: { newGuests, newPayerId in
-                if var draft = splitDraft {
+            onGuestsChanged: { newGuests, newIncludedIDs, newPayerId in
+                if var draft = uiModel.currentSplitDraft {
                     draft.guests = newGuests
-                    draft.payerGuestId = newPayerId
-                    splitDraft = draft
+                    draft.includedIDs = newIncludedIDs
+                    draft.payerID = newPayerId
                     uiModel.currentSplitDraft = draft
                 } else {
                     let newDraft = SplitDraft(
                         guests: newGuests,
-                        payerGuestId: newPayerId,
+                        includedIDs: newIncludedIDs,
+                        payerID: newPayerId,
                         mode: .equally,
                         totalCents: stringToCents(totalAmount),
                         perGuestCents: [],
@@ -1085,7 +1180,6 @@ struct RootContainerView: View {
                         taxCents: uiModel.currentReceipt?.taxCents ?? 0,
                         tipCents: uiModel.currentReceipt?.tipCents ?? stringToCents(tipAmount)
                     )
-                    splitDraft = newDraft
                     uiModel.currentSplitDraft = newDraft
                 }
             },
@@ -1102,6 +1196,7 @@ struct RootContainerView: View {
                 payload: payload,
                 onClose: {
                     uiModel.openedMessagePayload = nil
+                    uiModel.openedMessageDocId = nil
                     uiModel.messageLoadingState = .idle
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         uiModel.currentScreen = .tabview
@@ -1137,6 +1232,7 @@ struct RootContainerView: View {
                 Button("Go Back") {
                     uiModel.messageLoadingState = .idle
                     uiModel.openedMessagePayload = nil
+                    uiModel.openedMessageDocId = nil
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         uiModel.currentScreen = .tabview
                     }

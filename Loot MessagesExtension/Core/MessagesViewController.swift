@@ -10,15 +10,59 @@ import Messages
 import SwiftUI
 
 final class MessagesViewController: MSMessagesAppViewController {
+    private final class WeakControllerRef {
+        weak var controller: MessagesViewController?
+    }
+
+    // Transcript/live bubble instances cannot reliably expand themselves, so they
+    // hand off expansion to the currently active non-transcript controller.
+    private static let activeDrawerControllerRef = WeakControllerRef()
 
     // Lazy so transcript bubble instances never allocate these
     private lazy var uiModel = LootUIModel()
     private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
     private var hasSetupRootView = false
     private var isTranscript = false
+    private var isConversationAutoSendReady = false
     private var billUpdateSessionByDocId: [String: MSSession] = [:]
-    private var pendingBillUpdateByDocId: [String: LootMessagePayload] = [:]
+    private var pendingBillUpdateByDocId: [String: (payload: LootMessagePayload, action: BillUpdateAction)] = [:]
     private var lastSentSplitSignatureByDocId: [String: String] = [:]
+    private var activeBillUpdateDocId: String?
+    private var activeBillUpdateSession: MSSession?
+
+    private func registerAsActiveDrawerControllerIfNeeded() {
+        guard !isTranscript else { return }
+        Self.activeDrawerControllerRef.controller = self
+    }
+
+    private func unregisterAsActiveDrawerControllerIfNeeded() {
+        guard !isTranscript else { return }
+        if Self.activeDrawerControllerRef.controller === self {
+            Self.activeDrawerControllerRef.controller = nil
+        }
+    }
+
+    private func reopenMessageIfPossible(_ message: MSMessage?) {
+        guard !isTranscript,
+              let message,
+              let conversation = activeConversation else { return }
+        saveBillUpdateAnchor(from: message)
+        applyMessage(message, conversation: conversation)
+    }
+
+    private func requestExpansionFromTranscriptTap() {
+        let transcriptSelectedMessage = activeConversation?.selectedMessage
+
+        if let drawerController = Self.activeDrawerControllerRef.controller,
+           drawerController !== self {
+            drawerController.reopenMessageIfPossible(transcriptSelectedMessage)
+            drawerController.requestPresentationStyle(.expanded)
+            return
+        }
+
+        reopenMessageIfPossible(transcriptSelectedMessage)
+        requestPresentationStyle(.expanded)
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -46,14 +90,19 @@ final class MessagesViewController: MSMessagesAppViewController {
                                         tabColorHex: tabColorHex)
         }
 
+        uiModel.sendApplePayHandoff = { [weak self] fromName, toName, amountCents, tabColorHex in
+            self?.sendApplePayHandoff(fromName: fromName, toName: toName,
+                                      amountCents: amountCents, tabColorHex: tabColorHex)
+        }
+
         uiModel.sendRequestCard = { [weak self] creditorName, debtorName, amountCents, tabColorHex, metadata in
             self?.sendRequestMessage(creditorName: creditorName, debtorName: debtorName,
                                      amountCents: amountCents, tabColorHex: tabColorHex,
                                      metadata: metadata)
         }
 
-        uiModel.sendBillUpdate = { [weak self] payload, docId in
-            self?.sendBillUpdate(payload: payload, docId: docId)
+        uiModel.sendBillUpdate = { [weak self] payload, docId, action in
+            self?.sendBillUpdate(payload: payload, docId: docId, action: action)
         }
 
         view.isOpaque = true
@@ -81,8 +130,34 @@ final class MessagesViewController: MSMessagesAppViewController {
             return
         }
 
+        isConversationAutoSendReady = false
+        registerAsActiveDrawerControllerIfNeeded()
+        // Anchor the bill-update session here too: when the extension launches
+        // directly from a tapped bubble, iOS fires willBecomeActive but NOT
+        // didSelect, so the anchor would otherwise never be set on the first
+        // open and the first slot-claim update would be skipped.
+        if let selectedMessage = conversation.selectedMessage {
+            saveBillUpdateAnchor(from: selectedMessage)
+        }
         applyMessage(conversation.selectedMessage, conversation: conversation)
         setupRootView(conversation: conversation)
+    }
+
+    override func didBecomeActive(with conversation: MSConversation) {
+        super.didBecomeActive(with: conversation)
+        isConversationAutoSendReady = true
+        registerAsActiveDrawerControllerIfNeeded()
+        flushAllPendingBillUpdatesIfNeeded(conversation: conversation)
+    }
+
+    override func willResignActive(with conversation: MSConversation) {
+        super.willResignActive(with: conversation)
+        isConversationAutoSendReady = false
+        unregisterAsActiveDrawerControllerIfNeeded()
+    }
+
+    deinit {
+        unregisterAsActiveDrawerControllerIfNeeded()
     }
 
     override func contentSizeThatFits(_ size: CGSize) -> CGSize {
@@ -107,6 +182,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         super.didSelect(message, conversation: conversation)
         guard !isTranscript else { return }
         // Use the message parameter directly, not conversation.selectedMessage
+        saveBillUpdateAnchor(from: message)
         applyMessage(message, conversation: conversation)
     }
 
@@ -116,13 +192,27 @@ final class MessagesViewController: MSMessagesAppViewController {
 
         if currentId == newId {
             if currentId == nil, uiModel.activeTab == nil, tab == nil { return }
-            if let current = uiModel.activeTab, let tab,
-               current.name == tab.name,
-               current.colorHex == tab.colorHex,
-               current.memberIds == tab.memberIds,
-               current.receiptCount == tab.receiptCount,
-               current.status.rawValue == tab.status.rawValue {
-                return
+            if let current = uiModel.activeTab, let tab {
+                // Don't downgrade rich state to a minimal stub for the same tab.
+                // Settlement-card and bubble URL paths build a `LootTab.minimal`
+                // (empty members) so the UI can render immediately while full
+                // data loads in background. Without this guard, the stub would
+                // overwrite the populated `members` and `memberIds` from the
+                // live Firestore listener, leaving TabSettingsView empty and
+                // the bill card showing other participants as their UUIDs
+                // until the listener races back. The full-data callers
+                // (cached / fetched / onTabUpdated) always populate members,
+                // so they still apply and pass the idempotency check below.
+                if !current.members.isEmpty && tab.members.isEmpty {
+                    return
+                }
+                if current.name == tab.name,
+                   current.colorHex == tab.colorHex,
+                   current.memberIds == tab.memberIds,
+                   current.receiptCount == tab.receiptCount,
+                   current.status.rawValue == tab.status.rawValue {
+                    return
+                }
             }
         }
 
@@ -132,7 +222,103 @@ final class MessagesViewController: MSMessagesAppViewController {
     // MARK: - Transcript (lightweight UIKit-only path)
 
     @objc private func transcriptTapped() {
-        requestPresentationStyle(.expanded)
+        // Run the autojoin broadcast first, while we're still inside the user's
+        // tap gesture handler. iOS only auto-sends MSConversation.send when
+        // there's a fresh user-interaction context — and a delayed call from
+        // the drawer's .onAppear is too far removed (lands in the input field
+        // instead). The transcript tap is the closest synchronous path we
+        // have to a real user gesture, so we send from here.
+        if let conversation = activeConversation,
+           let message = conversation.selectedMessage {
+            broadcastTranscriptAutojoinIfPossible(from: message, conversation: conversation)
+        }
+        requestExpansionFromTranscriptTap()
+    }
+
+    /// Computes whether the current user can be auto-claimed into a slot of
+    /// the tapped bill bubble, and if so sends an MSMessage update with the
+    /// new state — reusing the bubble's MSSession so iMessage replaces the
+    /// bubble in place. Skips Firestore writes (transcript path doesn't
+    /// configure Firebase); the drawer's autojoin path will persist when it
+    /// loads, with broadcast=false so this update isn't duplicated.
+    private func broadcastTranscriptAutojoinIfPossible(from message: MSMessage,
+                                                       conversation: MSConversation) {
+        guard isTranscript else { return }
+        guard let url = message.url,
+              let decoded = LootMessageCodec.decodedInlinePayload(from: url),
+              let session = message.session,
+              let docId = messageDocId(from: url)
+        else { return }
+
+        let original = decoded.payload
+        let myUid = KeychainHelper.getOrCreateUserId()
+
+        // Already claimed — nothing to broadcast.
+        if original.s.g.contains(where: { $0.uid == myUid }) { return }
+        // Opted out — skip.
+        if decoded.hasIgnoredUUIDsList, decoded.ignoredUUIDs.contains(myUid) { return }
+
+        let claimIndex: Int? = {
+            if original.s.m == .equally {
+                return original.s.g.firstIndex(where: { $0.uid == nil })
+            }
+            let free = original.s.g.indices.filter { original.s.g[$0].uid == nil }
+            return free.count == 1 ? free[0] : nil
+        }()
+        guard let claimIndex else { return }
+
+        var updated = original
+        updated.s.g[claimIndex].uid = myUid
+
+        // Embed the joiner's local display name when the slot's name is
+        // empty. Without this, the broadcast bubble carries an unnamed
+        // slot, and the sender's view falls through to "Guest N" until
+        // the Firestore users/{uid} lookup resolves (which can fail
+        // silently if the joiner's user doc isn't synced yet).
+        // A manually-entered name from the bill creator wins.
+        let trimmedExisting = updated.s.g[claimIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedExisting.isEmpty {
+            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !myName.isEmpty {
+                updated.s.g[claimIndex].n = myName
+            }
+        }
+
+        let cardImage = renderCardImage(
+            receiptName: updated.r.t,
+            displayAmount: ReceiptDisplay.money(updated.r.tot),
+            participantCount: max(1, updated.s.g.count),
+            splitPayload: updated.s,
+            tabName: updated.tab?.n,
+            tabColorHex: updated.tab?.c
+        )
+
+        var components = lootURLComponents()
+        components.queryItems = [URLQueryItem(name: "id", value: docId)]
+        let preservedIgnored: [String]? = decoded.hasIgnoredUUIDsList ? decoded.ignoredUUIDs : nil
+        LootMessageCodec.writePayload(
+            into: &components,
+            payload: updated,
+            ignoredUUIDs: preservedIgnored
+        )
+
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+
+        let outgoing = MSMessage(session: session)
+        outgoing.layout = liveLayout
+        outgoing.url = components.url
+        outgoing.summaryText = BillUpdateAction.claimed.summaryText
+
+        print("[ConvSend] transcriptAutojoin: docId=\(docId) sessionPtr=\(ObjectIdentifier(session))")
+        conversation.send(outgoing) { error in
+            if let error {
+                print("[transcriptAutojoin] send failed for \(docId): \(error)")
+            } else {
+                print("[transcriptAutojoin] broadcast autojoin for \(docId)")
+            }
+        }
     }
 
     private func configureAsTranscript() {
@@ -212,7 +398,8 @@ final class MessagesViewController: MSMessagesAppViewController {
                 tabColorHex: tabColorHex ?? "#007AFF",
                 creatorName: "",
                 joinedCount: 0,
-                targetCount: 0
+                targetCount: 0,
+                showJoinPulse: true
             )
             embedTranscriptCard(AnyView(card))
             return
@@ -274,55 +461,198 @@ extension MessagesViewController {
         return docId
     }
 
+    private func billUpdateDocId(from message: MSMessage) -> String? {
+        if let docId = messageDocId(from: message.url) {
+            return docId
+        }
+        guard let url = message.url,
+              let payload = LootMessageCodec.decodedInlinePayload(from: url)?.payload else {
+            return nil
+        }
+        return payload.r.id
+    }
+
+    private func saveBillUpdateAnchor(from message: MSMessage) {
+        let extractedDocId = billUpdateDocId(from: message)
+        let hasSession = message.session != nil
+        guard let docId = extractedDocId,
+              let session = message.session else {
+            print("[BillUpdate] saveBillUpdateAnchor SKIP: docId=\(extractedDocId ?? "nil") hasSession=\(hasSession)")
+            return
+        }
+        let previousDocId = activeBillUpdateDocId
+        activeBillUpdateDocId = docId
+        activeBillUpdateSession = session
+        billUpdateSessionByDocId[docId] = session
+        print("[BillUpdate] saveBillUpdateAnchor: docId=\(docId) (was \(previousDocId ?? "nil")) sessionPtr=\(ObjectIdentifier(session))")
+    }
+
     private func splitSignature(for split: SplitPayload) -> String {
         guard let data = try? JSONEncoder().encode(split) else { return "" }
         return data.base64EncodedString()
     }
 
+    private func shouldAdoptFetchedPayload(_ fetched: LootMessagePayload, for docId: String) -> Bool {
+        guard uiModel.openedMessageDocId == docId else { return true }
+        guard let current = uiModel.openedMessagePayload else { return true }
+
+        let fetchedSignature = splitSignature(for: fetched.s)
+        let currentSignature = splitSignature(for: current.s)
+        guard fetchedSignature != currentSignature else { return true }
+
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let currentHasClaim = current.s.g.contains(where: { $0.uid == myUid })
+        let fetchedHasClaim = fetched.s.g.contains(where: { $0.uid == myUid })
+
+        // Ignore stale Firestore reads that would undo a local slot claim we just applied.
+        if currentHasClaim && !fetchedHasClaim {
+            print("[applyMessage] Ignoring stale fetched payload for \(docId); local claim is newer")
+            return false
+        }
+
+        // Same race for OTHER participants' claims. The inline payload baked
+        // into a freshly-broadcast bubble (e.g. a "joined a bill" update from
+        // B) carries their claim immediately, but B's drawer-side
+        // persistSplit Firestore write may still be in flight. If our current
+        // view has uids that the fetched payload lacks, the fetch is stale
+        // and would visually undo a join that just landed via the bubble's
+        // session-replace — reverting B's name to "Guest N" half a second
+        // after we first rendered it correctly.
+        let currentUids = Set(current.s.g.compactMap { g -> String? in
+            guard let u = g.uid, !u.isEmpty else { return nil }
+            return u
+        })
+        let fetchedUids = Set(fetched.s.g.compactMap { g -> String? in
+            guard let u = g.uid, !u.isEmpty else { return nil }
+            return u
+        })
+        if !currentUids.subtracting(fetchedUids).isEmpty {
+            print("[applyMessage] Ignoring stale fetched payload for \(docId); local has uids fetched lacks")
+            return false
+        }
+
+        return true
+    }
+
     private func bindBillUpdateAnchor(from message: MSMessage, docId: String, conversation: MSConversation) {
-        guard let session = message.session else { return }
+        guard activeBillUpdateDocId == docId,
+              let session = activeBillUpdateSession else {
+            print("[BillUpdate] bindBillUpdateAnchor MISMATCH: incomingDocId=\(docId) activeBillUpdateDocId=\(activeBillUpdateDocId ?? "nil") hasSession=\(activeBillUpdateSession != nil)")
+            return
+        }
         billUpdateSessionByDocId[docId] = session
+        print("[BillUpdate] bindBillUpdateAnchor: docId=\(docId) sessionPtr=\(ObjectIdentifier(session))")
         flushPendingBillUpdateIfNeeded(for: docId, conversation: conversation)
     }
 
     private func flushPendingBillUpdateIfNeeded(for docId: String, conversation: MSConversation) {
         guard let pending = pendingBillUpdateByDocId.removeValue(forKey: docId) else { return }
-        sendBillUpdate(payload: pending, docId: docId, conversation: conversation)
+        sendBillUpdate(payload: pending.payload, docId: docId, action: pending.action, conversation: conversation)
     }
 
-    private func sendBillUpdate(payload: LootMessagePayload, docId: String, conversation: MSConversation) {
+    private func flushAllPendingBillUpdatesIfNeeded(conversation: MSConversation) {
+        let pending = pendingBillUpdateByDocId
+        pendingBillUpdateByDocId.removeAll()
+        for (docId, entry) in pending {
+            sendBillUpdate(payload: entry.payload, docId: docId, action: entry.action, conversation: conversation)
+        }
+    }
+
+    private func sendBillUpdate(payload: LootMessagePayload, docId: String, action: BillUpdateAction, conversation: MSConversation) {
         let signature = splitSignature(for: payload.s)
-        if !signature.isEmpty, lastSentSplitSignatureByDocId[docId] == signature {
+        let perDocSession = billUpdateSessionByDocId[docId]
+
+        // Prefer the FRESHEST session — `conversation.selectedMessage` is the
+        // bubble iOS currently considers selected. iOS rebuilds MSMessage
+        // objects (with new MSSession instances) on every transcript re-render,
+        // and after our own conversation.send fires it cascades 5+ more
+        // didSelect/willBecomeActive events with new session pointers each
+        // time. The session anchored at first-tap goes stale within
+        // milliseconds. Using the fresh selectedMessage session matches what
+        // `broadcastTranscriptAutojoinIfPossible` does — that path retracts
+        // bubbles in place reliably; this one didn't, until now.
+        let freshSelectedSession: MSSession? = {
+            guard let selected = conversation.selectedMessage,
+                  let selectedUrl = selected.url,
+                  messageDocId(from: selectedUrl) == docId,
+                  let session = selected.session else {
+                return nil
+            }
+            return session
+        }()
+
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let senderUid = payload.su
+        let iAmSender = (senderUid == myUid)
+
+        print("[BillUpdate] sendBillUpdate ENTER: docId=\(docId) action=\(action) activeDocId=\(activeBillUpdateDocId ?? "nil") activeSessionPtr=\(activeBillUpdateSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") perDocSessionPtr=\(perDocSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") freshSelectedSessionPtr=\(freshSelectedSession.map { ObjectIdentifier($0).hashValue.description } ?? "nil") autoSendReady=\(isConversationAutoSendReady) senderUid=\(senderUid ?? "nil") myUid=\(myUid) iAmSender=\(iAmSender)")
+
+        // NOTE on cross-sender behavior: when a non-original-sender taps
+        // someone else's bill bubble and triggers `conversation.send` on the
+        // attached MSSession, iMessage RETRACTS the original bubble and
+        // inserts a new one authored by the local participant. The
+        // attribution flips, but the bubble count stays at one — which is
+        // exactly the behavior we want for cross-sender edits / removeFromTab.
+        // An earlier guard short-circuited this path on the assumption that
+        // it produced duplicate bubbles; device testing didn't confirm that,
+        // so the broadcast now runs for everyone. If duplicates ever DO
+        // appear cross-sender, narrow the skip to the specific failure mode
+        // (don't blanket-skip again) and capture a repro before doing so.
+
+        if !signature.isEmpty,
+           !action.bypassesSplitSignatureDedup,
+           lastSentSplitSignatureByDocId[docId] == signature {
+            print("[BillUpdate] sendBillUpdate DEDUP: same signature already sent for docId=\(docId)")
             return
         }
 
-        if let anchoredSession = billUpdateSessionByDocId[docId] {
+        guard isConversationAutoSendReady else {
+            pendingBillUpdateByDocId[docId] = (payload, action)
+            print("[BillUpdate] sendBillUpdate DEFER: queued for docId=\(docId) until conversation auto-send ready")
+            return
+        }
+
+        // Fresh session from selectedMessage wins over anchored/per-doc.
+        if let session = freshSelectedSession {
+            print("[BillUpdate] sendBillUpdate FRESH-SELECTED: sending via sessionPtr=\(ObjectIdentifier(session))")
+            sendBillUpdateMessage(
+                payload: payload,
+                docId: docId,
+                signature: signature,
+                session: session,
+                action: action,
+                conversation: conversation
+            )
+            return
+        }
+
+        if activeBillUpdateDocId == docId, let anchoredSession = activeBillUpdateSession {
+            print("[BillUpdate] sendBillUpdate ANCHOR-MATCH: sending via activeSessionPtr=\(ObjectIdentifier(anchoredSession))")
             sendBillUpdateMessage(
                 payload: payload,
                 docId: docId,
                 signature: signature,
                 session: anchoredSession,
+                action: action,
                 conversation: conversation
             )
             return
         }
 
-        if let selected = conversation.selectedMessage,
-           messageDocId(from: selected.url) == docId,
-           let selectedSession = selected.session {
-            billUpdateSessionByDocId[docId] = selectedSession
+        if let perDocSession {
+            print("[BillUpdate] sendBillUpdate FALLBACK-PER-DOC: active anchor is for \(activeBillUpdateDocId ?? "nil") but per-doc session exists for \(docId), sending via perDocSessionPtr=\(ObjectIdentifier(perDocSession))")
             sendBillUpdateMessage(
                 payload: payload,
                 docId: docId,
                 signature: signature,
-                session: selectedSession,
+                session: perDocSession,
+                action: action,
                 conversation: conversation
             )
             return
         }
 
-        pendingBillUpdateByDocId[docId] = payload
-        print("[sendBillUpdate] Deferring update until anchored session is available for doc: \(docId)")
+        print("[BillUpdate] sendBillUpdate SKIP: no anchored session for docId=\(docId) (activeBillUpdateDocId=\(activeBillUpdateDocId ?? "nil"))")
     }
 
     private func sendBillUpdateMessage(
@@ -330,6 +660,7 @@ extension MessagesViewController {
         docId: String,
         signature: String,
         session: MSSession,
+        action: BillUpdateAction,
         conversation: MSConversation
     ) {
         let splitPayload = payload.s
@@ -355,25 +686,29 @@ extension MessagesViewController {
             ignoredUUIDs: ignoredToWrite
         )
 
-        let alternateLayout = MSMessageTemplateLayout()
-        alternateLayout.image = cardImage
-        // Transitional: send as template layout (see sendBillMessage comment)
-        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
-
         if !signature.isEmpty {
             lastSentSplitSignatureByDocId[docId] = signature
         }
 
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+
         let message = MSMessage(session: session)
-        message.layout = alternateLayout
+        message.layout = liveLayout
         message.url = components.url
+        message.summaryText = action.summaryText
+
+        print("[BillUpdate] sendBillUpdateMessage: docId=\(docId) sessionPtr=\(ObjectIdentifier(session)) layout=liveLayout url=\(components.url?.absoluteString.prefix(80) ?? "nil")")
 
         conversation.send(message) { [weak self] error in
             if let error {
                 if !signature.isEmpty, self?.lastSentSplitSignatureByDocId[docId] == signature {
                     self?.lastSentSplitSignatureByDocId.removeValue(forKey: docId)
                 }
-                print("[sendBillUpdate] Failed to send updated bill message: \(error)")
+                print("[BillUpdate] sendBillUpdateMessage FAILED: docId=\(docId) error=\(error)")
+            } else {
+                print("[BillUpdate] sendBillUpdateMessage COMPLETE: docId=\(docId) (no error — bubble should have replaced in place if session was valid)")
             }
         }
     }
@@ -406,30 +741,34 @@ extension MessagesViewController {
            !docId.isEmpty {
             bindBillUpdateAnchor(from: msg, docId: docId, conversation: conversation)
 
-            // Clear old payload first so MessageReceiptViewer unmounts,
-            // then remounts fresh once the new payload arrives.
-            uiModel.openedMessagePayload = nil
-            uiModel.messageLoadingState = .loading
-            uiModel.openedMessageDocId = docId
-            uiModel.currentScreen = .messageViewer
-
             // Extract inline fallback payload embedded at send time.
-            // Present on every card sent with the current app version.
+            // Present it immediately while Firestore refreshes in the background.
             let decodedInline = LootMessageCodec.decodedInlinePayload(from: url)
             let inlinePayload = decodedInline?.payload
+
             if let decodedInline {
                 uiModel.setInlineIgnoredState(
                     ignoredUUIDs: decodedInline.ignoredUUIDs,
                     hasList: decodedInline.hasIgnoredUUIDsList,
                     for: docId
                 )
+                uiModel.openedMessagePayload = decodedInline.payload
+                uiModel.currentReceipt = decodedInline.payload.toReceiptDisplay()
+                uiModel.messageLoadingState = .loaded(decodedInline.payload)
             } else {
+                // No local payload available, so fall back to the loading state.
+                uiModel.openedMessagePayload = nil
+                uiModel.messageLoadingState = .loading
                 uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
             }
+
+            uiModel.openedMessageDocId = docId
+            uiModel.currentScreen = .messageViewer
 
             Task { @MainActor in
                 do {
                     let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
+                    guard shouldAdoptFetchedPayload(payload, for: docId) else { return }
                     uiModel.openedMessagePayload = payload
                     uiModel.currentReceipt = payload.toReceiptDisplay()
                     if let captureImage {
@@ -476,6 +815,11 @@ extension MessagesViewController {
             requestPresentationStyle(.expanded)
             uiModel.pendingTabInviteId = tabId
             uiModel.currentScreen = .joinTab
+            // Bump the nonce so re-tapping the SAME invite while JoinTabView
+            // is already on screen triggers a fresh fetch — without this,
+            // both `pendingTabInviteId` and `currentScreen` are unchanged
+            // and SwiftUI's `.task(id:)` doesn't re-fire.
+            uiModel.pendingTabInviteRefreshNonce &+= 1
             return
         }
 
@@ -505,14 +849,14 @@ extension MessagesViewController {
 
         // Legacy path: inline payload
         if let decodedInline = LootMessageCodec.decodedInlinePayload(from: url) {
-            let payload = decodedInline.payload
-            let billId = payload.r.id
+            let billId = decodedInline.payload.r.id
             bindBillUpdateAnchor(from: msg, docId: billId, conversation: conversation)
             uiModel.setInlineIgnoredState(
                 ignoredUUIDs: decodedInline.ignoredUUIDs,
                 hasList: decodedInline.hasIgnoredUUIDsList,
                 for: billId
             )
+            let payload = decodedInline.payload
             uiModel.openedMessagePayload = payload
             uiModel.openedMessageDocId = billId
             uiModel.currentReceipt = payload.toReceiptDisplay()
@@ -714,9 +1058,38 @@ extension MessagesViewController {
         let message = MSMessage(session: MSSession())
         message.layout = layout
         message.url = components.url
+        message.summaryText = "sent a payment"
 
+        print("[ConvSend] sendSettlementMessage: NEW SESSION (will appear as new bubble) summaryText=\"sent a payment\"")
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendSettlementMessage error: \(error)") }
+        }
+    }
+
+    /// Apple Pay flow: send the settlement card to the chat. The "now open
+    /// the Apple Cash drawer" hint is shown by `TabPayNowSheet` after the
+    /// user taps Apple Pay — keeping it in-extension means it never leaks
+    /// to other participants and we don't have to rely on MSSession
+    /// replacement, which doesn't reliably carry through `insert`.
+    func sendApplePayHandoff(fromName: String, toName: String,
+                             amountCents: Int, tabColorHex: String?) {
+        guard let conversation = activeConversation else { return }
+
+        let card = SettlementCardView(fromName: fromName, toName: toName,
+                                      amountCents: amountCents,
+                                      methodName: "Apple Cash",
+                                      tabColorHex: tabColorHex)
+        let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
+        let layout = MSMessageTemplateLayout()
+        layout.image = cardImage
+
+        let message = MSMessage(session: MSSession())
+        message.layout = layout
+        message.url = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab).url
+        message.summaryText = "sent a payment"
+        print("[ConvSend] sendApplePayHandoff: NEW SESSION (will appear as new bubble) summaryText=\"sent a payment\"")
+        conversation.send(message) { error in
+            if let error { print("[MessagesViewController] sendApplePayHandoff send error: \(error)") }
         }
     }
 
@@ -753,7 +1126,9 @@ extension MessagesViewController {
         let message = MSMessage(session: MSSession())
         message.layout = layout
         message.url = components.url
+        message.summaryText = "requested a payment"
 
+        print("[ConvSend] sendRequestMessage: NEW SESSION (will appear as new bubble) summaryText=\"requested a payment\"")
         conversation.send(message) { error in
             if let error { print("[MessagesViewController] sendRequestMessage error: \(error)") }
         }
@@ -834,8 +1209,6 @@ extension MessagesViewController {
                          amount: String,
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
-
-        // Build a "portable" receipt + split payload
         let fallbackTotalCents = stringToCents(amount)
         let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
@@ -863,8 +1236,6 @@ extension MessagesViewController {
 
         // Capture scan image before async block (will be nil for manual receipts)
         let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal
-
-        // Render card image synchronously (before async block)
         let cardImage = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
@@ -880,8 +1251,6 @@ extension MessagesViewController {
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
-        // Embed the full payload inline (compressed) so the card is readable
-        // even if the Firestore upload never completes (e.g. no internet at send time).
         LootMessageCodec.writePayload(
             into: &components,
             payload: payload,
@@ -890,30 +1259,26 @@ extension MessagesViewController {
 
         let alternateLayout = MSMessageTemplateLayout()
         alternateLayout.image = cardImage
-
-        // Transitional: send as template layout so older app versions
-        // don't spin up a mini LiveLayout instance they can't handle.
-        // let layout = MSMessageLiveLayout(alternateLayout: alternateLayout)
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
         let message = MSMessage(session: MSSession())
-        message.layout = alternateLayout
+        message.layout = liveLayout
         message.url = components.url
+        message.summaryText = "shared a bill"
 
+        print("[ConvSend] sendBillMessage: NEW SESSION (will appear as new bubble) docId=\(docId) summaryText=\"shared a bill\"")
         conversation.send(message) { error in
-            if let error { print("Error inserting message: \(error)") }
+            if let error { print("[sendBillMessage] Failed to send bill message: \(error)") }
         }
 
         requestPresentationStyle(.compact)
 
-        // Upload to Firestore in the background, then add to tab if applicable
         Task {
             do {
                 try await SharedReceiptService.shared.upload(payload, captureImage: captureImage, docId: docId)
                 print("[sendBillMessage] Uploaded to Firestore: \(docId)")
 
-                // If this receipt belongs to a tab, recompute its derived aggregates.
                 if let tabId = payload.tid {
-                    // Refresh cached tab from the single-source sharedReceipts model.
                     if let refreshed = try await TabService.shared.syncTabDerivedState(tabId: tabId) {
                         await MainActor.run {
                             self.uiModel.activeTab = refreshed
@@ -930,9 +1295,9 @@ extension MessagesViewController {
         }
     }
 
-    func sendBillUpdate(payload: LootMessagePayload, docId: String) {
+    func sendBillUpdate(payload: LootMessagePayload, docId: String, action: BillUpdateAction) {
         guard let conversation = activeConversation else { return }
-        sendBillUpdate(payload: payload, docId: docId, conversation: conversation)
+        sendBillUpdate(payload: payload, docId: docId, action: action, conversation: conversation)
     }
 
     private func sendTabInviteMessage(
@@ -956,15 +1321,12 @@ extension MessagesViewController {
         let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
 
         var components = lootURLComponents()
-        var queryItems: [URLQueryItem] = [
+        let queryItems: [URLQueryItem] = [
             URLQueryItem(name: queryItemName, value: tabId),
             URLQueryItem(name: "tn", value: tabName),
             URLQueryItem(name: "tc", value: tabColorHex)
         ]
         components.queryItems = queryItems
-
-        let layout = MSMessageTemplateLayout()
-        layout.image = cardImage
 
         let session: MSSession
         if useSelectedMessageSession {
@@ -972,10 +1334,26 @@ extension MessagesViewController {
         } else {
             session = MSSession()
         }
-        let message = MSMessage(session: session)
-        message.layout = layout
-        message.url = components.url
+        // MSMessageLiveLayout (with the template as alternate) so iOS spawns a
+        // transcript-mode MessagesViewController per bubble. That controller's
+        // UITapGestureRecognizer fires on every tap — including re-taps of the
+        // same invite — and forwards to the drawer via
+        // `requestExpansionFromTranscriptTap`. Plain template layouts don't
+        // get this routing (iOS dedupes same-message taps natively), which is
+        // why a second tap on the same invite was a no-op.
+        let alternateLayout = MSMessageTemplateLayout()
+        alternateLayout.image = cardImage
+        let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
+        let message = MSMessage(session: session)
+        message.layout = liveLayout
+        message.url = components.url
+        // queryItemName == "tabInviteUpdate" is the same-session retract+replace
+        // path used when someone joins an existing tab; the original "tabInvite"
+        // name is the brand-new invite send.
+        message.summaryText = (queryItemName == "tabInviteUpdate") ? "joined a tab" : "invited you to a tab"
+
+        print("[ConvSend] sendTabInvite: queryItem=\(queryItemName) sessionPtr=\(ObjectIdentifier(session)) usedSelectedSession=\(useSelectedMessageSession)")
         conversation.send(message) { error in
             if let error { print("[\(queryItemName)] send failed: \(error)") }
         }

@@ -82,7 +82,7 @@ enum PaymentMethodType: String, Codable, CaseIterable {
 
     /// Builds a deep link URL for the payment app, or nil if no deep link exists.
     func deepLinkURL(identifier: String, amountCents: Int, note: String, bankURL: String? = nil, payeeName: String? = nil, zelleData: String? = nil) -> URL? {
-        let dollars = String(format: "%.2f", Double(amountCents) / 100.0)
+        let dollars = Money(cents: amountCents).inputString
 
         switch self {
         case .venmo:
@@ -132,6 +132,11 @@ enum PaymentMethodType: String, Codable, CaseIterable {
                 .replacingOccurrences(of: "http://", with: "https://"))
 
         case .applePay, .cash:
+            // Apple Pay handoff is not URL-driven — the call site detects
+            // `.applePay` and routes through `LootUIModel.sendApplePayHandoff`
+            // (settlement card sent; an in-extension confirmation tells the
+            // sender to use the iMessage Apple Cash drawer). Cash has no
+            // deep link by design.
             return nil
         }
     }
@@ -183,6 +188,49 @@ struct TabMember: Codable, Identifiable {
     var isActive: Bool
 }
 
+extension LootTab {
+    /// Returns a copy of this tab with `members` and `memberIds` deduped.
+    /// Past corruption (or simultaneous joins racing on `joinTab`'s membership
+    /// guard) can leave the tab document with two TabMember entries that share
+    /// the same `userId` or `memberId`. Anywhere downstream that builds a
+    /// dictionary keyed on those ids — `Dictionary(uniqueKeysWithValues:)` —
+    /// would trap. Calling `.dedupedMembers()` at the fetch boundary keeps
+    /// every consumer safe with no ambient defensiveness scattered about.
+    func dedupedMembers() -> LootTab {
+        var seenMemberIds: Set<String> = []
+        var seenUserIds: Set<String> = []
+        var deduped: [TabMember] = []
+        for member in members {
+            // Drop a duplicate by memberId outright.
+            if seenMemberIds.contains(member.memberId) { continue }
+            // Drop a duplicate by non-empty userId — a single Loot user
+            // appearing twice with different memberIds is the corruption
+            // pattern that crashes `TabReceipt.from`'s uid → memberId dict.
+            if let uid = member.userId, !uid.isEmpty {
+                if seenUserIds.contains(uid) { continue }
+                seenUserIds.insert(uid)
+            }
+            seenMemberIds.insert(member.memberId)
+            deduped.append(member)
+        }
+        guard deduped.count != members.count else { return self }
+
+        var copy = self
+        copy.members = deduped
+        // Resync memberIds to match the deduped active members so
+        // membership-driven Firestore queries (whereField "memberIds"
+        // arrayContains) don't index phantom slots.
+        let activeUserIds = deduped.compactMap { $0.userId.flatMap { $0.isEmpty ? nil : $0 } }
+        let preservedMemberIds = self.memberIds.filter { id in
+            activeUserIds.contains(id) || deduped.contains(where: { $0.memberId == id })
+        }
+        // Drop duplicate memberIds while preserving order.
+        var seenIdx: Set<String> = []
+        copy.memberIds = preservedMemberIds.filter { seenIdx.insert($0).inserted }
+        return copy
+    }
+}
+
 // MARK: - Tab Receipt
 
 struct TabReceipt: Codable, Identifiable {
@@ -202,13 +250,22 @@ struct TabReceipt: Codable, Identifiable {
     var items: [ReceiptItem]?
     var imageUrl: String?
     var messagePayloadId: String?
+
+    // Payload-derived. Populated by TabReceipt.from() so render doesn't
+    // depend on activeTab.members being in sync at the moment of display.
+    var payerDisplayName: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, createdBy, createdAt
+        case totalCents, subtotalCents, taxCents, tipCents, feesCents, discountCents
+        case splitMode, payerMemberId, splits, items, imageUrl, messagePayloadId
+    }
 }
 
-enum SplitMode: String, Codable {
-    case equally
-    case byItems
-    case custom
-}
+// SplitMode is now defined in Domain/SplitConfiguration.swift as the canonical
+// enum (Hashable + Sendable + CaseIterable on top of String + Codable). Raw
+// values are unchanged, so existing Firestore documents and decoded
+// LootMessagePayload data continue to round-trip cleanly.
 
 struct ReceiptSplit: Codable {
     var memberId: String
@@ -243,17 +300,30 @@ extension TabReceipt {
         let split = payload.s
         let receipt = payload.r
 
-        // Build a lookup from guest uid → tab memberId
+        // Build a lookup from guest uid → tab memberId. `uniquingKeysWith`
+        // (rather than `uniqueKeysWithValues`) keeps this from trapping if the
+        // tab somehow still contains two members with the same userId — first
+        // entry wins, which matches `dedupedMembers()`'s behavior.
         let uidToMemberId: [String: String] = Dictionary(
-            uniqueKeysWithValues: tab.members.compactMap { m in
+            tab.members.compactMap { m in
                 guard let uid = m.userId, !uid.isEmpty else { return nil }
                 return (uid, m.memberId)
-            }
+            },
+            uniquingKeysWith: { first, _ in first }
         )
 
         // Map payer slot to memberId
         let payerUid = split.g[split.pi].uid ?? myId
         let payerMemberId = uidToMemberId[payerUid] ?? myId
+
+        // Carry the payer's display name straight from the payload so the UI
+        // doesn't depend on activeTab.members being in sync at render time
+        // (live listener catch-up race produced "Paid by <UUID>" rows).
+        let payerDisplayName: String? = {
+            guard split.g.indices.contains(split.pi) else { return nil }
+            let raw = split.g[split.pi].n.trimmingCharacters(in: .whitespacesAndNewlines)
+            return raw.isEmpty ? nil : raw
+        }()
 
         // Map split mode
         let splitMode: SplitMode = {
@@ -303,7 +373,8 @@ extension TabReceipt {
             splits: splits,
             items: items,
             imageUrl: nil,
-            messagePayloadId: messagePayloadId
+            messagePayloadId: messagePayloadId,
+            payerDisplayName: payerDisplayName
         )
     }
 }

@@ -19,11 +19,24 @@ struct TabSettleUpCard: View {
     var showViewTabButton: Bool = false
     var onViewTab: (() -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
+    /// Apple Pay handoff: sends settlement + inserts a how-to card into compose
+    /// with a shared MSSession. (fromName, toName, amountCents, tabColorHex)
+    var onApplePayHandoff: ((String, String, Int, String?) -> Void)? = nil
     var onSendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)? = nil
     /// Use UIApplication.openURL for Zelle web links when available.
     var openInSafari: ((URL) -> Void)? = nil
     var pendingPayRequest: PendingPayRequest? = nil
     var onConsumePendingPayRequest: (() -> Void)? = nil
+    /// Asks the host extension to collapse to compact (used after the Apple
+    /// Pay confirmation so the user can reach the iMessage Apple Cash drawer).
+    var onRequestCollapse: (() -> Void)? = nil
+    /// Stash a payment for the compact-mode Apple Pay reminder. Args:
+    /// (toName, amountCents, tabColorHex).
+    var onApplePayPending: ((String, Int, String?) -> Void)? = nil
+    /// Bumped by the parent (via `LootUIModel.tabReceiptsRefreshNonce`) when a
+    /// remote receipt or settlement lands so this card's `.task(id:)` re-fires
+    /// and reloads balances + simplified transactions.
+    var refreshNonce: Int = 0
 
     private let myId = KeychainHelper.getOrCreateUserId()
     @Environment(\.openURL) private var openURL
@@ -111,6 +124,17 @@ struct TabSettleUpCard: View {
                 methods: creditorMethods[txn.to] ?? [],
                 tabColorHex: colorHex,
                 onSelectMethod: { method in
+                    // Apple Pay: stage the compact-mode reminder, send the
+                    // settlement card, then collapse the extension. The sheet
+                    // dismisses itself; the reminder takes over compact view.
+                    if method.type == .applePay {
+                        onApplePayPending?(toName, txn.amountCents, colorHex)
+                        onApplePayHandoff?(fromName, toName, txn.amountCents, colorHex)
+                        onRequestCollapse?()
+                        Task { await recordSettlement(txn: txn, methodName: method.type.displayName) }
+                        return
+                    }
+
                     // For Zelle: use the payer's own bank URL (opens their banking app)
                     // combined with the payee's stored QR data.
                     let effectiveBankURL: String?
@@ -131,7 +155,9 @@ struct TabSettleUpCard: View {
                     onSendSettlementCard?(fromName, toName, txn.amountCents,
                                          method.type.displayName, colorHex)
                     if let url = deepLink {
-                        openURL(url)
+                        // extensionContext.open is required in iMessage extensions —
+                        // SwiftUI's openURL silently no-ops for non-http schemes here.
+                        if let openInSafari { openInSafari(url) } else { openURL(url) }
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }
@@ -139,7 +165,7 @@ struct TabSettleUpCard: View {
                 }
             )
         }
-        .task(id: tabId) { await load() }
+        .task(id: "\(tabId)-\(refreshNonce)") { await load() }
         .onAppear {
             presentPendingRequestIfPossible()
         }

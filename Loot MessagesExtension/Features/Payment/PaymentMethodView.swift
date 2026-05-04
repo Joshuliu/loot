@@ -196,6 +196,13 @@ struct PaymentMethodView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .toolbar {
+            // phonePad has no Return key — give every focused field a way out.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedIdentifierMethodId = nil }
+            }
+        }
         .onAppear {
             methods = savedPaymentMethods()
             // Canonicalize persisted Venmo identifiers so existing values render consistently.

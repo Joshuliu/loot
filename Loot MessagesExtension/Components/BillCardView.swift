@@ -42,17 +42,6 @@ struct BillCardView: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(tabName == nil ? "Split method" : "Loot Tab")
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(secondaryFg)
-
-                        Text(tabName ?? splitLabel)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(primaryFg)
-                            .lineLimit(1)
-                    }
-
-                    VStack(alignment: .leading, spacing: 2) {
                         Text("Paid by")
                             .font(.system(size: 10, weight: .medium))
                             .foregroundColor(secondaryFg)
@@ -62,6 +51,17 @@ struct BillCardView: View {
                             .foregroundColor(primaryFg)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tabName == nil ? "Split method" : "Loot Tab")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundColor(secondaryFg)
+
+                        Text(tabName ?? splitLabel)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(primaryFg)
+                            .lineLimit(1)
                     }
                 }
             }
@@ -146,6 +146,7 @@ struct SettlementCardView: View {
                     .font(.system(size: 11))
                     .foregroundColor(sub)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Text(toName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(fg)
@@ -224,7 +225,7 @@ struct SplitRingView: View {
 
                     if end > start {
                         let isHighlighted = highlightedSlot != nil && i == highlightedSlot
-                        let tint = isDimmed ? dimmer : (isHighlighted && pulsePhase ? dimmer : .white)
+                        let tint = isDimmed ? dimmer : .white
                         let arcWidth = isHighlighted ? (pulsePhase ? lineW : lineW + 2) : lineW
                         Circle()
                             .trim(from: start, to: end)
@@ -261,7 +262,7 @@ struct SplitRingView: View {
                     let end = Double(sumThrough(hl)) / Double(safeTotal)
                     if end > start {
                         let nudge = Angle.degrees(1).radians
-                        let dotTint: Color = pulsePhase ? dimmer : .white
+                        let dotTint: Color = .white
                         let dotSize: CGFloat = pulsePhase ? lineW : lineW + 2
                         let startAng = -(.pi / 2) + (start * 2 * .pi) + nudge
                         let endAng = -(.pi / 2) + (end * 2 * .pi) - nudge
@@ -318,4 +319,3 @@ struct SplitRingView: View {
         }
     }
 }
-

@@ -16,6 +16,7 @@ struct SplitsSummaryView: View {
     let onEditSplit: (() -> Void)?
     let onEditReceipt: (() -> Void)?
     let onRemoveFromTab: (() -> Void)?
+    let onClose: (() -> Void)?
     let onRequestCollapse: (() -> Void)?
 
     private var canEdit: Bool {
@@ -72,6 +73,7 @@ struct SplitsSummaryView: View {
         onEditSplit: (() -> Void)? = nil,
         onEditReceipt: (() -> Void)? = nil,
         onRemoveFromTab: (() -> Void)? = nil,
+        onClose: (() -> Void)? = nil,
         onRequestCollapse: (() -> Void)? = nil
     ) {
         self.uiModel = uiModel
@@ -80,6 +82,7 @@ struct SplitsSummaryView: View {
         self.onEditSplit = onEditSplit
         self.onEditReceipt = onEditReceipt
         self.onRemoveFromTab = onRemoveFromTab
+        self.onClose = onClose
         self.onRequestCollapse = onRequestCollapse
     }
 
@@ -116,6 +119,13 @@ struct SplitsSummaryView: View {
     private func isCurrentUserIgnored() -> Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
         return uiModel.isIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    private func unclaimCurrentUserIfNeeded() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        guard let gi = split.g.firstIndex(where: { $0.uid == myUid }) else { return false }
+        split.g[gi].uid = nil
+        return true
     }
 
     private var headerTitle: String {
@@ -155,12 +165,21 @@ struct SplitsSummaryView: View {
     }
 
     private func openAssociatedTab() {
-        if let associatedTab {
-            uiModel.activeTab = associatedTab
+        if let target = associatedTab {
+            // Prefer the live activeTab when it points at the same tab id —
+            // the Firestore listener keeps it populated with full members and
+            // balances, whereas `associatedTab` may have fallen back to a
+            // payload-derived `LootTab.minimal` stub (empty members) that
+            // would briefly render "no members + UUID-as-name" until the
+            // listener races back. The property-level guard in LootUIModel
+            // also catches this, but skipping the write here is cleaner.
+            if let active = uiModel.activeTab, active.id == target.id {
+                // Same tab — no-op, preserve the live state.
+            } else {
+                uiModel.activeTab = target
+            }
         }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            uiModel.currentScreen = .tabview
-        }
+        onClose?()
     }
 
     private var headerNavButtonTitle: String {
@@ -182,9 +201,7 @@ struct SplitsSummaryView: View {
             openAssociatedTab()
         } else {
             onRequestCollapse?()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                uiModel.currentScreen = .tabview
-            }
+            onClose?()
         }
     }
 
@@ -347,6 +364,26 @@ struct SplitsSummaryView: View {
         return max(0, split.o[idx])
     }
 
+    /// Fetches Firestore displayNames for any uid in the current split that
+    /// hasn't been resolved yet. Idempotent — runs once on .task and again
+    /// whenever the payload changes (e.g. a Firestore refresh adds a
+    /// joiner's uid that wasn't in the original inline payload).
+    @MainActor
+    private func fetchMissingDisplayNames() async {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let candidates = Set(split.g.compactMap(\.uid))
+            .filter { $0 != myUid && !$0.isEmpty && uidDisplayNames[$0] == nil }
+        for uid in candidates {
+            do {
+                if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
+                    uidDisplayNames[uid] = name
+                }
+            } catch {
+                print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
+            }
+        }
+    }
+
     // MARK: - Paid status
 
     private func isPaid(guestIndex: Int) -> Bool {
@@ -363,7 +400,7 @@ struct SplitsSummaryView: View {
             split.pd!.append(false)
         }
         split.pd![guestIndex].toggle()
-        persistSplit()
+        persistSplit(action: .paidToggled(paid: split.pd![guestIndex]))
     }
 
     /// Returns true if the current user can toggle paid for this guest's transaction.
@@ -614,14 +651,28 @@ struct SplitsSummaryView: View {
 
     // MARK: - Slot claim / unclaim
 
-    private func claimSlot(at guestIndex: Int) {
+    private func claimSlot(at guestIndex: Int, broadcast: Bool = true) {
         let myUid = KeychainHelper.getOrCreateUserId()
         split.g[guestIndex].uid = myUid
+
+        // Embed the joiner's local display name into the wire payload when
+        // the slot's name is empty. The sender's view falls through to
+        // g.n when uidDisplayNames hasn't been populated yet (the recipient's
+        // Firestore user doc may not exist or may not have synced), so
+        // without this, the sender keeps seeing "Guest N" until a separate
+        // round-trip resolves the name. We deliberately only fill empty
+        // slots — a manually-entered name from the bill creator wins.
+        let trimmedExisting = split.g[guestIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedExisting.isEmpty {
+            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+            if !myName.isEmpty {
+                split.g[guestIndex].n = myName
+            }
+        }
+
         removeCurrentUserFromIgnoredIfPresent()
-        // Don't overwrite .n — that's the bill creator's manually-entered name.
-        // Display name is resolved from uid via displayName(for:).
         billState = .joined
-        persistSplit()
+        persistSplit(broadcast: broadcast, action: .claimed)
 
         // Select the newly claimed slot on the donut
         if let idx = myIncludedIndex {
@@ -629,28 +680,98 @@ struct SplitsSummaryView: View {
         }
     }
 
-    private func unclaimSlot() {
-        let myUid = KeychainHelper.getOrCreateUserId()
-        if let gi = split.g.firstIndex(where: { $0.uid == myUid }) {
-            split.g[gi].uid = nil
+    /// Auto-claim a slot on first view of the bill. Skips the chat bubble
+    /// broadcast: iOS won't auto-send an MSConversation.send call this far
+    /// from a user tap (the message lands in the input field draft instead).
+    /// The next *manual* interaction will broadcast the latest state with a
+    /// real user-tap context, which iOS will auto-send normally.
+    private func autoClaimSlotAfterViewLoad(at guestIndex: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard split.g.indices.contains(guestIndex), split.g[guestIndex].uid == nil else { return }
+            claimSlot(at: guestIndex, broadcast: false)
         }
-        addCurrentUserToIgnored()
-        persistSplit()
     }
 
-    private func persistSplit() {
+    private func optOutOfBill() {
+        _ = unclaimCurrentUserIfNeeded()
+        addCurrentUserToIgnored()
+        selectedIndex = nil
+        billState = .notInBill
+        persistSplit(action: .optedOut)
+    }
+
+    private func reconcileClaimState(shouldAutoJoin: Bool = false) {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let alreadyClaimed = split.g.contains { $0.uid == myUid }
+
+        if hasIgnoredListForBill {
+            if isCurrentUserIgnored() {
+                if alreadyClaimed {
+                    _ = unclaimCurrentUserIfNeeded()
+                    persistSplit(action: .optedOut)
+                }
+                billState = .notInBill
+                selectedIndex = nil
+            } else if alreadyClaimed {
+                billState = .joined
+                if let myIdx = myIncludedIndex {
+                    selectedIndex = myIdx
+                }
+            } else if hasClaimableSlots {
+                attemptAutoJoinOrChoose(shouldAutoJoin: shouldAutoJoin)
+            } else {
+                billState = .notInBill
+                selectedIndex = nil
+            }
+        } else {
+            // Legacy behavior (messages without ignoredUUIDs list)
+            if alreadyClaimed {
+                billState = .joined
+                if let myIdx = myIncludedIndex {
+                    selectedIndex = myIdx
+                }
+            } else {
+                attemptAutoJoinOrChoose(shouldAutoJoin: shouldAutoJoin)
+            }
+        }
+    }
+
+    /// On first view of a bill, auto-claim a slot for the current user when
+    /// it's unambiguous (equal-split, or a single free slot). Otherwise leave
+    /// the user in the choosing state. Skipped when reconciling from a live
+    /// Firestore update so a remote change doesn't trigger an auto-claim.
+    private func attemptAutoJoinOrChoose(shouldAutoJoin: Bool) {
+        guard shouldAutoJoin else {
+            billState = .choosing
+            return
+        }
+        if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+            autoClaimSlotAfterViewLoad(at: i)
+        } else if split.m != .equally {
+            let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+            if freeSlots.count == 1 {
+                autoClaimSlotAfterViewLoad(at: freeSlots[0])
+            } else {
+                billState = .choosing
+            }
+        } else {
+            billState = .choosing
+        }
+    }
+
+    private func persistSplit(broadcast: Bool = true, action: BillUpdateAction = .edited) {
         guard var payload = uiModel.openedMessagePayload,
               let docId = uiModel.openedMessageDocId else { return }
 
         payload.s = split
         uiModel.openedMessagePayload = payload
+        if broadcast {
+            uiModel.sendBillUpdate?(payload, docId, action)
+        }
 
         Task {
             do {
                 try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
-                await MainActor.run {
-                    uiModel.sendBillUpdate?(payload, docId)
-                }
                 print("[SplitsSummaryView] Split persisted to \(docId)")
             } catch {
                 print("[SplitsSummaryView] Failed to persist split: \(error)")
@@ -726,10 +847,21 @@ struct SplitsSummaryView: View {
                                     Spacer(minLength: 8)
 
                                     HStack(spacing: 6) {
-                                        ForEach(item.responsible, id: \.slotIndex) { who in
+                                        // Resolve the slot index from the canonical
+                                        // assigneeIDs, then defer to the local
+                                        // displayName(for idx:) helper so the badge
+                                        // text picks up the Firestore-cached name
+                                        // for joined members and `myDisplayName`
+                                        // for the local user. The wire payload's
+                                        // g.n alone would be stale for slots that
+                                        // joined after the bill was sent.
+                                        let assigneeSlots: [Int] = item.assigneeIDs.compactMap { pid in
+                                            split.g.slotIndex(for: pid)
+                                        }
+                                        ForEach(Array(assigneeSlots.enumerated()), id: \.offset) { _, slot in
                                             ColoredCircleBadge(
-                                                text: who.badgeText,
-                                                color: BadgeColors.color(for: who.slotIndex)
+                                                text: BadgeColors.initials(from: displayName(for: slot), fallback: slot),
+                                                color: BadgeColors.color(for: slot)
                                             )
                                         }
                                     }
@@ -983,9 +1115,7 @@ struct SplitsSummaryView: View {
                         if !iAmPayer {
                             Button {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    unclaimSlot()
-                                    billState = .notInBill
-                                    selectedIndex = nil
+                                    optOutOfBill()
                                 }
                             } label: {
                                 HStack(spacing: 6) {
@@ -1017,9 +1147,7 @@ struct SplitsSummaryView: View {
 
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            addCurrentUserToIgnored()
-                            selectedIndex = nil
-                            billState = .notInBill
+                            optOutOfBill()
                         }
                     } label: {
                         HStack(spacing: 6) {
@@ -1150,6 +1278,10 @@ struct SplitsSummaryView: View {
                         VStack(spacing: 0) {
                             scrollHeaderSpacer
 
+                            if isTabReceipt {
+                                Color.clear.frame(height: 16)
+                            }
+
                             if selectedSection == .splits {
                                 splitDetailsSection
                             } else {
@@ -1168,60 +1300,12 @@ struct SplitsSummaryView: View {
             let initBillId = currentBillId ?? "__legacy__"
             guard initializedClaimStateBillId != initBillId else { return }
             initializedClaimStateBillId = initBillId
-
-            let myUid = KeychainHelper.getOrCreateUserId()
-            let alreadyClaimed = split.g.contains { $0.uid == myUid }
-
-            if hasIgnoredListForBill {
-                if isCurrentUserIgnored() {
-                    billState = .notInBill
-                    selectedIndex = nil
-                } else if alreadyClaimed {
-                    billState = .joined
-                    if let myIdx = myIncludedIndex {
-                        selectedIndex = myIdx
-                    }
-                } else if hasClaimableSlots {
-                    // Not yet claimed — preserve existing auto-claim behavior.
-                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                        claimSlot(at: i)
-                    } else if split.m != .equally {
-                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-                        if freeSlots.count == 1 {
-                            claimSlot(at: freeSlots[0])
-                        } else {
-                            billState = .choosing
-                        }
-                    } else {
-                        billState = .choosing
-                    }
-                } else {
-                    billState = .notInBill
-                    selectedIndex = nil
-                }
-            } else {
-                // Legacy behavior (messages without ignoredUUIDs list)
-                if alreadyClaimed {
-                    billState = .joined
-                    if let myIdx = myIncludedIndex {
-                        selectedIndex = myIdx
-                    }
-                } else {
-                    // Not yet claimed — try auto-claim
-                    if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                        claimSlot(at: i)
-                    } else if split.m != .equally {
-                        let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-                        if freeSlots.count == 1 {
-                            claimSlot(at: freeSlots[0])
-                        } else {
-                            billState = .choosing
-                        }
-                    } else {
-                        billState = .choosing
-                    }
-                }
-            }
+            reconcileClaimState(shouldAutoJoin: true)
+        }
+        .onChange(of: uiModel.openedMessagePayload?.s) { _, latestSplit in
+            guard let latestSplit, latestSplit != split else { return }
+            split = latestSplit
+            reconcileClaimState()
         }
         .task {
             let myUid = KeychainHelper.getOrCreateUserId()
@@ -1238,17 +1322,7 @@ struct SplitsSummaryView: View {
                 tabMembershipState = .member
             }
 
-            // Fetch display names for all uids in the guest list (except self)
-            let otherUids = Set(split.g.compactMap(\.uid)).filter { $0 != myUid && !$0.isEmpty }
-            for uid in otherUids {
-                do {
-                    if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
-                        uidDisplayNames[uid] = name
-                    }
-                } catch {
-                    print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
-                }
-            }
+            await fetchMissingDisplayNames()
 
             // Fetch payer's payment methods (only if I'm not the payer, and not a tab receipt)
             if !isTabReceipt, let payerUid = split.g[split.pi].uid, payerUid != myUid {
@@ -1259,6 +1333,12 @@ struct SplitsSummaryView: View {
         .onChange(of: uiModel.openedMessagePayload?.s) { _, newSplit in
             if let newSplit {
                 split = newSplit
+                // The fresh payload may have introduced new uids
+                // (e.g. a joiner who auto-claimed a slot after we first
+                // appeared). Trigger a non-blocking fetch so their
+                // displayName populates uidDisplayNames and badges stop
+                // showing "Guest N".
+                Task { await fetchMissingDisplayNames() }
             }
         }
         .onChange(of: payerPaymentMethods) { _, _ in
@@ -1273,6 +1353,36 @@ struct SplitsSummaryView: View {
                 methods: info.methods,
                 tabColorHex: nil,
                 onSelectMethod: { method in
+                    // Apple Pay: stage the compact-mode reminder, send the
+                    // settlement card, navigate back to tabview (the receipt
+                    // viewer would otherwise hide the compact reminder behind
+                    // it), then collapse the extension.
+                    if method.type == .applePay {
+                        let tabColor = associatedTab?.colorHex
+                        uiModel.pendingApplePayInfo = PendingApplePayInfo(
+                            toName: info.toName,
+                            amountCents: info.amountCents,
+                            tabColorHex: tabColor
+                        )
+                        uiModel.sendApplePayHandoff?(info.fromName, info.toName,
+                                                    info.amountCents, tabColor)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            togglePaid(guestIndex: info.guestIndex)
+                        }
+                        // Preserve the tab association so LootTabView can color
+                        // its compact strip with the same tab as the receipt.
+                        // Skip the write if activeTab already points at this
+                        // tab — `associatedTab` may be a payload-derived
+                        // minimal stub that would downgrade rich live state.
+                        if let target = associatedTab,
+                           uiModel.activeTab?.id != target.id {
+                            uiModel.activeTab = target
+                        }
+                        onClose?()
+                        onRequestCollapse?()
+                        return
+                    }
+
                     let effectiveBankURL: String?
                     if method.type == .zelle {
                         effectiveBankURL = savedPaymentMethods()
@@ -1291,7 +1401,9 @@ struct SplitsSummaryView: View {
                     sendSettlement?(info.fromName, info.toName,
                                     info.amountCents, method.type.displayName, nil)
                     if let url = deepLink {
-                        openURL(url)
+                        // extensionContext.open is required in iMessage extensions —
+                        // SwiftUI's openURL silently no-ops for non-http schemes here.
+                        if let opener = uiModel.openInSafari { opener(url) } else { openURL(url) }
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }
@@ -1314,6 +1426,11 @@ struct SplitsSummaryView: View {
 
 // MARK: - Totals box
 
+private func isTipLabel(_ label: String) -> Bool {
+    let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return normalized.contains("tip") || normalized.contains("gratuity")
+}
+
 struct TotalsBox: View {
     let receipt: ReceiptDisplay
 
@@ -1335,7 +1452,7 @@ struct TotalsBox: View {
                         TotalsRow(label: "Tax", value: receipt.taxCents)
                     }
                 } else {
-                    ForEach(receipt.lineItems) { line in
+                    ForEach(receipt.lineItems.filter { !isTipLabel($0.label) }) { line in
                         TotalsRow(label: line.label, value: line.cents)
                     }
                 }

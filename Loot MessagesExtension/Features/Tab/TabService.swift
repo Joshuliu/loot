@@ -110,36 +110,64 @@ final class TabService {
             throw NSError(domain: "TabService", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "Tab not found"])
         }
-        var tab = try snapshot.data(as: LootTab.self)
+        // Normalize on read so we never operate on (and never round-trip back)
+        // a tab whose `members` array contains duplicates.
+        var tab = try snapshot.data(as: LootTab.self).dedupedMembers()
 
         let myId = KeychainHelper.getOrCreateUserId()
+        let myName = myDisplayNameFromDefaults()
+        let displayName = myName.isEmpty ? "Me" : myName
 
-        // Don't add if already a member
-        guard !tab.memberIds.contains(myId) else {
+        let existingIdx = tab.members.firstIndex { member in
+            member.memberId == myId || member.userId == myId
+        }
+
+        // Already an ACTIVE member: nothing to do beyond the conversation
+        // mapping write. (Previously this also matched inactive past-member
+        // entries, so a leave + re-tap-invite would silently no-op and the
+        // joiner would never re-appear on either device.)
+        if let idx = existingIdx, tab.members[idx].isActive {
+            // Make sure memberIds is in sync with the active membership —
+            // some legacy paths drifted this apart and the arrayContains
+            // query in fetchUserTabs depends on memberIds.
+            if !tab.memberIds.contains(myId) {
+                tab.memberIds.append(myId)
+                try await docRef.updateData([
+                    "memberIds": tab.memberIds,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ])
+            }
             try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
+            print("[TabService] joinTab: \(tabId) (already active member, no-op)")
             return tab
         }
 
-        let myName = myDisplayNameFromDefaults()
-        let me = TabMember(
-            memberId: myId,
-            userId: myId,
-            displayName: myName.isEmpty ? "Me" : myName,
-            balanceCents: 0,
-            isActive: true
-        )
+        if let idx = existingIdx {
+            // Reactivate a past-member entry rather than appending a duplicate.
+            tab.members[idx].isActive = true
+            tab.members[idx].displayName = displayName
+            if tab.members[idx].userId == nil || tab.members[idx].userId?.isEmpty == true {
+                tab.members[idx].userId = myId
+            }
+            print("[TabService] joinTab: \(tabId) (reactivating past member)")
+        } else {
+            tab.members.append(TabMember(
+                memberId: myId,
+                userId: myId,
+                displayName: displayName,
+                balanceCents: 0,
+                isActive: true
+            ))
+            print("[TabService] joinTab: \(tabId) (new member)")
+        }
 
-        tab.members.append(me)
-        tab.memberIds.append(myId)
+        if !tab.memberIds.contains(myId) {
+            tab.memberIds.append(myId)
+        }
 
-        // Update the tab document
         let encoded = try Firestore.Encoder().encode(tab)
         try await docRef.setData(encoded)
-
-        // Write conversation → tab mapping
         try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
-
-        print("[TabService] joinTab: \(tabId)")
         return tab
     }
 
@@ -153,8 +181,14 @@ final class TabService {
             .whereField("memberIds", arrayContains: myId)
             .getDocuments()
 
-        let tabs = snapshot.documents.compactMap { doc in
-            try? doc.data(as: LootTab.self)
+        let tabs = snapshot.documents.compactMap { doc -> LootTab? in
+            guard let raw = try? doc.data(as: LootTab.self) else { return nil }
+            let cleaned = raw.dedupedMembers()
+            if cleaned.members.count != raw.members.count {
+                print("[TabService] fetchUserTabs deduped \(raw.members.count - cleaned.members.count) duplicate(s) in \(doc.documentID)")
+                Task { try? await healDuplicateMembers(tab: cleaned) }
+            }
+            return cleaned
         }
         print("[TabService] fetchUserTabs: \(tabs.count) tabs")
         return tabs
@@ -165,9 +199,52 @@ final class TabService {
 
         let snapshot = try await db.collection("tabs").document(id).getDocument()
         guard snapshot.exists else { return nil }
-        let tab = try snapshot.data(as: LootTab.self)
+        let raw = try snapshot.data(as: LootTab.self)
+        let tab = raw.dedupedMembers()
         print("[TabService] fetchTab: \(id)")
+        // If we just dropped duplicate members, write the cleaned tab back so
+        // every other client and every future fetch sees normalized data.
+        if tab.members.count != raw.members.count {
+            print("[TabService] fetchTab(\(id)) deduped \(raw.members.count - tab.members.count) duplicate member(s); writing back")
+            Task { try? await healDuplicateMembers(tab: tab) }
+        }
         return tab
+    }
+
+    private func healDuplicateMembers(tab: LootTab) async throws {
+        guard let tabId = tab.id else { return }
+        let encodedMembers = try tab.members.map { try Firestore.Encoder().encode($0) }
+        try await db.collection("tabs").document(tabId).updateData([
+            "members": encodedMembers,
+            "memberIds": tab.memberIds,
+            "updatedAt": FieldValue.serverTimestamp()
+        ])
+        print("[TabService] healDuplicateMembers wrote back \(tab.members.count) members for \(tabId)")
+    }
+
+    /// Subscribes to live updates for a tab document. The handler fires on the
+    /// main actor with the freshest decoded LootTab whenever the underlying
+    /// Firestore document changes (other members joining, name/color edits,
+    /// receipts being added that bump derived state). Returns a registration —
+    /// call `.remove()` to stop listening.
+    func listenToTab(tabId: String, onChange: @escaping @MainActor (LootTab) -> Void) -> ListenerRegistration {
+        Task { try? await SharedReceiptService.shared.ensureAnonymousAuth() }
+
+        return db.collection("tabs").document(tabId).addSnapshotListener { snapshot, error in
+            if let error {
+                print("[TabService] listenToTab(\(tabId)) error: \(error)")
+                return
+            }
+            guard let snapshot, snapshot.exists else { return }
+            guard let raw = try? snapshot.data(as: LootTab.self) else {
+                print("[TabService] listenToTab(\(tabId)) decode failed")
+                return
+            }
+            let tab = raw.dedupedMembers()
+            Task { @MainActor in
+                onChange(tab)
+            }
+        }
     }
 
     func associateConversation(tabId: String, conversationKey: String) async throws {
@@ -443,32 +520,79 @@ final class TabService {
     func computeTabBalances(tabId: String, members: [TabMember]) async throws -> [String: Int] {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
 
-        // Start with zero for each known member
-        var balances: [String: Int] = Dictionary(uniqueKeysWithValues:
-            members.map { ($0.memberId, 0) })
+        // Start with zero for each known member; tolerate duplicate memberIds
+        // (corruption-recovery path also covered by `dedupedMembers()`).
+        var balances: [String: Int] = Dictionary(
+            members.map { ($0.memberId, 0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        print("[BalanceAudit] === computeTabBalances tabId=\(tabId) ===")
+        print("[BalanceAudit] members:")
+        for m in members {
+            print("[BalanceAudit]   memberId=\(m.memberId) name=\(m.displayName) userId=\(m.userId ?? "nil") active=\(m.isActive)")
+        }
 
         let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
+        print("[BalanceAudit] sharedReceipts attached to this tab: \(sharedPayloads.count)")
 
         for entry in sharedPayloads {
+            let before = balances
             applyBalanceDelta(from: entry.payload, into: &balances)
+            let split = entry.payload.s
+            let payerUid = split.g.indices.contains(split.pi) ? (split.g[split.pi].uid ?? "nil") : "out-of-bounds"
+            let guestSummary = split.g.enumerated().map { i, g in
+                "[\(i):\(g.n.isEmpty ? "<empty>" : g.n) inc=\(g.inc) uid=\(g.uid ?? "nil") owed=\(split.o.indices.contains(i) ? "\(split.o[i])" : "?")]"
+            }.joined(separator: " ")
+            print("[BalanceAudit] sharedReceipt docId=\(entry.docId) total=\(split.tot) payerUid=\(payerUid)")
+            print("[BalanceAudit]   guests: \(guestSummary)")
+            for (uid, after) in balances {
+                let beforeAmt = before[uid] ?? 0
+                if beforeAmt != after {
+                    print("[BalanceAudit]   delta uid=\(uid): \(beforeAmt) -> \(after) (\(after - beforeAmt >= 0 ? "+" : "")\(after - beforeAmt))")
+                }
+            }
         }
 
         // Legacy fallback: keep supporting old tab receipt docs that may still
         // exist without a linked shared receipt doc.
         let legacyReceipts = try await fetchLegacyTabReceiptsNeedingFallback(forTabId: tabId)
+        print("[BalanceAudit] legacy tab receipts (no linked shared doc): \(legacyReceipts.count)")
         for receipt in legacyReceipts {
+            let before = balances
             applyBalanceDelta(from: receipt, into: &balances)
+            print("[BalanceAudit] legacyReceipt id=\(receipt.id ?? "nil") title=\(receipt.title) total=\(receipt.totalCents) payer=\(receipt.payerMemberId)")
+            for split in receipt.splits {
+                print("[BalanceAudit]   split memberId=\(split.memberId) owed=\(split.owedCents)")
+            }
+            for (uid, after) in balances {
+                let beforeAmt = before[uid] ?? 0
+                if beforeAmt != after {
+                    print("[BalanceAudit]   delta uid=\(uid): \(beforeAmt) -> \(after)")
+                }
+            }
         }
 
         // Apply any recorded settlements
         if let settlementDocs = try? await db.collection("tabs").document(tabId)
             .collection("settlements").getDocuments() {
+            print("[BalanceAudit] settlements: \(settlementDocs.documents.count)")
             for doc in settlementDocs.documents {
-                guard let settlement = try? doc.data(as: Settlement.self) else { continue }
+                guard let settlement = try? doc.data(as: Settlement.self) else {
+                    print("[BalanceAudit]   settlement docId=\(doc.documentID) FAILED to decode; raw=\(doc.data())")
+                    continue
+                }
                 balances[settlement.fromMemberId, default: 0] += settlement.amountCents
                 balances[settlement.toMemberId, default: 0] -= settlement.amountCents
+                print("[BalanceAudit]   settlement docId=\(doc.documentID) from=\(settlement.fromMemberId) to=\(settlement.toMemberId) amount=\(settlement.amountCents)")
             }
         }
+
+        print("[BalanceAudit] === final balances ===")
+        for (uid, amt) in balances {
+            print("[BalanceAudit]   \(uid) = \(amt) cents")
+        }
+        print("[BalanceAudit] === end audit ===")
 
         return balances
     }
