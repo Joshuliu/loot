@@ -223,6 +223,13 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             - cents must be the most likely locally-correct amount for that row, in integer cents.
             - Only fix obvious OCR noise locally, such as misplaced spaces or characters in the amount. Do not use receipt-wide math.
             - If a row has no readable amount, leave cents empty.
+            - Decimal plausibility: if an item price appears unreasonably large for a single dish or product (e.g., $500+ at a restaurant, $50+ at a grocery or convenience store), it likely has a misplaced decimal point or the receipt total was merged onto the item line by OCR. Output the most plausible corrected value (e.g., OCR "5176" for a $51.76 duck dish → output 5176, not 517600).
+            - Exhaustiveness: include every row that represents a distinct purchasable product or charge, even when the item name is garbled, missing, or unreadable. Use "Unknown Item" as the label rather than omitting the row. Only skip a small amount if it is explicitly labeled as a per-item surcharge (e.g., "CRV", "Bottle Dep") — otherwise include it as a separate ITEM or FEE row.
+            - Suggested tips: do NOT output a TIP row for printed suggested/calculated tip amounts (e.g., "Suggested 18%: $23.75", "20%: (Tip $26.39)", "Tip percentages are based on..."). Only output TIP if the receipt shows a specific gratuity the customer actually paid — typically a single line labeled "Tip", "Gratuity", or "Service Charge" with an amount.
+            - You Pay vs. regular price: some grocery receipts show both a regular "Price" column and a lower "You Pay" / sale price column. Always use the "You Pay" / final discounted price, not the higher regular price. When using the "You Pay" price, do NOT also output a separate DISCOUNT row for the savings — the discount is already reflected in the "You Pay" price.
+            - Never output Subtotal, Sub Total, or Grand Total as an ITEM row. Never output the receipt's overall Total as an ITEM row unless a subtotal clearly shows the items don't add up to it (i.e., it represents something purchasable). If a price amount matches or nearly matches the receipt's known total or subtotal, it is almost certainly not an individual item price.
+            - Split-line prices: some receipts show an item with $0.00 and its real price on the next line (or vice versa). Assign the non-zero price to the item rather than outputting $0.00. Similarly, if a standalone price line follows an item with no price, it belongs to that item.
+            - Footer exclusion: Do NOT output rows for Total, Cash, Change, Balance Due, Amount Tendered, or Payment lines. These are transaction summary lines, not purchasable items or charges.
             \(rescueInstructions)
             """)]),
             generationConfig: .init(
@@ -255,6 +262,7 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         let pricedRowCount = resolved.phase2.items.filter { $0.cents != nil }.count + lineItemCount
         let accountedTotal = computedAccountedTotal(for: resolved)
         let missingBy = max(0, knownTotalCents - accountedTotal)
+        let excessBy = max(0, accountedTotal - knownTotalCents)
 
         if pricedRowCount == 0 {
             return "the response contained no usable priced rows"
@@ -262,8 +270,16 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         if itemCount == 0 && lineItemCount <= 2 && knownTotalCents >= 1000 {
             return "the response found footer rows but missed the purchasable body items"
         }
+        // Over-accounting by 1.9× or more usually means a decimal-point OCR error or the receipt total was merged onto an item line.
+        if knownTotalCents >= 500 && Double(accountedTotal) > Double(knownTotalCents) * 1.9 {
+            return "the response heavily over-accounted the receipt (computed \(accountedTotal) cents vs known \(knownTotalCents) cents) — one or more item prices likely has a misplaced decimal point (e.g., OCR read $5176.00 but the correct price is $51.76), or the receipt subtotal/total was mistakenly merged onto the last item's price by OCR"
+        }
         if missingBy > max(1500, Int(Double(knownTotalCents) * 0.4)) {
             return "the response under-accounted the receipt by \(missingBy) cents and likely missed several rows"
+        }
+        // Large gap in either direction without a clear cause
+        if knownTotalCents >= 1000 && excessBy > Int(Double(knownTotalCents) * 0.4) {
+            return "the response over-accounted the receipt by \(excessBy) cents — check for duplicate rows or decimal errors in item prices"
         }
         return "the response was too sparse and likely omitted visible priced rows"
     }
@@ -285,6 +301,14 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             return true
         }
         if totalGap > max(1500, Int(Double(knownTotalCents) * 0.4)) && pricedRowCount <= 4 {
+            return true
+        }
+        // Over-accounting by 1.9× or more almost always means a decimal-point error or total merged onto item — rescue
+        if knownTotalCents >= 500 && Double(accountedTotal) > Double(knownTotalCents) * 1.9 {
+            return true
+        }
+        // Large gap (>50%) regardless of row count — the rows we have are likely wrong
+        if knownTotalCents >= 1000 && Double(totalGap) / Double(knownTotalCents) > 0.5 && pricedRowCount <= 8 {
             return true
         }
         return false
@@ -527,11 +551,53 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         )
 
         let resolved = resolveDiscounts(0, state: initial)
-        let filteredItems = resolved.items.filter { item in
+
+        // Post-resolution fix: if one item's price is suspiciously close to knownTotal or the
+        // items-only subtotal (suggesting OCR merged the receipt total onto that item line),
+        // remove that item's price so it doesn't blow up the total.
+        var correctedItems = resolved.items
+        if knownTotalCents > 0 {
+            let itemsTotal = correctedItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+            let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+            let expectedItemsTotal = knownTotalCents - overhead
+            if itemsTotal > 0 && expectedItemsTotal > 0 {
+                let currentGap = abs(itemsTotal - expectedItemsTotal)
+                if currentGap > 1000 {
+                    for i in correctedItems.indices {
+                        guard let cents = correctedItems[i].cents, cents > 0 else { continue }
+                        let otherItemsTotal = itemsTotal - cents
+                        let gapWithout = abs(otherItemsTotal - expectedItemsTotal)
+                        if Double(cents) >= Double(knownTotalCents) * 0.8
+                            && gapWithout < currentGap {
+                            correctedItems[i] = .init(label: correctedItems[i].label, qty: correctedItems[i].qty, cents: nil)
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        let filteredItems = correctedItems.filter { item in
             guard let cents = item.cents else { return true }
             return cents != 0
         }
-        let derivedSubtotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents + resolved.discountCents
+
+        // If items already sum exactly to knownTotal, the tax/tip/fee rows are likely
+        // misclassified footer lines (total, cash, change) — zero them out.
+        let itemsSumAfterCorrection = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+        let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+        var finalTaxCents = resolved.taxCents
+        var finalTipCents = resolved.tipCents
+        var finalFeesCents = resolved.feesCents
+        var finalDiscountCents = resolved.discountCents
+        if overhead != 0 && itemsSumAfterCorrection == knownTotalCents {
+            finalTaxCents = 0
+            finalTipCents = 0
+            finalFeesCents = 0
+            finalDiscountCents = 0
+        }
+
+        let derivedSubtotal = knownTotalCents - finalTaxCents - finalTipCents - finalFeesCents + finalDiscountCents
         let subtotal = max(0, derivedSubtotal)
 
         var finalIssues = resolved.issues
@@ -539,12 +605,13 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             finalIssues.append("Derived subtotal was negative; clamped to zero")
         }
 
-        let resolvedTotal = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) } + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+        let resolvedTotal = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) } + finalTaxCents + finalTipCents + finalFeesCents - finalDiscountCents
         if resolvedTotal != knownTotalCents {
             finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - resolvedTotal)) cents")
         }
 
-        let finalLineItems = cleanedRows.compactMap { row -> OCRLineItem? in
+        let zeroedOverhead = (overhead != 0 && itemsSumAfterCorrection == knownTotalCents)
+        let finalLineItems: [OCRLineItem] = zeroedOverhead ? [] : cleanedRows.compactMap { row -> OCRLineItem? in
             switch row.kind {
             case .tax, .tip, .fee:
                 guard let cents = row.cents else { return nil }
@@ -560,10 +627,10 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         return ResolvedPhase2(
             phase2: Phase2Result(
                 subtotal_cents: subtotal,
-                tax_cents: resolved.taxCents == 0 ? nil : resolved.taxCents,
-                tip_cents: resolved.tipCents == 0 ? nil : resolved.tipCents,
-                fees_cents: resolved.feesCents == 0 ? nil : resolved.feesCents,
-                discount_cents: resolved.discountCents == 0 ? nil : resolved.discountCents,
+                tax_cents: finalTaxCents == 0 ? nil : finalTaxCents,
+                tip_cents: finalTipCents == 0 ? nil : finalTipCents,
+                fees_cents: finalFeesCents == 0 ? nil : finalFeesCents,
+                discount_cents: finalDiscountCents == 0 ? nil : finalDiscountCents,
                 items: filteredItems,
                 issues: finalIssues
             ),

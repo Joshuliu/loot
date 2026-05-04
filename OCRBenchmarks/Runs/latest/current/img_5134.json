@@ -1,74 +1,128 @@
 {
-  "capturedAt" : "2026-04-18T02:40:39Z",
+  "capturedAt" : "2026-05-04T18:52:56Z",
   "caseID" : "img_5134",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 2780,
-    "breakdown" : 1,
+    "actualComputedTotalCents" : 5353,
+    "breakdown" : 0.6,
     "expectedTotalCents" : 5365,
-    "itemValues" : 0.5555555555555556,
+    "itemValues" : 0.9,
     "lineItemValues" : 0,
     "merchant" : 1,
-    "overall" : 0.3333333333333333,
+    "overall" : 0.345,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -2585,
+    "reconciliationDifferenceCents" : -12,
     "total" : 1
   },
   "snapshot" : {
     "lineItems" : [
-
+      {
+        "cents" : -80,
+        "label" : "Ralphs Savings"
+      },
+      {
+        "cents" : -132,
+        "label" : "Ralphs Savings"
+      }
     ],
     "phase1" : {
       "merchant" : "Ralphs",
       "total_cents" : 5365
     },
     "phase2" : {
+      "discount_cents" : 212,
       "issues" : [
-        "Ignored discount row: RALPHS SAVED YOU",
-        "Ignored discount row: RALPHS SAVED YOU",
-        "Resolved rows differ from known total by 2585 cents"
+        "Missing amount for tax row: Customer Tax",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Resolved rows differ from known total by 12 cents"
       ],
       "items" : [
         {
           "cents" : 199,
-          "label" : "CLASSICO PSTA SCE RC",
+          "label" : "Everyone",
+          "qty" : 1
+        },
+        {
+          "cents" : 319,
+          "label" : "Unknown Item",
           "qty" : 1
         },
         {
           "cents" : 999,
-          "label" : "CAFE BUSTELO ESPRS",
+          "label" : "Unknown Item",
           "qty" : 1
         },
         {
           "cents" : 1249,
-          "label" : "BLACK RIFLE COFFEE",
+          "label" : "Unknown Item",
           "qty" : 1
         },
         {
           "cents" : 167,
-          "label" : "MINUTEMAID JUICE",
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 167,
+          "label" : "Unknown Item",
           "qty" : 1
         },
         {
           "cents" : 166,
-          "label" : "WATERMELON CUBES",
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Barlla Fettuccine Classico Psta Sauce",
+          "qty" : 1
+        },
+        {
+          "label" : "Cafe Bustelo Esprs Black Rifle Coffee",
+          "qty" : 1
+        },
+        {
+          "label" : "Minutemaid Juice",
+          "qty" : 1
+        },
+        {
+          "label" : "Minutemaid Punch",
+          "qty" : 1
+        },
+        {
+          "label" : "Minutemaid Punch",
+          "qty" : 1
+        },
+        {
+          "cents" : 200,
+          "label" : "Watermelon Cubes Shrimp XL",
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 5365
+      "subtotal_cents" : 5577
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|CLASSICO PSTA SCE RC|199\nDISCOUNT|RALPHS SAVED YOU|80\nITEM|CAFE BUSTELO ESPRS|999\nITEM|BLACK RIFLE COFFEE|1249\nITEM|MINUTEMAID JUICE|167\nDISCOUNT|RALPHS SAVED YOU|132\nITEM|WATERMELON CUBES|166\nTAX||\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Everyone|199\nITEM|Unknown Item|319\nITEM|Unknown Item|999\nITEM|Unknown Item|1249\nITEM|Unknown Item|167\nITEM|Unknown Item|167\nITEM|Unknown Item|166\nITEM|Unknown Item|1000\nITEM|Unknown Item|1099\nITEM|Barlla Fettuccine Classico Psta Sauce|\nDISCOUNT|Ralphs Savings|80\nITEM|Cafe Bustelo Esprs Black Rifle Coffee|\nITEM|Minutemaid Juice|\nDISCOUNT|Ralphs Savings|132\nITEM|Minutemaid Punch|\nDISCOUNT|Ralphs Savings|132\nITEM|Minutemaid Punch|\nDISCOUNT|Ralphs Savings|133\nITEM|Watermelon Cubes Shrimp XL|200\nTAX|Customer Tax|\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.5179699659347534,
-      "phase2Seconds" : 20.051666021347046,
-      "totalWorkflowSeconds" : 27.4641250371933,
-      "transcriptSeconds" : 6.894484043121338,
-      "transcriptToPhase1Seconds" : 0.5179699659347534,
-      "transcriptToPhase2Seconds" : 20.56964099407196,
+      "phase1Seconds" : 6.449967980384827,
+      "phase2Seconds" : 32.328872084617615,
+      "totalWorkflowSeconds" : 40.87721109390259,
+      "transcriptSeconds" : 2.0983591079711914,
+      "transcriptToPhase1Seconds" : 6.449967980384827,
+      "transcriptToPhase2Seconds" : 38.7788519859314,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "FRESH FOR EVERYON 5680 Mission Center Rd. Your cashier was CHEC 553 1.99 F CLASSICO PSTA SCE RC 3.19 F RALPHS SAVED YOU 0.80 CAFE BUSTELO ESPRS 9.99 F BLACK RIFLE COFFEE 12.49 F MINUTEMAID JUICE 1.67 F RC RALPHS SAVED YOU 1.32 RC 1.67 F 1.32 RC 1.66 F 1.33 WATERMELON CUBES I 10.00 F 10.99 F RC 2.00 *******7252 0.00 53.65 REF#: 07966C TOTAL: 53.65 53.65 0.00 TOTAL NUMBER OF ITEMS SOLD = 56.6. 11 77 560 150 000009553 ....\nRalphs (619) 297-2593 BARLLA FETTUCN MINUTEMAID PUNCH RALPHS SAVED YOU MINUTEMAID PUNCH RALPHS SAVED YOU SHRIMP XL RALPHS SAVED YOU rewards CUSTOMER RALPHS TAX **** BALANCE San Diego CA 92108 VISA CREDIT Purchase ************3578 - H AID: A0000000031010 TC: 4FBA00D59D618582 VISA CHANGE RALPHS rewards SAVINGS TOTAL COUPONS\nSC SC SC SC SC"
+    "transcript" : "EVERYON 1.99 F 3.19 F 9.99 F 12.49 F 1.67 F 1.67 F 1.66 F 10.00 F 10.99 F *******7252 0.00 53.65 53.65 0.00 TOTAL NUMBER OF ITEMS SOLD = 56.6. 11 77 552 159 999999553 *...\nRalphs FRESH FOR 5680 Mission Center Rd. Your cashier was CHEC 553 BARLLA FETTUCN CLASSICO PSTA SCE RC RALPHS SAVED YOU 0.80 CAFE BUSTELO ESPRS BLACK RIFLE COFFEE MINUTEMAID JUICE RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.33 WATERMELON CUBES SHRIMP XL RC 2.00 RALPHS SAVED YOU rewards CUSTOMER TAX **** BALANCE San Diego CA 92108 VISA CREDIT Purchase ************3578 - H REF#: 07966C TOTAL: 53.65 AID: A0000000031010 TC: 4FBA00D59D618582 VISA CHANGE RALPHS rewards SAVINGS TOTAL COUPONS\n(619) 297-2593 SC SC SC RALPHS\nSC SC"
   },
   "sourceFilename" : "IMG_5134.jpeg",
   "variantID" : "current"

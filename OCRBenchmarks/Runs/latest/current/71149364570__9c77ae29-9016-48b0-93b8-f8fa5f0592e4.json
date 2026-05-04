@@ -1,30 +1,63 @@
 {
-  "capturedAt" : "2026-04-18T02:31:31Z",
+  "capturedAt" : "2026-05-04T18:42:45Z",
   "caseID" : "71149364570__9c77ae29-9016-48b0-93b8-f8fa5f0592e4",
-  "errorDescription" : "decodeFailed",
   "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 34,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 3890,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.06,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -3856,
+    "total" : 0
+  },
   "snapshot" : {
     "lineItems" : [
-
+      {
+        "cents" : 34,
+        "label" : "Service"
+      }
     ],
     "phase1" : {
-
+      "merchant" : "AR 5er9\/r3 cases",
+      "total_cents" : 34
     },
     "phase2" : {
+      "fees_cents" : 34,
       "issues" : [
 
       ],
       "items" : [
-
-      ]
+        {
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 0
     },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|\nITEM|Unknown Item|\nITEM|Unknown Item|\nFEE|Service|34\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0,
-      "transcriptSeconds" : 0,
-      "transcriptToPhase1Seconds" : 0,
+      "phase1Seconds" : 0.5794370174407959,
+      "phase2Seconds" : 21.589177012443542,
+      "totalWorkflowSeconds" : 23.13328504562378,
+      "transcriptSeconds" : 0.9646569490432739,
+      "transcriptToPhase1Seconds" : 0.5794370174407959,
+      "transcriptToPhase2Seconds" : 22.1686270236969,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : ""
+    "transcript" : "• AR 5er9\/r3 cases Dine In Invoice: 238 Credit Sale Status: Card Type: Card Numbe Card Owner Entry Meti Auth Code APPLAB: 1 Gemel 1 Orec 1 Serv Subtota Sales 1 Total VISA - Servi AMOUN\nAID: TC:\n34"
   },
   "sourceFilename" : "71149364570__9C77AE29-9016-48B0-93B8-F8FA5F0592E4.jpeg",
   "variantID" : "current"

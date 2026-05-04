@@ -4,6 +4,8 @@ import CoreImage
 @preconcurrency import Vision
 
 public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+
     public init() {}
 
     public func generate(from image: ReceiptImage) async throws -> String {
@@ -14,8 +16,13 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         let textBounds = await detectTextBoundingBox(in: image)
         let tightImage = cropToNormalizedRect(image, rect: textBounds)
         let correctedImage = await straightenImage(in: tightImage)
-        let observations = try await detectTextBlocksDualPass(in: correctedImage)
+        let enhancedImage = enhanceForOCR(correctedImage)
+        let observations = try await detectTextBlocksDualPass(in: enhancedImage)
         let lines = buildTranscriptLines(from: observations)
+        // Pass correctedImage (not enhancedImage) so each chunk is enhanced exactly once
+        // inside prepareChunkForOCR. Passing the already-enhanced image causes double
+        // enhancement which corrupts Vision bounding boxes and collapses the transcript
+        // into 2–3 mega-lines instead of one line per receipt row.
         let chunkTranscripts = await analyzeChunks(in: correctedImage, from: lines)
         return chunkTranscripts.filter { !$0.isEmpty }.joined(separator: "\n")
     }
@@ -155,6 +162,23 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         return ReceiptImage(cgImage: cgImage)
     }
 
+    // Keep OCR-specific enhancement as an explicit stage so we can evolve it independently of scaling.
+    private static func enhanceForOCR(_ image: ReceiptImage) -> ReceiptImage {
+        let normalizedImage = normalizeImageForOCR(image)
+        let ciImage = CIImage(cgImage: normalizedImage.cgImage)
+        let contrasted = ciImage.applyingFilter("CIColorControls", parameters: [
+            kCIInputContrastKey: 1.12
+        ])
+        let sharpened = contrasted.applyingFilter("CISharpenLuminance", parameters: [
+            kCIInputSharpnessKey: 0.35
+        ])
+
+        guard let outputCG = ciContext.createCGImage(sharpened, from: sharpened.extent) else {
+            return normalizedImage
+        }
+        return ReceiptImage(cgImage: outputCG)
+    }
+
     private static func prepareChunkForOCR(_ image: ReceiptImage) -> ReceiptImage {
         let scale: CGFloat = 1.5
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
@@ -171,7 +195,79 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         context.interpolationQuality = .high
         context.draw(image.cgImage, in: CGRect(origin: .zero, size: newSize))
         guard let cgImage = context.makeImage() else { return image }
-        return ReceiptImage(cgImage: cgImage)
+        return enhanceForOCR(ReceiptImage(cgImage: cgImage))
+    }
+
+    // Convert to grayscale and stretch the luminance range so faint receipt text is easier to separate.
+    private static func normalizeImageForOCR(_ image: ReceiptImage) -> ReceiptImage {
+        let ciImage = CIImage(cgImage: image.cgImage)
+        let grayscale = ciImage.applyingFilter("CIColorControls", parameters: [
+            kCIInputSaturationKey: 0
+        ])
+        let normalized = normalizeLuminance(in: grayscale) ?? grayscale
+        guard let outputCG = ciContext.createCGImage(normalized, from: normalized.extent) else {
+            return image
+        }
+        return ReceiptImage(cgImage: outputCG)
+    }
+
+    private static func normalizeLuminance(in image: CIImage) -> CIImage? {
+        let extent = image.extent.integral
+        guard !extent.isEmpty else { return nil }
+
+        let extentVector = CIVector(cgRect: extent)
+        let minimumImage = image.applyingFilter("CIAreaMinimum", parameters: [
+            kCIInputExtentKey: extentVector
+        ])
+        let maximumImage = image.applyingFilter("CIAreaMaximum", parameters: [
+            kCIInputExtentKey: extentVector
+        ])
+
+        guard let minimumLuminance = sampleLuminance(from: minimumImage),
+              let maximumLuminance = sampleLuminance(from: maximumImage) else {
+            return nil
+        }
+
+        let clampedMinimum = max(0, min(minimumLuminance, 1))
+        let clampedMaximum = max(clampedMinimum + 0.01, min(maximumLuminance, 1))
+        let dynamicRange = max(0.25, clampedMaximum - clampedMinimum)
+        let scale = 1 / dynamicRange
+        let bias = -clampedMinimum * scale
+
+        return image
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: scale, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: scale, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: scale, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                "inputBiasVector": CIVector(x: bias, y: bias, z: bias, w: 0)
+            ])
+            .applyingFilter("CIColorClamp", parameters: [
+                "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
+                "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1)
+            ])
+    }
+
+    private static func sampleLuminance(from image: CIImage) -> CGFloat? {
+        guard let cgImage = ciContext.createCGImage(image, from: image.extent) else {
+            return nil
+        }
+
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let bitmapContext = CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        bitmapContext.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return CGFloat(pixel[0]) / 255
     }
 
     private static func detectTextBlocksDualPass(in image: ReceiptImage) async throws -> [VNRecognizedTextObservation] {
@@ -265,9 +361,31 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
             "inputBottomLeft": bottomLeft,
             "inputBottomRight": bottomRight
         ])
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
-        guard let outputCG = ctx.createCGImage(corrected, from: corrected.extent) else { return nil }
+        guard let outputCG = ciContext.createCGImage(corrected, from: corrected.extent) else { return nil }
         return ReceiptImage(cgImage: outputCG)
+    }
+
+    private static func estimateGlobalSlope(from observations: [VNRecognizedTextObservation]) -> CGFloat {
+        var estimates: [CGFloat] = []
+        let n = min(observations.count, 40)
+        for i in 0..<n {
+            for j in (i + 1)..<n {
+                let a = observations[i]
+                let b = observations[j]
+                let dx = b.boundingBox.midX - a.boundingBox.midX
+                guard abs(dx) > 0.15 else { continue }
+                let dy = b.boundingBox.midY - a.boundingBox.midY
+                let heightRef = max(a.boundingBox.height, b.boundingBox.height)
+                // Only pair observations that are on the same row (vertically close)
+                guard abs(dy) < heightRef * 0.6 else { continue }
+                let slope = dy / dx
+                guard abs(slope) < 0.2 else { continue }
+                estimates.append(slope)
+            }
+        }
+        guard !estimates.isEmpty else { return 0 }
+        let sorted = estimates.sorted()
+        return sorted[sorted.count / 2]
     }
 
     private static func buildTranscriptLines(from observations: [VNRecognizedTextObservation]) -> [TranscriptLine] {
@@ -278,6 +396,8 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
             return lhs.boundingBox.minX < rhs.boundingBox.minX
         }
 
+        let globalSlope = estimateGlobalSlope(from: sortedObservations)
+
         var usedIndices = Set<Int>()
         var lines: [TranscriptLine] = []
 
@@ -287,10 +407,15 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
             var lineObservations: [VNRecognizedTextObservation] = [anchor]
             usedIndices.insert(anchorIndex)
 
+            let globalFit = (
+                slope: globalSlope,
+                intercept: anchor.boundingBox.midY - globalSlope * anchor.boundingBox.midX
+            )
+
             var didGrow = true
             while didGrow {
                 didGrow = false
-                let fit = fitLine(to: lineObservations)
+                let fit = lineObservations.count >= 2 ? fitLine(to: lineObservations) : globalFit
                 let meanHeight = lineObservations.map(\.boundingBox.height).reduce(0, +) / CGFloat(lineObservations.count)
 
                 for candidateIndex in sortedObservations.indices where !usedIndices.contains(candidateIndex) {
@@ -444,12 +569,29 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
     private static func shouldJoinLine(candidate: VNRecognizedTextObservation, anchor: VNRecognizedTextObservation, fit: (slope: CGFloat, intercept: CGFloat), meanHeight: CGFloat) -> Bool {
         let candidateBox = candidate.boundingBox
         let anchorBox = anchor.boundingBox
-        if verticalOverlapRatio(of: anchorBox, with: candidateBox) >= 0.45 { return true }
+
+        // Use the anchor's original height as the reference — not the growing meanHeight —
+        // so that absorbing a taller/shorter observation doesn't snowball the thresholds
+        // and start pulling in items from adjacent receipt rows.
+        let referenceHeight = min(anchorBox.height, meanHeight)
+
+        // Overlap check: require substantial overlap (≥60%) so that densely-packed receipt
+        // lines (where adjacent rows barely touch) don't get merged.
+        if verticalOverlapRatio(of: anchorBox, with: candidateBox) >= 0.60 { return true }
+
         let predictedMidY = fit.slope * candidateBox.midX + fit.intercept
         let baselineDistance = abs(candidateBox.midY - predictedMidY)
-        let distanceThreshold = max(meanHeight, candidateBox.height) * 0.65
-        let anchorDistance = abs(candidateBox.midY - anchorBox.midY)
-        let verticalWindow = max(max(meanHeight, candidateBox.height), anchorBox.height) * 1.4
+        let distanceThreshold = max(referenceHeight, candidateBox.height) * 0.65
+        // De-tilt both midY values using the current fit slope before comparing them.
+        // Without this, a price observation at the far-right edge of a tilted receipt is
+        // displaced from its anchor (item name) by (slope × ΔX), which can exceed
+        // verticalWindow even when the two observations are genuinely on the same row.
+        let anchorDeTiltedY = anchorBox.midY - fit.slope * anchorBox.midX
+        let candidateDeTiltedY = candidateBox.midY - fit.slope * candidateBox.midX
+        let anchorDistance = abs(candidateDeTiltedY - anchorDeTiltedY)
+        // Reduce the vertical window multiplier from 1.4 → 1.0 so adjacent lines
+        // (center-to-center ≈ 1× text height) are no longer absorbed into the same line.
+        let verticalWindow = max(max(referenceHeight, candidateBox.height), anchorBox.height) * 1.0
         return baselineDistance <= distanceThreshold && anchorDistance <= verticalWindow
     }
 
@@ -458,4 +600,5 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         let overlap = max(0, min(base.maxY, other.maxY) - max(base.minY, other.minY))
         return overlap / base.height
     }
+
 }

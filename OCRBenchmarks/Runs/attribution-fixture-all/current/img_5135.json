@@ -1,0 +1,75 @@
+{
+  "capturedAt" : "2026-04-25T18:58:06Z",
+  "caseID" : "img_5135",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 6979,
+    "breakdown" : 1,
+    "expectedTotalCents" : 18829,
+    "itemValues" : 0.2222222222222222,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.3333333333333333,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -11850,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1354,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "SHOGUN RESTAURANT-SAN",
+      "total_cents" : 18829
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: ?",
+        "Unclassified priced row: ?",
+        "Unclassified priced row: ?",
+        "Resolved rows differ from known total by 11850 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 850,
+          "label" : "Sapporo Light",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "Glass",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "New York & Colossal Shrimp",
+          "qty" : 1
+        },
+        {
+          "cents" : 150,
+          "label" : "Sprite",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 17475,
+      "tax_cents" : 1354
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Sapporo Light|850\nITEM|Glass|75\nITEM|Wagyu Rib Eye & Shrimp Fried Rice|0\nUNKNOWN|?|5000\nITEM|New York & Colossal Shrimp|4550\nUNKNOWN|?|450\nITEM|New York & Colossal Shrimp Fried Rice|0\nUNKNOWN|?|150\nITEM|Fried Rice|0\nITEM|Sprite|150\nTAX|Tax|1354\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.601593017578125,
+      "phase2Seconds" : 21.985175013542175,
+      "totalWorkflowSeconds" : 23.586793065071106,
+      "transcriptSeconds" : 1.2993812561035156e-05,
+      "transcriptToPhase1Seconds" : 1.601593017578125,
+      "transcriptToPhase2Seconds" : 23.586780071258545,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "SHOGUN RESTAURANT-SAN 5451 KEARNY VILLA RO SAN DIEGO, CA 92123 858) 560-7399\nWWW.RESTAURANTSHOGUN. COM Jan 30, 2026 at 9:52 PM\nOrder #11015:1\n5\nTeppan\nSmo Strawberry Colada Khania\nB Sapporo Light 1202 8.50\n1 Glass 6 0. 75\nWagyu Rib Eye & Shrimp Fried Rice 0.00\n50.00\nNew York & Colossal Shrimp Med Rare 45.50 4.50\nNew York & Colossal Shrimp Fried Rice 0.00 4 1.50\nMed Rare 45.50\nFried Rice 0.00\nSprite 4 1.50\n5.00\nSubtotal\nTax 174.75\nTotal 13.54\n188.29\nSuggested tip amounts 15%: 18%. $28.24: $216.53 022 00. mono\nSuggested tip amounts are provided 15%: $28.24: $216.53 18%: $33.89: $222. 18\nfor your convenience. 20%: $37.66: $225.95\nReceipt Code: 0116585820417\nThank you for visiting!\nCome back soon!"
+  },
+  "sourceFilename" : "IMG_5135.jpeg",
+  "variantID" : "current"
+}

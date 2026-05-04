@@ -1,18 +1,18 @@
 {
-  "capturedAt" : "2026-04-18T02:35:32Z",
+  "capturedAt" : "2026-05-04T18:45:51Z",
   "caseID" : "img_1231",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 283513,
+    "actualComputedTotalCents" : 231865,
     "breakdown" : 1,
     "expectedTotalCents" : 414413,
-    "itemValues" : 0.6976744186046512,
+    "itemValues" : 0.5348837209302325,
     "lineItemValues" : 1,
     "merchant" : 0,
-    "overall" : 0.4046511627906977,
+    "overall" : 0.3802325581395349,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -130900,
+    "reconciliationDifferenceCents" : -182548,
     "total" : 1
   },
   "snapshot" : {
@@ -27,62 +27,42 @@
       }
     ],
     "phase1" : {
-      "merchant" : "The Beatiy HiT Hotel",
+      "merchant" : "The Beverly Hotel",
       "total_cents" : 414413
     },
     "phase2" : {
       "issues" : [
-        "Resolved rows differ from known total by 130900 cents"
+        "Resolved rows differ from known total by 182548 cents"
       ],
       "items" : [
         {
           "cents" : 17800,
-          "label" : "Far Niente Chard",
+          "label" : "Chard",
           "qty" : 1
         },
         {
-          "cents" : 11500,
+          "cents" : 1300,
           "label" : "San Pellegrino, Large",
           "qty" : 1
         },
         {
-          "cents" : 3500,
+          "cents" : 1300,
           "label" : "Latte",
           "qty" : 1
         },
         {
-          "cents" : 3600,
-          "label" : "Coffee Souffle of Whole the Day",
+          "cents" : 3626,
+          "label" : "Soup of Day",
           "qty" : 1
         },
         {
-          "cents" : 37500,
-          "label" : "Generosity Lemonade",
-          "qty" : 1
-        },
-        {
-          "cents" : 800,
-          "label" : "Groth Res Cab",
-          "qty" : 1
-        },
-        {
-          "cents" : 2600,
-          "label" : "Far Ginger Niente Cab",
-          "qty" : 1
-        },
-        {
-          "cents" : 3200,
-          "label" : "Seabass",
-          "qty" : 1
-        },
-        {
-          "cents" : 5600,
-          "label" : "Steak Tartare 4oz",
+          "cents" : 10426,
+          "label" : "Artichokes Soup Mignon Cab Large",
           "qty" : 1
         },
         {
           "cents" : 4200,
-          "label" : "Truffle Fries",
+          "label" : "Steak Tartare 4oz",
           "qty" : 1
         },
         {
@@ -200,17 +180,17 @@
       "tax_cents" : 30638,
       "tip_cents" : 61275
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Far Niente Chard|17800\nITEM|San Pellegrino, Large|11500\nITEM|Latte|3500\nITEM|Coffee Souffle of Whole the Day|3600\nITEM|Generosity Lemonade|37500\nITEM|Groth Res Cab|800\nITEM|Far Ginger Niente Cab|2600\nITEM|Seabass|3200\nITEM|Steak Tartare 4oz|5600\nITEM|Truffle Fries|4200\nITEM|Wagyu NY Strip|2800\nITEM|Chocolate Souffle|6400\nITEM|Wagyu Burger|2600\nITEM|Chocolate Souffle|4500\nITEM|Soup of Day|2600\nITEM|Seabass|2100\nITEM|SD Fries|5600\nITEM|Filet Mignon|1600\nITEM|Seabass|6600\nITEM|Tuna Tartare|5600\nITEM|Tomahawk|3600\nITEM|Steak Tartare 4oz|13500\nITEM|Filet Mignon|4200\nITEM|SD Fries|6600\nITEM|Artichokes|1600\nITEM|Filet Mignon|3200\nITEM|Steak Tartare 4oz|6600\nUNKNOWN|Unknown Item|4200\nITEM|Open Food|6000\nITEM|Half Dozen Oysters|3200\nITEM|Filet Mignon|6600\nITEM|SD Fries|1600\nTIP|Gratuity|61275\nTAX|Tax|30638\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Chard|17800\nITEM|San Pellegrino, Large|1300\nITEM|Latte|1300\nITEM|Soup of Day|3626\nITEM|Artichokes Soup Mignon Cab Large|10426\nITEM|Steak Tartare 4oz|4200\nITEM|Wagyu NY Strip|2800\nITEM|Chocolate Souffle|6400\nITEM|Wagyu Burger|2600\nITEM|Chocolate Souffle|4500\nITEM|Soup of Day|2600\nITEM|Seabass|2100\nITEM|SD Fries|5600\nITEM|Filet Mignon|1600\nITEM|Seabass|6600\nITEM|Tuna Tartare|5600\nITEM|Tomahawk|3600\nITEM|Steak Tartare 4oz|13500\nITEM|Filet Mignon|4200\nITEM|SD Fries|6600\nITEM|Artichokes|1600\nITEM|Filet Mignon|3200\nITEM|Steak Tartare 4oz|6600\nITEM|Unknown Item|4200\nITEM|Open Food|6000\nITEM|Half Dozen Oysters|3200\nITEM|Filet Mignon|6600\nITEM|SD Fries|1600\nTIP|Gratuity|61275\nTAX|Tax|30638\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.49131202697753906,
-      "phase2Seconds" : 15.662358045578003,
-      "totalWorkflowSeconds" : 26.731773018836975,
-      "transcriptSeconds" : 10.578099012374878,
-      "transcriptToPhase1Seconds" : 0.49131202697753906,
-      "transcriptToPhase2Seconds" : 16.153674006462097,
+      "phase1Seconds" : 1.5414199829101562,
+      "phase2Seconds" : 37.39357602596283,
+      "totalWorkflowSeconds" : 41.027559995651245,
+      "transcriptSeconds" : 2.0925480127334595,
+      "transcriptToPhase1Seconds" : 1.5414199829101562,
+      "transcriptToPhase2Seconds" : 38.93501102924347,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "1:14 •• ULTE\nDone\nPhoto\nCHK 1017632 18000109 Randy V -_-. Beverly H111s. CA 90210 The Beatiy HiT Hotel 9641 Sunset Boulevard Tel: (310) 887-2777\n1 Chocolate Souffle 1 1 A La Carte Appetizer 1 Tuna Tartare Open Dessert WHOLE CAKE 18 Ju1 21 ------. TBL 50\/1 ----\n15:46 PM GST 13\n2 Far Niente Chard & 178.00 2 San Pellegrino, Large & 1 Latte 1 Coffee Souffle of Whole the Day 115 35 36 100 -00 -00\n2 Generosity. Lemonade 6 Groth Res Cab 16 Far Ginger Niente Cab @ 375.00 @ 8.00 26 26 9 •00 • 00 *00\nArtichokes Filet SOuP Iceberg Wedge OF Ale 26 • 00\nTruffle Steak Seabass Mignon Day Large - 00 356 104 .00 - 0O\n1 Seabass 32.00\n1 Steak Tartare 4oz 56.00\n1 Truffle Fries 42.00\n1 Wagyu NY Strip 28.00\nChocolate Souffle 64.00\n1 Wagyu Burger 26.00\n1 Chocolate Souffle 45.00\n1 Soup of Day 26.00\n1 Seabass 21.00\n1 SD Fries 56.00\n1 Filet Mignon 16.00\n1 Seabass 66.00\n1 Tuna Tartare 56.00\n1 Tomahawk 36.00\n1 Steak Tartare 4oz 135.00\n1 Filet Mignon 42.00\n1 SD Fries 66.00\n1 Artichokes 16.00\n1 Filet Mignon 32.00\n1 Steak Tartare 4oz 66.00\n42.00\n1 Open Food 60.00\nHALF LAMB \/WTH WHIP POT\/ BROCC\n1 Half Dozen Oysters 32.00\n1 Filet Mignon 66.00\n1 SD Fries 16.00\nGratuity % 612.75\n19.00%\n19.00 %\nSubtotal $3225.00\nGratuity $612.75\nTax $306.38\nTotal Due $4144.13\nFOR HOTEL GUEST ONLY\nGratuity:_\nTotal:\nRoom Number:.\nPrint Name:"
+    "transcript" : "1:14\nLTE\nDone\nPhoto\nBeverly H111s. CA 90210 The Beveriy 9171g Hotel Tel: (310) 887-2777 9641 Sunset 1 Pole Laur Boulevard\niten borte Appet1zer CHK 1017632 18000109 Randy V 18 Ju1:21 ------. TBL 50\/1 15:46 PM GST 13\nTruffle Seabass Souffle of WHOLE CAKE Whole\n2 for gente Chard a 178.00 2 San Pellegrino, Large ® 1 Latte 13.00 souffle the Day 36 26 • GO *00\nCoke\nGenerosity Lemonade 0 8 Far Ginger Niente 9 8 •0O • OO\nArtichokes Soup Mignon Cab Large .00 @ 375.00 300:00 104 26 -00 -0O\nWagyu Steak Day\n1 1 Steak Tartare 4oz Truffle Fries 56.00\n42.00\n1 Wagyu NY Strip 28.00\nChocolate Souffle 64.00\nWagyu Burger 26.00\n1 Chocolate Souffle 45.00\n1 Soup of Day 26.00\n1 Seabass 21.00\n1 SD Fries 56.00\n1 Filet Mignon 16.00\n1 Seabass 66.00\n1 Tuna Tartare 56.00\n1 Tomahawk 36.00\n1 Steak Tartare 4oz 135.00\n1 Filet Mignon 42.00\n1 SD Fries 66.00\n1 Artichokes 16.00\n1 Filet Mignon 32.00\n1 Steak Tartare 4oz 66.00\n42.00\n1 Open Food 60.00\nHALF LAMB \/WTH WHIP POT\/ BROCC\n1 Half Dozen Oysters 32.00\n1 Filet Mignon 66.00\n1 SD Fries 16.00\nGratuity % 612.75\n19.00%\n19.00%\nSubtotal $3225.00\nGratuity $612.75\nTax $306.38\nTotal Due $4144.13\nFOR HOTEL GUEST ONLY\nGratuity:_\nTotal:\nRoom Number:_\nPrint Name:"
   },
   "sourceFilename" : "IMG_1231.JPG",
   "variantID" : "current"

@@ -1,80 +1,96 @@
 {
-  "capturedAt" : "2026-04-18T02:38:34Z",
+  "capturedAt" : "2026-05-04T18:50:26Z",
   "caseID" : "img_4992",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 1225,
+    "actualComputedTotalCents" : 4662,
     "breakdown" : 0.6,
     "expectedTotalCents" : 4832,
-    "itemValues" : 0,
+    "itemValues" : 0.5,
     "lineItemValues" : 0,
-    "merchant" : 0.1111111111111111,
-    "overall" : 0.06,
+    "merchant" : 1,
+    "overall" : 0.135,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -3607,
+    "reconciliationDifferenceCents" : -170,
     "total" : 0
   },
   "snapshot" : {
     "lineItems" : [
-      {
-        "cents" : 926,
-        "label" : "CA Sales Tax"
-      }
+
     ],
     "phase1" : {
-      "merchant" : "Tve-nru lack In Thi STO",
-      "total_cents" : 8409
+      "merchant" : "Jack In The Box",
+      "total_cents" : 1359
     },
     "phase2" : {
       "issues" : [
-        "Resolved rows differ from known total by 7184 cents"
+        "Missing amount for tax row: CA Sales Tax",
+        "Resolved rows differ from known total by 3303 cents"
       ],
       "items" : [
         {
+          "label" : "SMS BTRY",
+          "qty" : 1
+        },
+        {
+          "cents" : 859,
+          "label" : "Shash K De",
+          "qty" : 1
+        },
+        {
+          "cents" : 1059,
           "label" : "French Fries",
           "qty" : 1
         },
         {
+          "cents" : 450,
+          "label" : "Fountain Drink",
+          "qty" : 1
+        },
+        {
+          "cents" : 423,
           "label" : "Diet Coke",
           "qty" : 1
         },
         {
-          "label" : "Smashed Jack",
+          "cents" : 409,
+          "label" : "Smashed Jack No Pickles",
           "qty" : 1
         },
         {
-          "cents" : 299,
-          "label" : "Jr. Chicken Sandwich",
+          "cents" : 598,
+          "label" : "Chicken Sandwich",
           "qty" : 1
         },
         {
-          "label" : "Smash Jadi 13",
+          "cents" : 832,
+          "label" : "Smash Jack",
           "qty" : 1
         },
         {
-          "label" : "Tiny Tacos",
+          "label" : "Classic Tiny Tacos",
           "qty" : 1
         },
         {
-          "label" : "Avocado Lime Dip",
+          "cents" : 32,
+          "label" : "Avocado Lime Dip Cup",
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 7483,
-      "tax_cents" : 926
+      "subtotal_cents" : 1359
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|French Fries|\nITEM|Diet Coke|\nITEM|Smashed Jack|\nITEM|Jr. Chicken Sandwich|299\nITEM|Smash Jadi 13|\nITEM|Tiny Tacos|\nITEM|Avocado Lime Dip|\nTAX|CA Sales Tax|926\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|SMS BTRY|1457\nITEM|Shash K De|859\nITEM|French Fries|1059\nITEM|Fountain Drink|450\nITEM|Diet Coke|423\nITEM|Smashed Jack No Pickles|409\nITEM|Chicken Sandwich|598\nITEM|Smash Jack|832\nITEM|Classic Tiny Tacos|\nITEM|Avocado Lime Dip Cup|32\nTAX|CA Sales Tax|\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 5.0502690076828,
-      "phase2Seconds" : 13.021144986152649,
-      "totalWorkflowSeconds" : 24.523881912231445,
-      "transcriptSeconds" : 6.452462911605835,
-      "transcriptToPhase1Seconds" : 5.0502690076828,
-      "transcriptToPhase2Seconds" : 18.07141900062561,
+      "phase1Seconds" : 2.2550920248031616,
+      "phase2Seconds" : 83.06779503822327,
+      "totalWorkflowSeconds" : 87.23540306091309,
+      "transcriptSeconds" : 1.912500023841858,
+      "transcriptToPhase1Seconds" : 2.2550920248031616,
+      "transcriptToPhase2Seconds" : 85.32290303707123,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "$14.57 $8.59 85.98 810.59 $4.50 844.23 84.09 448.32 848.32\nOr Tve-nru lack In Thi STO 8 Hamilton Ave Castell, CA 95008 SMS BTRY SHASH K DS, LE FRENCH FRIES FOUNTAIN DRINK DIET COKE SMASHED JACK No PICKLES JR. CHICKEN SANDWICH (2 • 2.99) BAC DEL SMASH JADI 13 CLASSIC TINY TACOS AVOCADO LIME DIP DUF Subtotal CA Sales Tax - 9.258 Total Visa Tendered"
+    "transcript" : "0301% $14.57 $8.59 $5.98 810.59 $4.50 844.23 $4.09 840.32 848.32\nOr ive nru Jack In The Bor 1043 STO 9 Hastiton Ave Castell, CA 95008 SMS BTRY SHASH K DE, LE FRENCH FRIES FOUNTAIN DRIN DIET COKE SMASHED JACK NO PICKLES JR. CHICKEN SANDWICH (2 • 2.99) BAC DEL SMASH JACK 13 CLASSIC TINY TACOS AVOCADO LIME DIP CUP Subtotal CA Sales Tax - 9.25% Total Visa Tendered\nItes"
   },
   "sourceFilename" : "IMG_4992.jpeg",
   "variantID" : "current"

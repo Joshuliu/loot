@@ -1,15 +1,15 @@
 {
-  "capturedAt" : "2026-04-18T02:39:19Z",
+  "capturedAt" : "2026-05-04T18:51:13Z",
   "caseID" : "img_5055",
   "expectedReviewStatus" : "needsReview",
   "score" : {
     "actualComputedTotalCents" : 4524,
-    "breakdown" : 1,
+    "breakdown" : 0.6,
     "expectedTotalCents" : 4524,
-    "itemValues" : 1,
-    "lineItemValues" : 1,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0,
     "merchant" : 0.2,
-    "overall" : 1,
+    "overall" : 0.835,
     "passesTotalReconciliation" : true,
     "reconciliation" : 1,
     "reconciliationDifferenceCents" : 0,
@@ -17,10 +17,7 @@
   },
   "snapshot" : {
     "lineItems" : [
-      {
-        "cents" : 325,
-        "label" : "Tax"
-      }
+
     ],
     "phase1" : {
       "merchant" : "El Pollo Loco",
@@ -28,29 +25,33 @@
     },
     "phase2" : {
       "issues" : [
-        "Discount row missing amount: Discount"
+
       ],
       "items" : [
         {
           "cents" : 4199,
-          "label" : "Cilntro Dressing",
+          "label" : "12PC Meal Leg\/Thigh",
+          "qty" : 1
+        },
+        {
+          "cents" : 325,
+          "label" : "Unknown Item",
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 4199,
-      "tax_cents" : 325
+      "subtotal_cents" : 4524
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Cilntro Dressing|4199\nTAX|Tax|325\nDISCOUNT|Discount|0\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|12PC Meal Leg\/Thigh|4199\nITEM|Unknown Item|325\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.5880279541015625,
-      "phase2Seconds" : 10.677881002426147,
-      "totalWorkflowSeconds" : 16.03559398651123,
-      "transcriptSeconds" : 4.769680023193359,
-      "transcriptToPhase1Seconds" : 0.5880279541015625,
-      "transcriptToPhase2Seconds" : 11.265912890434265,
+      "phase1Seconds" : 1.6135249137878418,
+      "phase2Seconds" : 10.840029001235962,
+      "totalWorkflowSeconds" : 13.604614973068237,
+      "transcriptSeconds" : 1.1510471105575562,
+      "transcriptToPhase1Seconds" : 1.6135249137878418,
+      "transcriptToPhase2Seconds" : 12.453566908836365,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "A 0111 El Pollo Loco Unit# 3848 41383 Big Bear Blyd Big Bear Lake, CA, 92315 909-866-1019 CHK 8289 24 Jan'26 3:00 PM To Go - Kiosk Unknown 12101784 41.9 DRSG-Cmy Cilntro $45.24 $41.99 $3.25 $45.24 $0.00 Check Closed - Jan'26 3:00 PM\nKIOSK01 IKN-12p Meal LT 12PC Leg\/Thigh G - Side Salad G-Mashed Potato G-Spanish Rice Corn\/3 Flour ) THANKS \/MC\/DIS Payment Change Due 24"
+    "transcript" : "*[o11] El Pollo Loco Unit# 3848 41383 Big Bear Blvd Big Bear Lake, CA, 92315 909-866-1019 CHK 8289 24 Jan'26 3:00 PM To Go - Kiosk 41.9 $45.24 $41.99 $3.25\n$45.24 $0.00 Check Closed -- 24 Jan'26 3:00 PM\nUnknown 12101784 IKN-12p Meal LT 12PC Leg\/Thigh LG - Side Salad DRSG-Cmy Cilntro G-Mashed Potato G-Spanish Rice Corn\/3 Flour ) THANKS \/MC\/DIS Payment Change Due --\nKIOSK01"
   },
   "sourceFilename" : "IMG_5055.jpeg",
   "variantID" : "current"

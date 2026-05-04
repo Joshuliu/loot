@@ -1,18 +1,18 @@
 {
-  "capturedAt" : "2026-04-18T02:40:09Z",
+  "capturedAt" : "2026-05-04T18:52:15Z",
   "caseID" : "img_5112",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 3943,
+    "actualComputedTotalCents" : 6943,
     "breakdown" : 1,
     "expectedTotalCents" : 6943,
-    "itemValues" : 0.6666666666666666,
+    "itemValues" : 1,
     "lineItemValues" : 1,
     "merchant" : 1,
-    "overall" : 0.39999999999999997,
-    "passesTotalReconciliation" : false,
-    "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -3000,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
     "total" : 1
   },
   "snapshot" : {
@@ -28,34 +28,51 @@
     },
     "phase2" : {
       "issues" : [
-        "Resolved rows differ from known total by 3000 cents"
+
       ],
       "items" : [
         {
           "cents" : 2099,
-          "label" : "NF",
+          "label" : "Unknown Item",
           "qty" : 1
         },
         {
           "cents" : 1589,
-          "label" : "NF",
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 3000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "GHIRARDELLI",
+          "qty" : 1
+        },
+        {
+          "label" : "GHIRARDELLI",
+          "qty" : 1
+        },
+        {
+          "label" : "PATIO & OUTDOOR DECOR",
           "qty" : 1
         }
       ],
       "subtotal_cents" : 6688,
       "tax_cents" : 255
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|NF|2099\nITEM|NF|1589\nTAX|CA TAX|255\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|2099\nITEM|Unknown Item|1589\nITEM|Unknown Item|3000\nTAX|CA TAX|255\nITEM|GHIRARDELLI||\nITEM|GHIRARDELLI||\nITEM|PATIO & OUTDOOR DECOR||\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.8645089864730835,
-      "phase2Seconds" : 16.123183012008667,
-      "totalWorkflowSeconds" : 23.353639960289,
-      "transcriptSeconds" : 6.365942001342773,
-      "transcriptToPhase1Seconds" : 0.8645099401473999,
-      "transcriptToPhase2Seconds" : 16.987697958946228,
+      "phase1Seconds" : 3.6583980321884155,
+      "phase2Seconds" : 17.47266399860382,
+      "totalWorkflowSeconds" : 23.06805396080017,
+      "transcriptSeconds" : 1.936979055404663,
+      "transcriptToPhase1Seconds" : 3.6583980321884155,
+      "transcriptToPhase2Seconds" : 21.13107395172119,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr La Mesa, California 91942-3015 01\/30\/2026 02:00 PM NF $20.99 NF $15.89 $30.00 SUBTOTAL T = CA TAX 8.50000 on $30.00 $66.88 $2.55 TOTAL $69.43 *4435 DEBIT TOTAL PAYMENT $69.43 AID: A0000000980840 US DEBIT AUTH CODE: 079603 WHEN YOU RETURN ANY ITEM, YOUR RETURN CREDIT WILL NOT INCLUDE ANY PROMOTIONAL DISCOUNT OR COUPON APPLIED TO THE ORIGINAL ORDER. VOTICE: Some furniture products can expose you to chemicals known to the State of lifornia to cause cancer, birth derects or ther reproductive harm. Please check on- warning inormation REC#2-6030-0997-0173-8749-7 ----------. Help make your Target Run better.\nGROCERY 055070114 GHIRARDELLI 055020991 GHIRARDELLI PATIO & OUTDOOR DECOR 344020038 GLG product label for"
+    "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr La Mesa, California 91942-3015 01\/30\/2026 02:00 PM $20.99 $15.89 $30.00 T = CA TAX 8.50000 on $30.00 $66.88 $2.55 $69.43 *4435 DEBIT TOTAL PAYMENT $69.43 AID: A0000000980840 US DEBIT AUTH CODE: 079603 WHEN YOU RETURN ANY ITEM, YOUR RETURN CREDIT WILL NOT INCLUDE ANY PROMOTIONAL DISCOUNT OR COUPON APPLIED TO THE ORIGINAL ORDER. JOTICE: Some furniture products can expose you to chemicals known to the State of lifornia to cause cancer, birth darects or e harm. Prease check on- armation warning 1n REC#2-6030-0997-0173-8749-7 ------. Help make your Target Run better. ake a mindy but today\nNF NF SUBTOTAL TOTAL ther reproducti product label for\nGROCERY 055070114 GHIRARDELLI 055020991 GHIRARDELLI PATIO & OUTDOOR DECOR 344020038 GLG"
   },
   "sourceFilename" : "IMG_5112.jpeg",
   "variantID" : "current"
