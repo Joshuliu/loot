@@ -8,6 +8,7 @@ build/
 *.dSYM
 *.dSYM.zip
 *.xcarchive
+./Loot.xcodeproj/
 
 # Xcode user-specific files (never commit)
 **/xcuserdata/
