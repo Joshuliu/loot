@@ -30,15 +30,21 @@ public struct ReceiptOCRRunOptions {
     public let runID: String
     public let resumeExistingResults: Bool
     public let continueOnCaseError: Bool
+    public let includedCaseIDs: Set<String>?
+    public let transcriptFilename: String?
 
     public init(
         runID: String = "latest",
         resumeExistingResults: Bool = true,
-        continueOnCaseError: Bool = true
+        continueOnCaseError: Bool = true,
+        includedCaseIDs: Set<String>? = nil,
+        transcriptFilename: String? = nil
     ) {
         self.runID = runID
         self.resumeExistingResults = resumeExistingResults
         self.continueOnCaseError = continueOnCaseError
+        self.includedCaseIDs = includedCaseIDs
+        self.transcriptFilename = transcriptFilename
     }
 }
 
@@ -114,7 +120,13 @@ public final class ReceiptOCRBenchmarkRunner {
         paths: ReceiptOCRBenchmarkPaths,
         options: ReceiptOCRRunOptions = .init()
     ) async throws -> [ReceiptOCRBenchmarkRunSummary] {
-        let cases = try discoverCases(paths: paths)
+        let allCases = try discoverCases(paths: paths)
+        let cases: [ReceiptOCRBenchmarkCase]
+        if let includedCaseIDs = options.includedCaseIDs, !includedCaseIDs.isEmpty {
+            cases = allCases.filter { includedCaseIDs.contains($0.id) }
+        } else {
+            cases = allCases
+        }
         let runDirectory = paths.runsRoot.appendingPathComponent(options.runID, isDirectory: true)
         try ensureDirectory(runDirectory)
 
@@ -135,7 +147,11 @@ public final class ReceiptOCRBenchmarkRunner {
 
                 do {
                     let image = try ReceiptImage.load(from: benchmarkCase.imageURL)
-                    let result = try await workflow.run(image: image, prefetchedTranscriptTask: nil)
+                    let prefetchedTranscriptTask = try makePrefetchedTranscriptTask(
+                        for: benchmarkCase,
+                        transcriptFilename: options.transcriptFilename
+                    )
+                    let result = try await workflow.run(image: image, prefetchedTranscriptTask: prefetchedTranscriptTask)
                     let snapshot = ReceiptOCRBenchmarkSnapshot(from: result)
                     let expected = try loadExpectedRecordIfPresent(at: benchmarkCase.expectedURL)
                     let score = expected.map { Self.score(snapshot: snapshot, expected: $0.snapshot) }
@@ -182,6 +198,16 @@ public final class ReceiptOCRBenchmarkRunner {
 
         try writeJSON(summaries, to: runDirectory.appendingPathComponent("suite-summary.json"))
         return summaries
+    }
+
+    private func makePrefetchedTranscriptTask(
+        for benchmarkCase: ReceiptOCRBenchmarkCase,
+        transcriptFilename: String?
+    ) throws -> Task<String, Error>? {
+        guard let transcriptFilename else { return nil }
+        let transcriptURL = benchmarkCase.fixtureDirectory.appendingPathComponent(transcriptFilename)
+        let transcript = try String(contentsOf: transcriptURL, encoding: .utf8)
+        return Task { transcript }
     }
 
     private func loadExpectedRecordIfPresent(at url: URL) throws -> ReceiptOCRFixtureRecord? {

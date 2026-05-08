@@ -1,26 +1,23 @@
 {
-  "capturedAt" : "2026-04-18T02:32:02Z",
+  "capturedAt" : "2026-05-04T18:42:51Z",
   "caseID" : "img_9b8dba8a-75c2-4166-8827-c1478e42910c",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 8735,
-    "breakdown" : 0.6,
+    "actualComputedTotalCents" : 2735,
+    "breakdown" : 0.8,
     "expectedTotalCents" : 2735,
-    "itemValues" : 0.875,
-    "lineItemValues" : 0,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
     "merchant" : 1,
-    "overall" : 0.34125,
-    "passesTotalReconciliation" : false,
-    "reconciliation" : 0,
-    "reconciliationDifferenceCents" : 6000,
+    "overall" : 0.9800000000000001,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
     "total" : 1
   },
   "snapshot" : {
     "lineItems" : [
-      {
-        "cents" : 265,
-        "label" : "Tax"
-      }
+
     ],
     "phase1" : {
       "merchant" : "Green Supermarket",
@@ -28,7 +25,7 @@
     },
     "phase2" : {
       "issues" : [
-        "Resolved rows differ from known total by 6000 cents"
+
       ],
       "items" : [
         {
@@ -100,32 +97,21 @@
           "cents" : 120,
           "label" : "Yogurt",
           "qty" : 1
-        },
-        {
-          "cents" : 2735,
-          "label" : "Subtotal",
-          "qty" : 1
-        },
-        {
-          "cents" : 3000,
-          "label" : "Total",
-          "qty" : 1
         }
       ],
-      "subtotal_cents" : 2470,
-      "tax_cents" : 265
+      "subtotal_cents" : 2735
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Apple|100\nITEM|Banana|150\nITEM|Orange|120\nITEM|Pear|75\nITEM|Grapes|300\nITEM|Strawberry|250\nITEM|Blueberry|200\nITEM|Kiwi|180\nITEM|Watermelon|450\nITEM|Lemon|60\nITEM|Raspberry|300\nITEM|Milk|150\nITEM|Cheese|280\nITEM|Yogurt|120\nUNKNOWN|Subtotal|2735\nUNKNOWN|Total|3000\nTAX|Tax|265\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Apple|100\nITEM|Banana|150\nITEM|Orange|120\nITEM|Pear|75\nITEM|Grapes|300\nITEM|Strawberry|250\nITEM|Blueberry|200\nITEM|Kiwi|180\nITEM|Watermelon|450\nITEM|Lemon|60\nITEM|Raspberry|300\nITEM|Milk|150\nITEM|Cheese|280\nITEM|Yogurt|120\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.5921109914779663,
-      "phase2Seconds" : 22.015841960906982,
-      "totalWorkflowSeconds" : 28.406813979148865,
-      "transcriptSeconds" : 4.798856019973755,
-      "transcriptToPhase1Seconds" : 1.5921109914779663,
-      "transcriptToPhase2Seconds" : 23.60795795917511,
+      "phase1Seconds" : 0.41614699363708496,
+      "phase2Seconds" : 4.328107953071594,
+      "totalWorkflowSeconds" : 5.825495004653931,
+      "transcriptSeconds" : 1.081225037574768,
+      "transcriptToPhase1Seconds" : 0.41614699363708496,
+      "transcriptToPhase2Seconds" : 4.744269967079163,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "Green Supermarket 1.00 1.50 1.20 0.75 3.00 2.50 2.00 1.80 4.50 0.60 3.00 1.50 2.80 1.20 27.35 30.00 2.65\nAPPLE BANANA ORANGE PEAR GRAPES STRAWBERRY BLUEBERRY KIWI WATERMELON LEMON RASPBERRY MILK CHEESE YOGURT OTAL ISH HANGE"
+    "transcript" : "Green Supermarket 1.00 1.50 1.20 0.75 3.00 2.50 2.00 1.80 4.50 0.60 3.00 1.50 2.80 1.20 27.35 30.00 2.65\nAPPLE BANANA ORANGE PEAR GRAPES STRAWBERRY BLUEBERRY KIWI WATERMELON LEMON RASPBERRY MILK CHEESE YOGURT OTAL SH HANGE"
   },
   "sourceFilename" : "IMG_9B8DBA8A-75C2-4166-8827-C1478E42910C.jpeg",
   "variantID" : "current"

@@ -1,37 +1,33 @@
 {
-  "capturedAt" : "2026-04-18T02:37:34Z",
+  "capturedAt" : "2026-05-04T18:48:21Z",
   "caseID" : "img_4672",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 323,
+    "actualComputedTotalCents" : 316,
     "breakdown" : 0.4,
     "expectedTotalCents" : 318,
-    "itemValues" : 0,
-    "lineItemValues" : 0.25,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0,
     "merchant" : 1,
-    "overall" : 0.2025,
+    "overall" : 0.265,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
-    "reconciliationDifferenceCents" : 5,
+    "reconciliationDifferenceCents" : -2,
     "total" : 1
   },
   "snapshot" : {
     "lineItems" : [
       {
         "cents" : 5,
-        "label" : "Fee"
-      },
-      {
-        "cents" : 5,
-        "label" : "Fee"
-      },
-      {
-        "cents" : 0,
-        "label" : "Fee"
+        "label" : "CRV"
       },
       {
         "cents" : 36,
         "label" : "Tax"
+      },
+      {
+        "cents" : -38,
+        "label" : "Associate Savings"
       }
     ],
     "phase1" : {
@@ -39,35 +35,32 @@
       "total_cents" : 318
     },
     "phase2" : {
-      "fees_cents" : 10,
+      "discount_cents" : 38,
+      "fees_cents" : 5,
       "issues" : [
-        "Resolved rows differ from known total by 5 cents"
+        "Resolved rows differ from known total by 2 cents"
       ],
       "items" : [
         {
-          "cents" : 277,
-          "label" : "AQUAFINA WATER",
-          "qty" : 1
-        },
-        {
-          "label" : "Balance",
+          "cents" : 313,
+          "label" : "Aquafina Water",
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 272,
+      "subtotal_cents" : 315,
       "tax_cents" : 36
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|AQUAFINA WATER|313\nFEE|Fee|5\nFEE|Fee|5\nFEE|Fee|0\nDISCOUNT|Associate Savings|-36\nTAX|Tax|36\nUNKNOWN|Balance|\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Aquafina Water|313\nFEE|CRV|5\nITEM|S|0\nDISCOUNT|Discount|0\nTAX|Tax|36\nDISCOUNT|Associate Savings|-38\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.54994797706604,
-      "phase2Seconds" : 21.154616951942444,
-      "totalWorkflowSeconds" : 27.18251395225525,
-      "transcriptSeconds" : 5.477944016456604,
-      "transcriptToPhase1Seconds" : 0.54994797706604,
-      "transcriptToPhase2Seconds" : 21.704569935798645,
+      "phase1Seconds" : 1.3587000370025635,
+      "phase2Seconds" : 30.151998043060303,
+      "totalWorkflowSeconds" : 32.85417401790619,
+      "transcriptSeconds" : 1.343459963798523,
+      "transcriptToPhase1Seconds" : 1.3587000370025635,
+      "transcriptToPhase2Seconds" : 31.510714054107666,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "You Pay Price 3.13 S 3.49 0.05 S 0.05 0.00 3.18 12\/23\/25 22:20 REF: 632035414070 AUTH: 0000272C 3.18 3.18 0.00 0.36 0.36 10% TOTAL NUMBER OF ITEMS SOLD = 8854 12\/23\/25 22:20 919 54 197 Thank you for shopping Safeway! For SAFEWAY FOR U questions call 877-276-9637 or Safeway.com\/foru\nAQUAFINA WATER 0159 CRV SFTDK SNGL NTX Assoclate Savings -0.36 TAX **** BALANCE Credit Purchase CARD # ************1407 PAYMENT AMOUNT AL VISA CREDIT AID A0000000031010 TVR 0000000000 Visa CHANGE YOUR SAVINGS ociate Savings al Savings Value YOUR POINTS Points Earned Today 3 Points Available 224"
+    "transcript" : "You Pay 3.13 S 0.05 S 0.00 3.18 REF: 632035414070 AUTH: 0000272C 3.18 0.00 0.36 0.36 10% TOTAL NUMBER OF ITEMS SOLD = 8854 12\/23\/25 22:20 919 54 197 Thank you for shopping Safeway! For SAFEWAY FOR U questions call 877-276-9637 or Safeway.com\/foru\nPrice 3.49 0.05 Assoclate Savings -0.38 12\/23\/25 22:20 CARD # ************1407 AID A0000000031010 TVR 0000000000 YOUR SAVINGS ociate Savings al Savings Value Points Earned Today 3 Points Available 224\n3.18\nAQUAFINA WATER CRV SFTDK SNGL NTX TAX **** BALANCE Credit Purchase PAYMENT AMOUNT AL VISA CREDIT Visa CHANGE YOUR POINTS\n0159"
   },
   "sourceFilename" : "IMG_4672.jpeg",
   "variantID" : "current"

@@ -1,0 +1,122 @@
+{
+  "capturedAt" : "2026-04-25T18:56:05Z",
+  "caseID" : "img_4866",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 30314,
+    "breakdown" : 1,
+    "expectedTotalCents" : 30314,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1364,
+        "label" : "HI State Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Moon and Turtle",
+      "total_cents" : 30314
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Food Total",
+        "Unclassified priced row: Alcohol Total",
+        "Unclassified priced row: Sub Total",
+        "Unclassified priced row: Total",
+        "Ignored discount row: Happy Hour Wine",
+        "Ignored discount row: Discount Total"
+      ],
+      "items" : [
+        {
+          "cents" : 3000,
+          "label" : "Lambrusco Bottle",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Ahi Belly",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Smokey",
+          "qty" : 1
+        },
+        {
+          "cents" : 4200,
+          "label" : "Ceviche",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "Crispy Oyster",
+          "qty" : 1
+        },
+        {
+          "cents" : 3600,
+          "label" : "Smoked Ahi Pasta",
+          "qty" : 1
+        },
+        {
+          "cents" : 3200,
+          "label" : "Market Fish w\/ ONO",
+          "qty" : 1
+        },
+        {
+          "cents" : 3100,
+          "label" : "LARGE Risotto",
+          "qty" : 1
+        },
+        {
+          "cents" : 1900,
+          "label" : "Tetsuyaki Poke",
+          "qty" : 1
+        },
+        {
+          "cents" : 650,
+          "label" : "Espresso Affogato",
+          "qty" : 1
+        },
+        {
+          "cents" : 900,
+          "label" : "Cheesecake",
+          "qty" : 1
+        },
+        {
+          "cents" : 2700,
+          "label" : "Seasonal Pot de Crème",
+          "qty" : 1
+        },
+        {
+          "cents" : 400,
+          "label" : "Sorbet",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 28950,
+      "tax_cents" : 1364
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Lambrusco Bottle|3000\nDISCOUNT|Happy Hour Wine|1000\nITEM|Ahi Belly|1600\nITEM|Smokey|1700\nITEM|Ceviche|4200\nITEM|Crispy Oyster|2000\nITEM|Smoked Ahi Pasta|3600\nITEM|Market Fish w\/ ONO|3200\nITEM|LARGE Risotto|3100\nITEM|Tetsuyaki Poke|1900\nITEM|Espresso Affogato|650\nITEM|Cheesecake|900\nITEM|Seasonal Pot de Crème|2700\nITEM|Sorbet|400\nUNKNOWN|Food Total|25950\nUNKNOWN|Alcohol Total|3000\nDISCOUNT|Discount Total|1000\nUNKNOWN|Sub Total|28950\nTAX|HI State Tax|1364\nUNKNOWN|Total|30314\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4283919334411621,
+      "phase2Seconds" : 6.987666010856628,
+      "totalWorkflowSeconds" : 7.416089057922363,
+      "transcriptSeconds" : 1.704692840576172e-05,
+      "transcriptToPhase1Seconds" : 0.4283919334411621,
+      "transcriptToPhase2Seconds" : 7.4160720109939575,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "Moon and Turtle\n51 Kalakaua Street\nHilo, HI\nUnited States 96720\nPrinted December 30, 2023 at 7:57 PM Tel: +1 8089610599\nDecember 30, 2023 at 7:57 PM Order #\n48913\nTable: FIVE, 4 guests Server:\nParty Name: 14 Wendy\nHi State Tax #:\nCavicchioli Lambrusco Bottle $30.00\n$40.00 - $10.00: Happy Hour Wine\nLambrusco Bottle\nAhi Belly $16.00\nSmokey $17.00\n2 x Ceviche $42.00\n4 x CRISPY oyster $20.00\nSmoked Ahi Pasta $36.00\nMarket Fish w\/ONO $32.00\nLARGE Risotto $31.00\nTetsuyaki Poke $19.00\nEspresso Affogato $6.50\nCheesecake $9.00\n3 x Seasonal Pot de Crème $27.00\nSorbet $4.00\nFood Total $259.50\nAlcohol Total $30.00\nDiscount Total $10.00\nSub Total $289.50\nHI State Tax $13.64\nTotal $303.14\nMahalo! Please Come Again!"
+  },
+  "sourceFilename" : "IMG_4866.jpeg",
+  "variantID" : "current"
+}

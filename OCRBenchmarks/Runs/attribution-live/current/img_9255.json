@@ -1,0 +1,62 @@
+{
+  "capturedAt" : "2026-04-25T18:47:11Z",
+  "caseID" : "img_9255",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 10584,
+    "breakdown" : 1,
+    "expectedTotalCents" : 10584,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 672,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 1512,
+        "label" : "Tip"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "TheRustyPelican.com",
+      "total_cents" : 10584
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 8400,
+          "label" : "Surf and Turf",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8400,
+      "tax_cents" : 672,
+      "tip_cents" : 1512
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Surf and Turf|8400\nTAX|Tax|672\nTIP|Tip|1512\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.40536797046661377,
+      "phase2Seconds" : 51.43383502960205,
+      "totalWorkflowSeconds" : 53.64408802986145,
+      "transcriptSeconds" : 1.8048759698867798,
+      "transcriptToPhase1Seconds" : 0.40536797046661377,
+      "transcriptToPhase2Seconds" : 51.83921205997467,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "yenbacker Cswy Kes Biscayne, FL TheRustyPelican.com 305.361,3818 Server: Valentine A Table 25 3\/17\/24 6:57 P $84.01 $84. 00 $6.72 $15.12 $105.84 C (EMU Chip Read) xxxxxxxx3578 7:39 PM Sale Approved 08854D wxsbrLCpdwww\nCheck #356 Guest count: 1 Ordered: 1 Surf and Turf Subtotal Tax Tip Total Input Type VISA CREDIT Time Transaction Type Authorization Approval Code Payment ID Application ID"
+  },
+  "sourceFilename" : "IMG_9255.jpeg",
+  "variantID" : "current"
+}

@@ -1,25 +1,49 @@
 {
-  "capturedAt" : "2026-04-18T02:39:42Z",
+  "capturedAt" : "2026-05-04T18:51:52Z",
   "caseID" : "img_5103",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 10533,
+    "actualComputedTotalCents" : 10632,
     "breakdown" : 0.6,
     "expectedTotalCents" : 10632,
-    "itemValues" : 0.9444444444444444,
-    "lineItemValues" : 1,
+    "itemValues" : 0.6666666666666666,
+    "lineItemValues" : 0.14285714285714285,
     "merchant" : 0.75,
-    "overall" : 0.40166666666666667,
-    "passesTotalReconciliation" : false,
-    "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -99,
+    "overall" : 0.8671428571428571,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
     "total" : 1
   },
   "snapshot" : {
     "lineItems" : [
       {
+        "cents" : 18,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 99,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 75,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 99,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 548,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 599,
+        "label" : "Fee"
+      },
+      {
         "cents" : 10,
-        "label" : "Bottle sales"
+        "label" : "Bottle Deposit"
       }
     ],
     "phase1" : {
@@ -27,113 +51,89 @@
       "total_cents" : 10632
     },
     "phase2" : {
-      "fees_cents" : 10,
+      "fees_cents" : 1448,
       "issues" : [
-        "Ignored discount row: Markdown",
-        "Ignored discount row: Markdown",
-        "Ignored discount row: Markdown",
-        "Resolved rows differ from known total by 99 cents"
+
       ],
       "items" : [
         {
           "cents" : 299,
-          "label" : "ROSEMARY FARMS MED A BROWN E",
-          "qty" : 1
-        },
-        {
-          "cents" : 75,
-          "label" : "UNKNOWN",
-          "qty" : 1
-        },
-        {
-          "cents" : 99,
-          "label" : "UNKNOWN",
+          "label" : "Rosemary Farms Med A Brown E",
           "qty" : 1
         },
         {
           "cents" : 612,
-          "label" : "MARINATED ALL NATURAL PORK B",
-          "qty" : 1
-        },
-        {
-          "cents" : 548,
-          "label" : "SPICY MARINATED NATURAL CHIC",
+          "label" : "Marinated All Natural Pork B",
           "qty" : 1
         },
         {
           "cents" : 1578,
-          "label" : "MARINATED ANGUS BEEF BNLS S",
+          "label" : "Spicy Marinated Natural Chic",
           "qty" : 1
         },
         {
           "cents" : 1131,
-          "label" : "MARINATED ANGUS BEEF FINGER",
+          "label" : "Marinated Angus Beef Bns S",
           "qty" : 1
         },
         {
           "cents" : 671,
-          "label" : "MARINATED NATURAL CHICKEN TH",
+          "label" : "Marinated Natural Chicken Th",
           "qty" : 1
         },
         {
           "cents" : 1299,
-          "label" : "MARINATED BEEF RIB EYE BULG",
+          "label" : "Marinated Angus Beef Finger",
           "qty" : 1
         },
         {
           "cents" : 899,
-          "label" : "UNKNOWN ITEM",
+          "label" : "Marinated Beef Rib Eye Bulg",
           "qty" : 1
         },
         {
           "cents" : 399,
-          "label" : "JIMMY DEAN SAUSAGE, EGG, &am",
+          "label" : "Jimmy Dean Sausage, Egg, &am",
           "qty" : 1
         },
         {
           "cents" : 699,
-          "label" : "CHOCOLATE CHIP WAFFLES",
+          "label" : "Chocolate Chip Waffles",
           "qty" : 1
         },
         {
           "cents" : 199,
-          "label" : "NONGSHIM MUPAMA TANG MYUN",
-          "qty" : 1
-        },
-        {
-          "cents" : 599,
-          "label" : "UNKNOWN ITEM",
+          "label" : "Nongshim Mupama Tang Myun",
           "qty" : 1
         },
         {
           "cents" : 999,
-          "label" : "PMO JUICY DUMPLING W\/ PORK &",
+          "label" : "Pmo Juicy Dumpling W\/ Pork &",
           "qty" : 1
         },
         {
           "cents" : 399,
-          "label" : "PULMUONE MINI WONTONS 600 G",
+          "label" : "Pulmuone Mini Wontons 600 G",
           "qty" : 1
         },
         {
-          "cents" : 18,
-          "label" : "UNKNOWN",
+          "label" : "Simply Mango Juice 1.53 L",
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 10622
+      "subtotal_cents" : 9184
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|ROSEMARY FARMS MED A BROWN E|299\nUNKNOWN|UNKNOWN|75\nUNKNOWN|UNKNOWN|99\nITEM|MARINATED ALL NATURAL PORK B|612\nITEM|SPICY MARINATED NATURAL CHIC|548\nITEM|MARINATED ANGUS BEEF BNLS S|1578\nITEM|MARINATED ANGUS BEEF FINGER|1131\nITEM|MARINATED NATURAL CHICKEN TH|671\nITEM|MARINATED BEEF RIB EYE BULG|1299\nITEM|UNKNOWN ITEM|899\nITEM|JIMMY DEAN SAUSAGE, EGG, &am|399\nITEM|CHOCOLATE CHIP WAFFLES|699\nITEM|NONGSHIM MUPAMA TANG MYUN|199\nITEM|UNKNOWN ITEM|599\nITEM|PMO JUICY DUMPLING W\/ PORK &|999\nITEM|PULMUONE MINI WONTONS 600 G|399\nUNKNOWN|UNKNOWN|18\nDISCOUNT|Markdown|100\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nFEE|Bottle sales|10\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Rosemary Farms Med A Brown E|299\nFEE|Fee|18\nFEE|Fee|99\nFEE|Fee|75\nFEE|Fee|99\nITEM|Marinated All Natural Pork B|612\nFEE|Fee|548\nITEM|Spicy Marinated Natural Chic|1578\nITEM|Marinated Angus Beef Bns S|1131\nITEM|Marinated Natural Chicken Th|671\nITEM|Marinated Angus Beef Finger|1299\nITEM|Marinated Beef Rib Eye Bulg|899\nITEM|Jimmy Dean Sausage, Egg, &am|399\nITEM|Chocolate Chip Waffles|699\nITEM|Nongshim Mupama Tang Myun|199\nFEE|Fee|599\nITEM|Pmo Juicy Dumpling W\/ Pork &|999\nITEM|Pulmuone Mini Wontons 600 G|399\nITEM|Simply Mango Juice 1.53 L|10622\nFEE|Bottle Deposit|10\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.7589179277420044,
-      "phase2Seconds" : 10.857313990592957,
-      "totalWorkflowSeconds" : 18.444871068000793,
-      "transcriptSeconds" : 6.828635096549988,
-      "transcriptToPhase1Seconds" : 0.7589179277420044,
-      "transcriptToPhase2Seconds" : 11.616235971450806,
+      "phase1Seconds" : 3.487031936645508,
+      "phase2Seconds" : 33.957834005355835,
+      "totalWorkflowSeconds" : 39.27154898643494,
+      "transcriptSeconds" : 1.826667070388794,
+      "transcriptToPhase1Seconds" : 3.487031936645508,
+      "transcriptToPhase2Seconds" : 37.44488191604614,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "#001-007 1\/19\/2026 19:27:02 Young Mi Inv#:00137387 Trs#: 138073 ROSEMARY FARMS MED A BROWN E $2.99 F # 99\/1b $0.99 F $0.75 F $0.99 F MARINATED ALL NATURAL PORK B $6.12 F SPICY MARINATED NATURAL CHIC $5.48 F MARINATED ANGUS BEEF BNLS S $15.78 F MARINATED ANGUS BEEF FINGER $11.31 F MARINATED NATURAL CHICKEN TH $6.71 F MARINATED BEEF RIB EYE BULG $12.99 F $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F CHOCOLATE CHIP WAFFLES $6.99 F NONGSHIM MUPAMA TANG MYUN - $1.99 F $5.99 F PMO JUICY DUMPLING W\/ PORK & $9.99 F PULMUONE MINI WONTONS 600 G $3.99 F SIMPLY MANGO JUICE 1.53 L $106.22 $0.10 $106.32 $106.32 $106.32\n$0.18 F\nMarkdown: $1.00 0.18 1b G SHANGHAI BUKCHOY LB GREENLEAF LETTUCE * 3:7 1.51 1b @ $0,99\/21b YELLOW ONION LB 03-58 CARROTS 1LB 821LB 91= 9= Markdown: $2.00 GARLIC PK = PK Markdown: $3.50 1# 27 +Bottle sales: $0.10 Net Sales Bottle sales TOTAL SALES SUB TOTAL Vica"
+    "transcript" : "#001-007 1\/19\/2026 19:27:02 Young Mi Inv#: 00137387 Trs#: 138073 ROSEMARY FARMS MED A BROWN E $2.99 F $0.18 F $0.99 F $0.75 F $0.99 F MARINATED ALL NATURAL PORK B $6.12 F $5.48 F SPICY MARINATED NATURAL CHIC $15.78 F MARINATED ANGUS BEEF BNS S $11.31 F : MARINATED ANGUS BEEF FINGER MARINATED NATURAL CHICKEN TH $6.71 F $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F CHOCOLATE CHIP WAFFLES $6.99 F NONGSHIM MUPAMA TANG MYUN - $1.99 F $5.99 F PMO JUICY DUMPLING W\/ PORK & $9.99 F PULMUONE MINI WONTONS 600 G $3.99 F SIMPLY MANGO JUICE 1.53 L $106.22 $0.10 $106.32 $106.32 $106.32\nMarkdown: $1,00 # 99\/1b 0.18 lb 6° SHANGHAI BUKCHOY LB GREENLEAF LETTUCE 1.51 1b @ $0.99\/21b YELLOW ONION LB CARROTS 1LB 521LB Markdown: $2.00 GARLIC PK Markdown: $3.50 +Bottle sales: $0.10 Net Sales Bottle sales TOTAL SALES SUB TOTAL Vica"
   },
   "sourceFilename" : "IMG_5103.jpeg",
   "variantID" : "current"

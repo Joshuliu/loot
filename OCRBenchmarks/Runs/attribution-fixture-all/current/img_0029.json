@@ -1,0 +1,199 @@
+{
+  "capturedAt" : "2026-04-25T18:54:01Z",
+  "caseID" : "img_0029",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 23618,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 23618,
+    "itemValues" : 0.7307692307692307,
+    "lineItemValues" : 0.5,
+    "merchant" : 1,
+    "overall" : 0.8946153846153846,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 374,
+        "label" : "Balance"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "SAFEWAY",
+      "total_cents" : 23618
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Payment Amount?",
+        "Unclassified priced row: Grocery Total?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Final Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Final Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Unclassified priced row: Item Price?",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Member Savings",
+        "Discount drove item below zero: Associate Savings"
+      ],
+      "items" : [
+        {
+          "cents" : 179,
+          "label" : "Jello Raspberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 1498,
+          "label" : "Crystal Geyser Alpine Horizon Milk Strawberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 549,
+          "label" : "CRV Soft Drink 35pk",
+          "qty" : 1
+        },
+        {
+          "cents" : 249,
+          "label" : "Bumble Bee Tortilla Light 5oz",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "Item with Discount",
+          "qty" : 1
+        },
+        {
+          "cents" : 549,
+          "label" : "Lactaid Milk",
+          "qty" : 1
+        },
+        {
+          "cents" : 549,
+          "label" : "Lactaid 2% Protein Milk",
+          "qty" : 1
+        },
+        {
+          "cents" : 419,
+          "label" : "Kern's Nectar Mango",
+          "qty" : 1
+        },
+        {
+          "cents" : 1698,
+          "label" : "Item with Discount",
+          "qty" : 1
+        },
+        {
+          "label" : "Clover Milk",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Monday Smooth General Merchandise",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Cucumber & Mint",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Eucalyptus & Mint",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "Method Body Wash",
+          "qty" : 1
+        },
+        {
+          "cents" : 2925,
+          "label" : "Beef Porterhouse Steak",
+          "qty" : 1
+        },
+        {
+          "cents" : 2375,
+          "label" : "Beef Ribeye Steak Boneless",
+          "qty" : 1
+        },
+        {
+          "cents" : 1899,
+          "label" : "Beef Ribeye Steak Boneless",
+          "qty" : 1
+        },
+        {
+          "cents" : 1439,
+          "label" : "Wild Salmon Nova",
+          "qty" : 1
+        },
+        {
+          "cents" : 1619,
+          "label" : "Open Nature Snow Crab",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Pineapple Gold Watermelon Seedless",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "Organic Girl Baby Spinach",
+          "qty" : 1
+        },
+        {
+          "cents" : 373,
+          "label" : "White Peaches",
+          "qty" : 1
+        },
+        {
+          "cents" : 223,
+          "label" : "Baby Bok Choy Organic",
+          "qty" : 1
+        },
+        {
+          "cents" : 808,
+          "label" : "TOV Tomatoes Organic",
+          "qty" : 1
+        },
+        {
+          "cents" : -633,
+          "label" : "Recyclable Bag Charge",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 23244,
+      "tax_cents" : 374
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN|Payment Amount?|229\nDISCOUNT|Member Savings|-29\nITEM|Jello Raspberry|179\nUNKNOWN|Grocery Total?|1198\nITEM|Crystal Geyser Alpine Horizon Milk Strawberry|1498\nUNKNOWN|Item Price?|350\nUNKNOWN|Item Price?|350\nITEM|CRV Soft Drink 35pk|549\nDISCOUNT|Member Savings|-300\nUNKNOWN|Item Price?|549\nITEM|Bumble Bee Tortilla Light 5oz|249\nUNKNOWN|Item Price?|299\nITEM|Item with Discount|749\nDISCOUNT|Member Savings|-50\nUNKNOWN|Final Price?|699\nITEM|Lactaid Milk|549\nDISCOUNT|Member Savings|-50\nITEM|Lactaid 2% Protein Milk|549\nITEM|Kern's Nectar Mango|449\nUNKNOWN|Item Price?|479\nDISCOUNT|Member Savings|-30\nITEM|Item with Discount|1698\nUNKNOWN|Final Price?|1698\nITEM|Clover Milk|\nITEM|Monday Smooth General Merchandise|899\nITEM|Cucumber & Mint|1099\nITEM|Eucalyptus & Mint|1099\nITEM|Method Body Wash|999\nITEM|Beef Porterhouse Steak|2925\nITEM|Beef Ribeye Steak Boneless|2375\nUNKNOWN|Item Price?|2639\nDISCOUNT|Associate Savings|-264\nITEM|Beef Ribeye Steak Boneless|1899\nUNKNOWN|Item Price?|2111\nDISCOUNT|Associate Savings|-212\nITEM|Wild Salmon Nova|1439\nUNKNOWN|Item Price?|1599\nDISCOUNT|Associate Savings|-160\nDISCOUNT|Associate Savings|-180\nITEM|Open Nature Snow Crab|1619\nUNKNOWN|Item Price?|2499\nDISCOUNT|Member Savings|-700\nITEM|Pineapple Gold Watermelon Seedless|399\nITEM|Organic Girl Baby Spinach|699\nDISCOUNT|Member Savings|-100\nUNKNOWN|Item Price?|799\nITEM|White Peaches|599\nDISCOUNT|Member Savings|-226\nITEM|Baby Bok Choy Organic|223\nITEM|TOV Tomatoes Organic|808\nITEM|Recyclable Bag Charge|30\nDISCOUNT|Associate Savings|-663\nTAX|Balance|374\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5194669961929321,
+      "phase2Seconds" : 57.89024198055267,
+      "totalWorkflowSeconds" : 58.40972900390625,
+      "transcriptSeconds" : 1.2040138244628906e-05,
+      "transcriptToPhase1Seconds" : 0.5194669961929321,
+      "transcriptToPhase2Seconds" : 58.40971601009369,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "SAFEWAYO 12876 Saratoga\/Sunnyvale Rd Store 919 Dir Abel Garcia Main: (408) 867-0180 SARATOGA CA 95070\n00091900303362407290103\nYOUR CASHIER TODAY WAS David Price You Pay 2.00 S\n2.29\n4300020002 GROCERY Nember Savings -0.29 JELLO RASPBERRY 1.79 11.98 S\n1.79 S\n74236520865 29 CRYSTL GYSR ALPINE HORIZON MLK STRWBR 14.98 3.50 3.50 S\n7514035001 20 CRV SFTDK 35PK NTX Member Savings -3.00 5.49 5.49 S\n9435\n7885852044 LTF TORTILLA LIGHT BUMBLE BEE 50Z 2.99 2.49 S\n8660000055 Member Savings -0.50 7.49 6.99 S\nREFRIG\/FROZEN 4138309072 LACTAID MILK RF Member Savings -0.50 5.49 S\n4410015766 LACTAID 2% PROTEIN 5.49\n5385908571 KERNS NECTAR MANGO 4.79 4.49 S\nMember Savings -0.30 16.98 16.98 S\n7085200020 29 CLOVER MILK\n81000541445 MONDAY SMOOTH GEN MERCHANDISE 8.99 8.99 T\n81215403330 CUCUMBER & MINT 10.99 10.99 T\n81215403332 EUCALYPTUS & MINT 10.99 10.99 T\n81793901858 METHOD BODY WASH 9.99 9.99 T\nMEAT\n20215900000 BF PORTERHOUSE STK 29.25 29.25 S\n20750200000 BF RIBEYE STK BNLS 26.39 23.75 S\nAssociate Savings -2.64\n20750200000 BF RIBEYE STK BNLS 21.11 18.99 S\nSEAFOOD Associate Savings -2.12\n2113012703 WFB SALMON NOVA 15.99 14.39 S\n7989315930 Associate Savings -1.60\nAssociate Savings -1.80 OPN NAT SNOW CRAB 24.99 16.19 S\nPRODUCE Merber Savings -7.00\n61002011100 505037211700 PINEAPPLE GOLD WATERMELON SDLS 3.99 3.99 S\n89646000208 89520300116 ORG GIRL BABY SPIN Member Savings -1.00 7.99 6.99 S\n2.26 lb @ $2.99 \/ 1b PEACHES WHITE 5.99 5.99 S\nHerber Savings -2.26\n94544 BOK CHOY BBY ORGNC 2.23 2.23 S\nWT 0.56 lb @ $3.99 \/1b\n94664 TOV TOMATOES ORGNC 8.08 8.08 S\nWT 1.62 lb @ $4.99 \/lb\nMISCELLANEOUS\n22147 3@ RCYCBLE BAG CHARGE 0.30 0.30\nADDITIONAL DISCOUNTS\nAssoclate Savings\n-6.63\nTAX\n**** BALANCE 3.74\n236.18\nCARD #************3578 Credit Purchase 07\/29\/24 01:03\nREF: 780325435780 AUTH: 0006564D\nPAYMENT AMOUNT\nAID A0000000031010 AL VISA CREDIT 236.18\nTSI 0000 TVR 0000000000\nVisa\nCHANGE 236.18\nMember Savings YOUR SAVINGS\nAssociate Savings 14.85\nTotal 14.79\nTotal Savings Value 29.64\n11%\nDAiL YOUR POINTS"
+  },
+  "sourceFilename" : "IMG_0029.jpeg",
+  "variantID" : "current"
+}

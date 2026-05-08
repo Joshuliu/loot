@@ -1,0 +1,95 @@
+{
+  "capturedAt" : "2026-04-25T18:56:40Z",
+  "caseID" : "img_4992",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 10523,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 4832,
+    "itemValues" : 0.4,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.12,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 5691,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 8409,
+        "label" : "CA Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Ites",
+      "total_cents" : 84832
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 74309 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 1457,
+          "label" : "SMS BTRY SHASH 3K DS, LG",
+          "qty" : 1
+        },
+        {
+          "label" : "FRENCH FRIES",
+          "qty" : 1
+        },
+        {
+          "label" : "FOUNTAIN DRINK",
+          "qty" : 1
+        },
+        {
+          "label" : "DIET COKE",
+          "qty" : 1
+        },
+        {
+          "cents" : 59,
+          "label" : "SMASHED JAD",
+          "qty" : 1
+        },
+        {
+          "label" : "No PICKLES",
+          "qty" : 1
+        },
+        {
+          "cents" : 598,
+          "label" : "R. CHICKEN SANDWICH",
+          "qty" : 1
+        },
+        {
+          "label" : "JAC DBL SMASH JAD",
+          "qty" : 1
+        },
+        {
+          "label" : "CLASSIC TINY TACOS",
+          "qty" : 1
+        },
+        {
+          "label" : "AVOCADO LIME DIP CUP",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 76423,
+      "tax_cents" : 8409
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|SMS BTRY SHASH 3K DS, LG|1457\nITEM|FRENCH FRIES|\nITEM|FOUNTAIN DRINK|\nITEM|DIET COKE|\nITEM|SMASHED JAD|59\nITEM|No PICKLES|\nITEM|R. CHICKEN SANDWICH|598\nITEM|JAC DBL SMASH JAD|\nITEM|CLASSIC TINY TACOS|\nITEM|AVOCADO LIME DIP CUP|\nTAX|CA Sales Tax|8409\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5744479894638062,
+      "phase2Seconds" : 34.30989491939545,
+      "totalWorkflowSeconds" : 34.8843799829483,
+      "transcriptSeconds" : 1.5974044799804688e-05,
+      "transcriptToPhase1Seconds" : 0.5744479894638062,
+      "transcriptToPhase2Seconds" : 34.8843640089035,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "Ites\nSMS BTRY SHASH 3K DS, LG $14.57\nFRENCH FRIES\nFOUNTAI IN DRIN\nDIET COKE\nSMASHED JAD 59\nNo PICKLES\nR. CHICKEN SANDWICH (2 € 2.99)\nJAC DBL SMASH JAD\nI3 CLASSIC TINY TACOS\nAVOCADO LIME DIP CUF\nSubtotal 844.23\nCA Sales Tax - 9.251 84.09\nTotal 848.32"
+  },
+  "sourceFilename" : "IMG_4992.jpeg",
+  "variantID" : "current"
+}

@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-04-18T02:29:39Z",
+  "capturedAt" : "2026-05-04T18:40:49Z",
   "caseID" : "64014511608__aa6c8059-9c18-493e-8e85-e2ec305e1969",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -20,11 +20,12 @@
 
     ],
     "phase1" : {
-      "merchant" : "Kale Caesar",
+      "merchant" : "In Store",
       "total_cents" : 16475
     },
     "phase2" : {
       "issues" : [
+        "Missing amount for tax row: Sales Tax",
         "Resolved rows differ from known total by 16475 cents"
       ],
       "items" : [
@@ -37,15 +38,15 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Kale Caesar|\nTAX|Sales Tax|\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.5234230756759644,
-      "phase2Seconds" : 4.062391996383667,
-      "totalWorkflowSeconds" : 9.135480999946594,
-      "transcriptSeconds" : 4.549659967422485,
-      "transcriptToPhase1Seconds" : 0.5234230756759644,
-      "transcriptToPhase2Seconds" : 4.585821032524109,
+      "phase1Seconds" : 0.5236060619354248,
+      "phase2Seconds" : 14.34474492073059,
+      "totalWorkflowSeconds" : 15.754163980484009,
+      "transcriptSeconds" : 0.8857969045639038,
+      "transcriptToPhase1Seconds" : 0.5236060619354248,
+      "transcriptToPhase2Seconds" : 14.868366003036499,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "Duplicate Recei 4\/14\/2021 Order Id: AAAZG 391 - In Store Employee: Arnol 1 Kale Caesar Sub Total Sales Tax Order Total Visa Card#: **** Authorizati CARD NAME: CARD APPROVAL: 16475 POS REF: 2 CCT REF: 2 AID: A000000003 TVR: TSI: APP LABEL: BATCH #: 104001 ENTRY METHOD: N"
+    "transcript" : "Duplicate Recei 4\/14\/2021 Order Id: AAAZG 391 - In Store Employee: Arnol 1 Kale Caesar Sub Total Sales Tax Order Total Visa Card#: **** Authorizati CARD NAME: CARD APPROVAL: 16475 POS REF: 2 CCT REF: 2 AID: A000000003 TVR: TSI: APP LABEL: BATCH #: 104001 ENTRY METHOD: NI"
   },
   "sourceFilename" : "64014511608__AA6C8059-9C18-493E-8E85-E2EC305E1969.jpeg",
   "variantID" : "current"

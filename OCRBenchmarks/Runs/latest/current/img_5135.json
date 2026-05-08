@@ -1,18 +1,18 @@
 {
-  "capturedAt" : "2026-04-18T02:41:05Z",
+  "capturedAt" : "2026-05-04T18:53:52Z",
   "caseID" : "img_5135",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 55133,
+    "actualComputedTotalCents" : 18829,
     "breakdown" : 0.8,
     "expectedTotalCents" : 18829,
-    "itemValues" : 0.7,
+    "itemValues" : 0.7777777777777778,
     "lineItemValues" : 1,
     "merchant" : 0,
-    "overall" : 0.235,
-    "passesTotalReconciliation" : false,
-    "reconciliation" : 0,
-    "reconciliationDifferenceCents" : 36304,
+    "overall" : 0.7966666666666669,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
     "total" : 0
   },
   "snapshot" : {
@@ -28,90 +28,69 @@
     },
     "phase2" : {
       "issues" : [
-        "Resolved rows differ from known total by 32538 cents"
+        "Resolved rows differ from known total by 3766 cents"
       ],
       "items" : [
         {
           "cents" : 850,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 675,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 5450,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 4550,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 450,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 4550,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 450,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 500,
-          "label" : "Amount",
-          "qty" : 1
-        },
-        {
-          "cents" : 17475,
-          "label" : "Subtotal",
-          "qty" : 1
-        },
-        {
-          "cents" : 18829,
-          "label" : "Total",
-          "qty" : 1
-        },
-        {
           "label" : "Strawberry Colada",
           "qty" : 1
         },
         {
-          "label" : "Sapporo Light",
+          "cents" : 675,
+          "label" : "Sapporo Light 12oz",
           "qty" : 1
         },
         {
-          "label" : "Rib Eye & Shrimp Fried Rice",
+          "cents" : 5050,
+          "label" : "Rib Eye & Shrimp",
           "qty" : 1
         },
         {
+          "cents" : 4550,
           "label" : "Shrimp Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Glass Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Shrimp Fried Rice Combo",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Glass Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 500,
+          "label" : "Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 400,
+          "label" : "Unknown Item 4",
           "qty" : 1
         }
       ],
       "subtotal_cents" : 21241,
       "tax_cents" : 1354
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Amount|850\nITEM|Amount|675\nITEM|Amount|5450\nITEM|Amount|4550\nITEM|Amount|450\nITEM|Amount|4550\nITEM|Amount|450\nITEM|Amount|500\nITEM|Subtotal|17475\nTAX|Tax|1354\nITEM|Total|18829\nITEM|Strawberry Colada|\nITEM|Sapporo Light|\nITEM|Rib Eye & Shrimp Fried Rice|\nITEM|Shrimp Fried Rice|\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Strawberry Colada|850\nITEM|Sapporo Light 12oz|675\nITEM|Unknown Item 1|0\nITEM|Rib Eye & Shrimp|5050\nITEM|Shrimp Fried Rice|4550\nITEM|Unknown Item 2|0\nITEM|Glass Fried Rice|450\nITEM|Shrimp Fried Rice Combo|4550\nITEM|Unknown Item 3|0\nITEM|Glass Fried Rice|450\nITEM|Fried Rice|500\nITEM|Unknown Item 4|400\nTAX|Tax|1354\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.6571578979492188,
-      "phase2Seconds" : 17.019420981407166,
-      "totalWorkflowSeconds" : 23.549932956695557,
-      "transcriptSeconds" : 5.873347043991089,
-      "transcriptToPhase1Seconds" : 0.6571578979492188,
-      "transcriptToPhase2Seconds" : 17.67658495903015,
+      "phase1Seconds" : 1.1243610382080078,
+      "phase2Seconds" : 52.86608302593231,
+      "totalWorkflowSeconds" : 55.84511399269104,
+      "transcriptSeconds" : 1.8546559810638428,
+      "transcriptToPhase1Seconds" : 1.1243610382080078,
+      "transcriptToPhase2Seconds" : 53.9904580116272,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "8.50 6.75 0.00 54.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting!\n. (858) 560-792123 н 30, 2026 at 3-52. 0 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz 1 Glass gyu Rib Eye & Shrimp Fried Rice w York & Colossal Shrimp Med Rare Fried Rice N York & Colossal Shrimp Med Rare Fried Rice ite ototal ggested tip amounts are provided or your convenience. Come back soon!"
+    "transcript" : "8.50 6.75 0.00 50.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting! Come back soon!\n. (858) 560-792023 TALLN N 930, 202 t 9:52 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz gyu Rib Eye & Shrimp w York & Colossal Shrimp N York & Colossal Shrimp Fried Rice ggested tip amounts are provided or your convenience.\n1 Glass Fried Rice Med Rare Fried Rice Med Rare ite ototal"
   },
   "sourceFilename" : "IMG_5135.jpeg",
   "variantID" : "current"

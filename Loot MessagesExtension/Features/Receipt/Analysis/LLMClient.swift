@@ -452,6 +452,7 @@ final class LLMClient {
         - cents must be the most likely locally-correct amount for that row, in integer cents.
         - Only fix obvious OCR noise locally, such as misplaced spaces or characters in the amount. Do not use receipt-wide math.
         - If a row has no readable amount, leave cents empty.
+        - Decimal plausibility: if an item price appears unreasonably large for a single dish or product (e.g., $500+ at a restaurant, $200+ at a grocery store), it likely has a misplaced decimal point from OCR noise. Output the most plausible corrected value (e.g., OCR "5176" for a $51.76 duck dish → output 5176, not 517600).
         """
 
         let userMessage = "Extract the ordered receipt rows from this receipt."
@@ -575,6 +576,7 @@ final class LLMClient {
         - cents must be the most likely locally-correct amount for that row, in integer cents.
         - Only fix obvious OCR noise locally, such as misplaced spaces or characters in the amount. Do not use receipt-wide math.
         - If a row has no readable amount, leave cents empty.
+        - Decimal plausibility: if an item price appears unreasonably large for a single dish or product (e.g., $500+ at a restaurant, $200+ at a grocery store), it likely has a misplaced decimal point from OCR noise. Output the most plausible corrected value (e.g., OCR "5176" for a $51.76 duck dish → output 5176, not 517600).
         """
 
         let userMessage = "Extract the ordered receipt rows from this receipt transcript:\n\n\(transcript)"

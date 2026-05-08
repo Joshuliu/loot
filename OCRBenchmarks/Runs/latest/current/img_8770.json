@@ -1,9 +1,9 @@
 {
-  "capturedAt" : "2026-04-18T02:41:46Z",
+  "capturedAt" : "2026-05-04T18:55:20Z",
   "caseID" : "img_8770",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 3640,
+    "actualComputedTotalCents" : 1510,
     "breakdown" : 0.6,
     "expectedTotalCents" : 5620,
     "itemValues" : 0.5,
@@ -12,7 +12,7 @@
     "overall" : 0.135,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -1980,
+    "reconciliationDifferenceCents" : -4110,
     "total" : 0
   },
   "snapshot" : {
@@ -25,30 +25,34 @@
     },
     "phase2" : {
       "issues" : [
-        "Resolved rows differ from known total by 1675 cents"
+        "Resolved rows differ from known total by 455 cents"
       ],
       "items" : [
         {
-          "cents" : 1675,
           "label" : "Udon",
           "qty" : 1
         },
         {
-          "cents" : 1965,
-          "label" : "aney Ave",
+          "cents" : 860,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 650,
+          "label" : "Unknown Item",
           "qty" : 1
         }
       ],
       "subtotal_cents" : 1965
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Udon|1675\nITEM|aney Ave|1965\nITEM||860\nITEM||650\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Udon|1675\nITEM|Unknown Item|860\nITEM|Unknown Item|650\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.5049909353256226,
-      "phase2Seconds" : 7.487422943115234,
-      "totalWorkflowSeconds" : 11.703352928161621,
-      "transcriptSeconds" : 3.710932970046997,
-      "transcriptToPhase1Seconds" : 0.5049909353256226,
-      "transcriptToPhase2Seconds" : 7.992419958114624,
+      "phase1Seconds" : 0.6896959543228149,
+      "phase2Seconds" : 46.171481013298035,
+      "totalWorkflowSeconds" : 47.83124494552612,
+      "transcriptSeconds" : 0.9700549840927124,
+      "transcriptToPhase1Seconds" : 0.6896959543228149,
+      "transcriptToPhase2Seconds" : 46.86118996143341,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "16796 TO GO 1\/13\/2024 7:35 PM POS $16.75 T $19.65 T $8.60 T $6.50 T\nya Udon aney Ave CA 95014 -4017 16.75 x 1 19.65 x 1 8.60 x 1 6.50 x 1"
