@@ -1437,7 +1437,18 @@ extension MessagesViewController {
 
 extension MessagesViewController: MessageBus {
     func openInSafari(_ url: URL) {
-        extensionContext?.open(url, completionHandler: nil)
+        // iMessage extensions can't import UIKit's UIApplication directly,
+        // and `extensionContext?.open(_:completionHandler:)` silently fails
+        // on custom URL schemes (venmo://, cash.app/$..., paypal.me/...).
+        // The runtime KVC hack reaches UIApplication.shared and calls the
+        // legacy `openURL:` selector, which actually launches the target
+        // app. This was the original wiring before commit `086ac9b`
+        // ("Post-beta bug fixes") "cleaned" it to extensionContext.open
+        // and silently broke every payment method integration.
+        guard let appClass = NSClassFromString("UIApplication"),
+              let app = appClass.value(forKey: "sharedApplication") as? NSObject
+        else { return }
+        app.perform(NSSelectorFromString("openURL:"), with: url)
     }
 
     func sendSettlementCard(fromName: String, toName: String, amountCents: Int, methodName: String, tabColorHex: String?) {
