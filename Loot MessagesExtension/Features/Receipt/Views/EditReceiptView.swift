@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct EditReceiptView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
     let onSave: (ReceiptDisplay) -> Void
     let onCancel: () -> Void
@@ -56,8 +56,8 @@ struct EditReceiptView: View {
         case tip
     }
     
-    init(uiModel: LootUIModel, receiptDraftVM: ReceiptDraftViewModel, onSave: @escaping (ReceiptDisplay) -> Void, onCancel: @escaping () -> Void) {
-        self.uiModel = uiModel
+    init(coordinator: AppCoordinator, receiptDraftVM: ReceiptDraftViewModel, onSave: @escaping (ReceiptDisplay) -> Void, onCancel: @escaping () -> Void) {
+        self.coordinator = coordinator
         self.receiptDraftVM = receiptDraftVM
         self.onSave = onSave
         self.onCancel = onCancel

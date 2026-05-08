@@ -10,8 +10,9 @@ import FirebaseFirestore
 
 struct LootTabView: View {
     @Binding var tabName: String
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
 
     var onUpload: () -> Void
     var onScan: () -> Void
@@ -152,7 +153,8 @@ struct LootTabView: View {
             if let tab = activeTab {
                 TabSettingsView(
                     tab: tab,
-                    uiModel: uiModel,
+                    coordinator: coordinator,
+                    tabContextVM: tabContextVM,
                     onSave: { updatedTab in onTabUpdated?(updatedTab) },
                     onLeft: { onTabLeft?() },
                     onDeleted: { onTabDeleted?() }

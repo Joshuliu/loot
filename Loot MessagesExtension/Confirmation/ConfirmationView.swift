@@ -2,8 +2,9 @@ import SwiftUI
 import UIKit
 
 struct ConfirmationView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
 
     let receiptName: String
     let amount: String
@@ -312,7 +313,7 @@ struct ConfirmationView: View {
 
         let myUid = KeychainHelper.getOrCreateUserId()
 
-        if let tab = uiModel.activeTab {
+        if let tab = tabContextVM.activeTab {
             let seeded: [Person] = tab.members.filter(\.isActive).map { member in
                 let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
                 return Person.identified(userId: uid, displayName: member.displayName)
@@ -586,7 +587,7 @@ struct ConfirmationView: View {
         return TipPanelView(
             preTipTotalCents: preTip,
             existingTipCents: existing,
-            isExpanded: uiModel.isExpanded,
+            isExpanded: coordinator.isExpanded,
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                     showTipPanel = false
@@ -603,11 +604,11 @@ struct ConfirmationView: View {
 
     // MARK: - Confirmation Panel (card + swipe-to-send + bottom buttons)
     private func confirmationPanel() -> some View {
-        let cardScale: CGFloat = !uiModel.isExpanded ? 0.9 : 0.9 //1.1
+        let cardScale: CGFloat = !coordinator.isExpanded ? 0.9 : 0.9 //1.1
         let cardH: CGFloat = 160 * cardScale
 
         return VStack(spacing: 0) {
-            if uiModel.isExpanded {
+            if coordinator.isExpanded {
                 Spacer(minLength: 0)
                 Spacer(minLength: 0)
             }
@@ -687,9 +688,9 @@ struct ConfirmationView: View {
                         BillCardLoadingView(
                             participantCount: participantCount,
                             displayName: payerDisplayName(),
-                            tabName: uiModel.activeTab?.name,
+                            tabName: tabContextVM.activeTab?.name,
                             splitLabel: splitLabel,
-                            tabColorHex: uiModel.activeTab?.colorHex,
+                            tabColorHex: tabContextVM.activeTab?.colorHex,
                             onAnimationComplete: {
                                 introAnimationDone = true
                             }
@@ -703,8 +704,8 @@ struct ConfirmationView: View {
                             splitLabel: splitLabel,
                             owedAmounts: owedAmounts,
                             totalCents: totalCents,
-                            tabName: uiModel.activeTab?.name,
-                            tabColorHex: uiModel.activeTab?.colorHex
+                            tabName: tabContextVM.activeTab?.name,
+                            tabColorHex: tabContextVM.activeTab?.colorHex
                         )
                         .id("confirmation-bill-card-\(billCardRefreshNonce)-\(totalCents)-\(displayAmount)")
                         .transition(.opacity)
@@ -732,7 +733,7 @@ struct ConfirmationView: View {
             .padding(.top, 12)
             .opacity(buttonsOpacity)
 
-            if uiModel.isExpanded { Spacer(minLength: 0) }
+            if coordinator.isExpanded { Spacer(minLength: 0) }
 
             Group {
                 if splitModesExpanded {
@@ -773,7 +774,7 @@ struct ConfirmationView: View {
 
                         Button(action: {
                             UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            if !uiModel.isExpanded {
+                            if !coordinator.isExpanded {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                     cardOffset = CGSize(width: 0, height: 500)
                                     cardRotation = 0
@@ -890,7 +891,7 @@ struct ConfirmationView: View {
 
     @ViewBuilder private var panelViews: some View {
         // Donut panel (equally / custom)
-        if uiModel.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
+        if coordinator.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
             byGuestPanel(
                 interactive: mode == .custom
             )
@@ -898,7 +899,7 @@ struct ConfirmationView: View {
             .padding(.top, 6)
         }
         // Items panel
-        if uiModel.isExpanded && confirmed == false && mode == .byItems {
+        if coordinator.isExpanded && confirmed == false && mode == .byItems {
             byItemPanel()
                 .padding(.horizontal, 24)
                 .padding(.top, 6)
@@ -908,7 +909,7 @@ struct ConfirmationView: View {
             tipPanel()
         }
         // Confirmation card: always in compact mode, or when confirmed in expanded mode
-        if (confirmed == true || !uiModel.isExpanded) && !showTipPanel {
+        if (confirmed == true || !coordinator.isExpanded) && !showTipPanel {
             confirmationPanel()
                 .padding(.top, 10)
         }
@@ -917,7 +918,7 @@ struct ConfirmationView: View {
     var body: some View {
         GeometryReader { geo in
             bodyStack(panelH: min(geo.size.height * 0.55, 500),
-                      topPad: uiModel.isExpanded ? 20 : 4)
+                      topPad: coordinator.isExpanded ? 20 : 4)
         }
     }
 
@@ -942,7 +943,7 @@ struct ConfirmationView: View {
         .onChange(of: draftIncludedIDs) { _, _ in notifyGuestsChanged() }
         .onChange(of: draftPayerID) { _, _ in notifyGuestsChanged() }
         .onChange(of: confirmed) { _, newValue in handleConfirmedChange(newValue) }
-        .onChange(of: uiModel.isExpanded) { _, isNowExpanded in handleIsExpandedChange(isNowExpanded) }
+        .onChange(of: coordinator.isExpanded) { _, isNowExpanded in handleIsExpandedChange(isNowExpanded) }
         .onChange(of: amount) { _, newAmount in handleAmountChange(newAmount) }
         .onChange(of: receiptDraftVM.isLoadingReceipt) { _, isNowLoading in
             if !isNowLoading { introAnimationDone = true }
@@ -958,21 +959,21 @@ struct ConfirmationView: View {
     /// Identity for the live tab's member set. Cheap, value-typed, and
     /// type-inferred without optional chaining gymnastics — keeps SwiftUI's
     /// `.onChange(of:)` away from the type-checker timeout that
-    /// `uiModel.activeTab?.members` triggers when threaded through the long
+    /// `tabContextVM.activeTab?.members` triggers when threaded through the long
     /// `bodyStack` modifier chain.
     private var liveTabMembersFingerprint: String {
-        guard let tab = uiModel.activeTab else { return "" }
+        guard let tab = tabContextVM.activeTab else { return "" }
         return tab.members
             .map { "\($0.memberId):\($0.displayName):\($0.isActive ? 1 : 0)" }
             .joined(separator: "|")
     }
 
-    /// When `uiModel.activeTab` updates (e.g. another participant accepted the
+    /// When `tabContextVM.activeTab` updates (e.g. another participant accepted the
     /// invite mid-flow), append any newly-arrived tab members into the working
     /// guest lists so the user doesn't have to bail out and restart the
     /// receipt. Existing guests are preserved verbatim — this is additive only.
     private func mergeLiveTabMembers() {
-        guard let tab = uiModel.activeTab else { return }
+        guard let tab = tabContextVM.activeTab else { return }
         let existingUserIds = Set(draftGuests.compactMap(\.userId))
         let newMembers = tab.members.filter { member in
             guard member.isActive else { return false }
@@ -1004,11 +1005,11 @@ struct ConfirmationView: View {
                 // In compact, min=0/max=∞ lets it size naturally so nothing gets clipped.
                 ZStack(alignment: .top) { panelViews }
                     .frame(
-                        minHeight: uiModel.isExpanded ? panelH : 0,
-                        maxHeight: uiModel.isExpanded ? panelH : .infinity
+                        minHeight: coordinator.isExpanded ? panelH : 0,
+                        maxHeight: coordinator.isExpanded ? panelH : .infinity
                     )
 
-                if uiModel.isExpanded {
+                if coordinator.isExpanded {
                     guestList()
                         .padding(.horizontal, 10)
                         .padding(.top, 16)
@@ -1078,7 +1079,7 @@ struct ConfirmationView: View {
     @ViewBuilder
     private var editReceiptSheet: some View {
         EditReceiptView(
-            uiModel: uiModel,
+            coordinator: coordinator,
             receiptDraftVM: receiptDraftVM,
             onSave: handleEditReceiptSave,
             onCancel: { showEditReceipt = false }

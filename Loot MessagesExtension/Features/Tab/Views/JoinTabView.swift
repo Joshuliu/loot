@@ -6,7 +6,8 @@
 import SwiftUI
 
 struct JoinTabView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var tabContextVM: TabContextViewModel
     var isExpanded: Bool = true
 
     let onRequestExpand: () -> Void
@@ -186,8 +187,8 @@ struct JoinTabView: View {
         // Re-fire the load when either the invite id changes OR the refresh
         // nonce bumps (re-tap of the same invite bubble). Without the nonce
         // the user could re-tap a stale invite and see no UI change.
-        .task(id: TaskKey(id: uiModel.pendingTabInviteId ?? "",
-                          nonce: uiModel.pendingTabInviteRefreshNonce)) {
+        .task(id: TaskKey(id: tabContextVM.pendingTabInviteId ?? "",
+                          nonce: tabContextVM.pendingTabInviteRefreshNonce)) {
             onRequestExpand()
             await loadTab()
         }
@@ -199,7 +200,7 @@ struct JoinTabView: View {
     }
 
     private func loadTab() async {
-        guard let tabId = uiModel.pendingTabInviteId else {
+        guard let tabId = tabContextVM.pendingTabInviteId else {
             errorMessage = "No tab invite ID"
             return
         }
@@ -215,8 +216,8 @@ struct JoinTabView: View {
                     (member.memberId == myId || member.userId == myId) && member.isActive
                 }
                 if isActiveMember {
-                    uiModel.activeTab = fetched
-                    uiModel.pendingTabInviteId = nil
+                    tabContextVM.activeTab = fetched
+                    tabContextVM.pendingTabInviteId = nil
                     onJoined(fetched)
                     isLoading = false
                     return
@@ -253,15 +254,15 @@ struct JoinTabView: View {
             do {
                 let joined = try await TabService.shared.joinTab(
                     tabId: tab.id ?? "",
-                    conversationKey: uiModel.conversationKey ?? ""
+                    conversationKey: tabContextVM.conversationKey ?? ""
                 )
                 self.tab = joined
-                uiModel.activeTab = joined
-                uiModel.conversationMemberIds = Set(joined.memberIds)
-                if let index = uiModel.userTabs.firstIndex(where: { $0.id == joined.id }) {
-                    uiModel.userTabs[index] = joined
+                tabContextVM.activeTab = joined
+                tabContextVM.conversationMemberIds = Set(joined.memberIds)
+                if let index = tabContextVM.userTabs.firstIndex(where: { $0.id == joined.id }) {
+                    tabContextVM.userTabs[index] = joined
                 } else {
-                    uiModel.userTabs.append(joined)
+                    tabContextVM.userTabs.append(joined)
                 }
                 if let tabId = joined.id, !tabId.isEmpty {
                     onSendTabInviteUpdate?(tabId)

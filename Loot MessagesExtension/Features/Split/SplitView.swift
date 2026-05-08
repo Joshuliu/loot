@@ -1208,7 +1208,7 @@ extension ConfirmationView {
 
                             // Name – tap to edit inline (disabled for tab members)
                             let isMe = guest.isMe(localUserId: localUserId)
-                            let isTabMember = uiModel.activeTab != nil && guest.userId != nil && !guest.userId!.isEmpty
+                            let isTabMember = tabContextVM.activeTab != nil && guest.userId != nil && !guest.userId!.isEmpty
                             let trimmed = guest.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
                             if editingGuestNameID == gid && !isMe && !isTabMember {
                                 TextField(
@@ -1324,7 +1324,7 @@ extension ConfirmationView {
             }
 
             // Add guest button (hidden when tab is active — guests come from tab members)
-            if uiModel.activeTab == nil {
+            if tabContextVM.activeTab == nil {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         addGuestInline()
@@ -1445,7 +1445,7 @@ extension ConfirmationView {
                 guests = draftGuests
                 includedIDs = draftIncludedIDs
                 payerID = draftPayerID
-            } else if let tab = uiModel.activeTab {
+            } else if let tab = tabContextVM.activeTab {
                 let myUid = KeychainHelper.getOrCreateUserId()
                 let seeded = tab.members.filter { $0.isActive }.map { member -> Person in
                     let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId

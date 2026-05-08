@@ -10,7 +10,7 @@ import Combine
 import UIKit
 
 struct ManualInputView: View {
-    @ObservedObject var viewModel: LootUIModel
+    @ObservedObject var viewModel: AppCoordinator
     @Binding var receiptName: String
     @Binding var amountString: String
     @Binding var tipAmount: String

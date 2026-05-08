@@ -10,9 +10,11 @@ import SwiftUI
 import UIKit
 
 struct SplitsSummaryView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
     @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
+    let bus: MessageBus
     @State private var split: SplitPayload
     let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
     let onEditSplit: (() -> Void)?
@@ -24,7 +26,7 @@ struct SplitsSummaryView: View {
     private var canEdit: Bool {
         guard let payload = messageReceiptVM.openedMessagePayload else { return false }
         let myUid = KeychainHelper.getOrCreateUserId()
-        return payload.canEdit(myUid: myUid, userTabs: uiModel.userTabs)
+        return payload.canEdit(myUid: myUid, userTabs: tabContextVM.userTabs)
     }
 
     private var isTabReceipt: Bool { messageReceiptVM.openedMessagePayload?.tid != nil }
@@ -69,9 +71,11 @@ struct SplitsSummaryView: View {
     private let headerCollapseRange: CGFloat = 60
 
     init(
-        uiModel: LootUIModel,
+        coordinator: AppCoordinator,
         receiptDraftVM: ReceiptDraftViewModel,
         messageReceiptVM: MessageReceiptViewModel,
+        tabContextVM: TabContextViewModel,
+        bus: MessageBus,
         split: SplitPayload,
         items: [ReceiptItemPayload],
         onEditSplit: (() -> Void)? = nil,
@@ -80,9 +84,11 @@ struct SplitsSummaryView: View {
         onClose: (() -> Void)? = nil,
         onRequestCollapse: (() -> Void)? = nil
     ) {
-        self.uiModel = uiModel
+        self.coordinator = coordinator
         self.receiptDraftVM = receiptDraftVM
         self.messageReceiptVM = messageReceiptVM
+        self.tabContextVM = tabContextVM
+        self.bus = bus
         self._split = State(initialValue: split)
         self.items = items
         self.onEditSplit = onEditSplit
@@ -143,14 +149,14 @@ struct SplitsSummaryView: View {
     }
 
     private var associatedTab: LootTab? {
-        if let receiptTab = uiModel.receiptTab {
+        if let receiptTab = tabContextVM.receiptTab {
             return receiptTab
         }
         if let payloadTab = messageReceiptVM.openedMessagePayload?.tab {
             return LootTab.minimal(id: payloadTab.id, name: payloadTab.n, colorHex: payloadTab.c)
         }
         if isTabReceipt {
-            return uiModel.activeTab
+            return tabContextVM.activeTab
         }
         return nil
     }
@@ -179,10 +185,10 @@ struct SplitsSummaryView: View {
             // would briefly render "no members + UUID-as-name" until the
             // listener races back. The property-level guard in LootUIModel
             // also catches this, but skipping the write here is cleaner.
-            if let active = uiModel.activeTab, active.id == target.id {
+            if let active = tabContextVM.activeTab, active.id == target.id {
                 // Same tab — no-op, preserve the live state.
             } else {
-                uiModel.activeTab = target
+                tabContextVM.activeTab = target
             }
         }
         onClose?()
@@ -536,12 +542,12 @@ struct SplitsSummaryView: View {
                 .buttonStyle(.plain)
             } else if canRequest {
                 Button {
-                    uiModel.sendRequestCard?(
-                        to,
-                        from,
-                        amount,
-                        nil,
-                        RequestCardMetadata(
+                    bus.sendRequestCard(
+                        creditorName: to,
+                        debtorName: from,
+                        amountCents: amount,
+                        tabColorHex: nil,
+                        metadata: RequestCardMetadata(
                             receiptDocId: messageReceiptVM.openedMessageDocId,
                             tabId: nil,
                             creditorId: split.g[split.pi].uid,
@@ -769,7 +775,7 @@ struct SplitsSummaryView: View {
         payload.s = split
         messageReceiptVM.openedMessagePayload = payload
         if broadcast {
-            uiModel.sendBillUpdate?(payload, docId, action)
+            bus.sendBillUpdate(payload: payload, docId: docId, action: action)
         }
 
         Task {
@@ -1315,7 +1321,7 @@ struct SplitsSummaryView: View {
 
             // Check tab membership — non-members see a locked view
             if isTabReceipt, let tabId = messageReceiptVM.openedMessagePayload?.tid {
-                if uiModel.userTabs.contains(where: { $0.id == tabId }) {
+                if tabContextVM.userTabs.contains(where: { $0.id == tabId }) {
                     tabMembershipState = .member
                 } else {
                     let tab = try? await TabService.shared.fetchTab(id: tabId)
@@ -1349,7 +1355,6 @@ struct SplitsSummaryView: View {
         }
         .sheet(item: $paySheetInfo) { info in
             let note = messageReceiptVM.openedMessagePayload?.r.t ?? "Loot"
-            let sendSettlement = uiModel.sendSettlementCard
             TabPayNowSheet(
                 toName: info.toName,
                 amountCents: info.amountCents,
@@ -1367,8 +1372,8 @@ struct SplitsSummaryView: View {
                             amountCents: info.amountCents,
                             tabColorHex: tabColor
                         )
-                        uiModel.sendApplePayHandoff?(info.fromName, info.toName,
-                                                    info.amountCents, tabColor)
+                        bus.sendApplePayHandoff(fromName: info.fromName, toName: info.toName,
+                                                amountCents: info.amountCents, tabColorHex: tabColor)
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                             togglePaid(guestIndex: info.guestIndex)
                         }
@@ -1378,8 +1383,8 @@ struct SplitsSummaryView: View {
                         // tab — `associatedTab` may be a payload-derived
                         // minimal stub that would downgrade rich live state.
                         if let target = associatedTab,
-                           uiModel.activeTab?.id != target.id {
-                            uiModel.activeTab = target
+                           tabContextVM.activeTab?.id != target.id {
+                            tabContextVM.activeTab = target
                         }
                         onClose?()
                         onRequestCollapse?()
@@ -1401,12 +1406,14 @@ struct SplitsSummaryView: View {
                         payeeName: info.toName,
                         zelleData: method.zelleData
                     )
-                    sendSettlement?(info.fromName, info.toName,
-                                    info.amountCents, method.type.displayName, nil)
+                    bus.sendSettlementCard(fromName: info.fromName, toName: info.toName,
+                                           amountCents: info.amountCents,
+                                           methodName: method.type.displayName,
+                                           tabColorHex: nil)
                     if let url = deepLink {
                         // extensionContext.open is required in iMessage extensions —
                         // SwiftUI's openURL silently no-ops for non-http schemes here.
-                        if let opener = uiModel.openInSafari { opener(url) } else { openURL(url) }
+                        bus.openInSafari(url)
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }

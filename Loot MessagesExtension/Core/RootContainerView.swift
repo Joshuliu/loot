@@ -9,9 +9,16 @@ import SwiftUI
 
 struct RootContainerView: View {
     @AppStorage(DefaultsKeys.myDisplayName) private var myName: String = ""
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
     @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    /// Phase 3 step 14: tab + conversation state. Owns activeTab, receiptTab,
+    /// userTabs, conversationKey, pendingTabInvite*, conversationMemberIds,
+    /// localParticipantId, tabReceiptsRefreshNonce.
+    @ObservedObject var tabContextVM: TabContextViewModel
+    /// Phase 3 step 13b: UIKit-bridge access. Replaces the five optional
+    /// closures that used to hang off `uiModel`.
+    let bus: MessageBus
 
     @State private var showSplitViewSheet: Bool = false
     @State private var confirmationCameFromManual: Bool = false
@@ -76,10 +83,12 @@ struct RootContainerView: View {
 
     // Backend user restore state
     @State private var isCheckingBackendUser: Bool = true
-    init(uiModel: LootUIModel, receiptDraftVM: ReceiptDraftViewModel, messageReceiptVM: MessageReceiptViewModel) {
-        self.uiModel = uiModel
+    init(coordinator: AppCoordinator, receiptDraftVM: ReceiptDraftViewModel, messageReceiptVM: MessageReceiptViewModel, tabContextVM: TabContextViewModel, bus: MessageBus) {
+        self.coordinator = coordinator
         self.receiptDraftVM = receiptDraftVM
         self.messageReceiptVM = messageReceiptVM
+        self.tabContextVM = tabContextVM
+        self.bus = bus
         self.participantCount = 1
         self.onScan = {}
         self.onExpand = {}
@@ -90,9 +99,11 @@ struct RootContainerView: View {
     }
 
     init(
-        uiModel: LootUIModel,
+        coordinator: AppCoordinator,
         receiptDraftVM: ReceiptDraftViewModel,
         messageReceiptVM: MessageReceiptViewModel,
+        tabContextVM: TabContextViewModel,
+        bus: MessageBus,
         participantCount: Int,
         onScan: @escaping () -> Void,
         onExpand: @escaping () -> Void,
@@ -101,9 +112,11 @@ struct RootContainerView: View {
         onSendTabInvite: ((String, String, String) -> Void)? = nil,
         onSendTabInviteUpdate: ((String) -> Void)? = nil
     ) {
-        self.uiModel = uiModel
+        self.coordinator = coordinator
         self.receiptDraftVM = receiptDraftVM
         self.messageReceiptVM = messageReceiptVM
+        self.tabContextVM = tabContextVM
+        self.bus = bus
         self.participantCount = participantCount
         self.onScan = onScan
         self.onExpand = onExpand
@@ -136,7 +149,7 @@ struct RootContainerView: View {
     // MARK: - Session persistence helpers
 
     private func saveSession(screen: AppScreen) {
-        guard let key = uiModel.conversationKey else { return }
+        guard let key = tabContextVM.conversationKey else { return }
         guard screen.isPersistableScreen else {
             if screen == .tabview { SessionPersistence.clear(conversationKey: key) }
             return
@@ -153,7 +166,7 @@ struct RootContainerView: View {
 
     private func restoreSession(conversationKey: String) {
         // Only restore if we haven't already navigated away from the landing screen
-        guard uiModel.currentScreen == .tabview else { return }
+        guard coordinator.currentScreen == .tabview else { return }
         guard let session = SessionPersistence.load(conversationKey: conversationKey) else { return }
 
         let screen = AppScreen.from(persistenceKey: session.screenName)
@@ -167,13 +180,13 @@ struct RootContainerView: View {
         }
 
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            uiModel.currentScreen = screen
+            coordinator.currentScreen = screen
         }
         print("[Session] Restored to .\(session.screenName) from \(Int(-session.savedAt.timeIntervalSinceNow))s ago")
     }
 
     private func startScanFlow() {
-        uiModel.resetForNewReceipt()
+        tabContextVM.resetForNewReceipt()
         receiptDraftVM.reset()
         messageReceiptVM.reset()
         onScan()
@@ -183,7 +196,7 @@ struct RootContainerView: View {
     }
 
     private func startPhotoLibraryFlow() {
-        uiModel.resetForNewReceipt()
+        tabContextVM.resetForNewReceipt()
         receiptDraftVM.reset()
         messageReceiptVM.reset()
         analyzeError = nil
@@ -427,7 +440,7 @@ struct RootContainerView: View {
 
 
     private func optimisticMessagePayload(for receipt: TabReceipt) -> LootMessagePayload? {
-        guard let tab = uiModel.activeTab else { return nil }
+        guard let tab = tabContextVM.activeTab else { return nil }
 
         var orderedMemberIds: [String] = []
         func appendMemberId(_ memberId: String) {
@@ -592,7 +605,7 @@ struct RootContainerView: View {
                     receiptDraftVM.isLoadingReceipt = true
                     confirmationCameFromManual = false
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .confirmation
+                        coordinator.currentScreen = .confirmation
                     }
                     analyzeCapturedTwoPhase(image: cropped)
                 }
@@ -610,7 +623,7 @@ struct RootContainerView: View {
                     receiptDraftVM.isLoadingReceipt = true
                     confirmationCameFromManual = false
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .confirmation
+                        coordinator.currentScreen = .confirmation
                     }
                     analyzeCapturedTwoPhase(image: cropped)
                 }
@@ -626,21 +639,21 @@ struct RootContainerView: View {
         }
         .onAppear {
             if messageReceiptVM.openedMessagePayload != nil {
-                uiModel.currentScreen = .messageViewer
+                coordinator.currentScreen = .messageViewer
             }
         }
         // MARK: - Session persistence: save on state changes t
-        .onChange(of: uiModel.currentScreen) { _, screen in
+        .onChange(of: coordinator.currentScreen) { _, screen in
             saveSession(screen: screen)
         }
         .onChange(of: receiptDraftVM.currentReceipt) { _, receipt in
             if messageReceiptVM.openedMessagePayload == nil, let receipt {
                 receiptName = receipt.title
             }
-            saveSession(screen: uiModel.currentScreen)
+            saveSession(screen: coordinator.currentScreen)
         }
         .onChange(of: receiptDraftVM.currentSplitDraft) { _, _ in
-            saveSession(screen: uiModel.currentScreen)
+            saveSession(screen: coordinator.currentScreen)
         }
         .onChange(of: receiptDraftVM.isLoadingReceipt) { wasLoading, isLoading in
             // Event-driven sync point #1: phase 1 completion (loading true -> false).
@@ -654,26 +667,26 @@ struct RootContainerView: View {
             receiptDraftVM.reconcileWithLiveReceipt(trigger: "phase 2 completion")
         }
         // Restore when conversationKey is first assigned (app reopened into same chat)
-        .onChange(of: uiModel.conversationKey) { _, key in
+        .onChange(of: tabContextVM.conversationKey) { _, key in
             guard let key else { return }
             restoreSession(conversationKey: key)
         }
         .onChange(of: messageReceiptVM.openedMessagePayload) { _, newValue in
             if newValue != nil {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .messageViewer
+                    coordinator.currentScreen = .messageViewer
                 }
             }
             if let tid = newValue?.tid, !tid.isEmpty {
-                if let cached = uiModel.userTabs.first(where: { $0.id == tid }) {
-                    uiModel.receiptTab = cached
+                if let cached = tabContextVM.userTabs.first(where: { $0.id == tid }) {
+                    tabContextVM.receiptTab = cached
                 } else {
                     Task {
-                        uiModel.receiptTab = try? await TabService.shared.fetchTab(id: tid)
+                        tabContextVM.receiptTab = try? await TabService.shared.fetchTab(id: tid)
                     }
                 }
             } else {
-                uiModel.receiptTab = nil
+                tabContextVM.receiptTab = nil
             }
         }
         .fullScreenCover(isPresented: Binding(
@@ -695,7 +708,7 @@ struct RootContainerView: View {
 
     @ViewBuilder
     private var screenContent: some View {
-        switch uiModel.currentScreen {
+        switch coordinator.currentScreen {
         case .tabview:              tabviewContent.transition(.opacity)
         case .fill:                 fillContent.transition(.opacity)
         case .tipview:              tipContent.transition(.opacity)
@@ -714,36 +727,37 @@ struct RootContainerView: View {
     private var tabviewContent: some View {
         LootTabView(
             tabName: Binding(get: { receiptName }, set: { receiptName = $0 }),
-            uiModel: uiModel,
+            coordinator: coordinator,
             messageReceiptVM: messageReceiptVM,
+            tabContextVM: tabContextVM,
             onUpload: { startPhotoLibraryFlow() },
             onScan: { startScanFlow() },
             onFill: {
-                uiModel.resetForNewReceipt()
+                tabContextVM.resetForNewReceipt()
                 receiptDraftVM.reset()
                 messageReceiptVM.reset()
                 receiptName = ""
                 amountString = "0"
                 tipAmount = ""
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .fill
+                    coordinator.currentScreen = .fill
                 }
             },
-            activeTab: uiModel.activeTab,
-            userTabs: uiModel.userTabs,
-            conversationMemberIds: uiModel.conversationMemberIds,
-            isExpanded: uiModel.isExpanded,
+            activeTab: tabContextVM.activeTab,
+            userTabs: tabContextVM.userTabs,
+            conversationMemberIds: tabContextVM.conversationMemberIds,
+            isExpanded: coordinator.isExpanded,
             onStartTab: {
                 pendingTabName = ""
                 pendingTabColor = TabColorOptions.defaultHex
                 onExpand()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .newTab
+                    coordinator.currentScreen = .newTab
                 }
             },
             onSelectTab: { tab in
-                uiModel.activeTab = tab
-                if let convKey = uiModel.conversationKey {
+                tabContextVM.activeTab = tab
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(tab, for: convKey)
                     Task {
                         do {
@@ -759,48 +773,48 @@ struct RootContainerView: View {
             },
             onTabNameTapped: { onExpand() },
             onClearTab: {
-                uiModel.activeTab = nil
-                if let convKey = uiModel.conversationKey {
+                tabContextVM.activeTab = nil
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(nil, for: convKey)
                     Task { try? await TabService.shared.removeConversationMapping(conversationKey: convKey) }
                 }
             },
             onInviteMembers: {
-                if let tab = uiModel.activeTab {
+                if let tab = tabContextVM.activeTab {
                     pendingTabName = tab.name
                     pendingTabColor = tab.colorHex ?? TabColorOptions.defaultHex
                     pendingTabId = tab.id ?? ""
                     tabInviteCameFromTabView = true
                     onCollapse()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .tabInviteConfirmation
+                        coordinator.currentScreen = .tabInviteConfirmation
                     }
                 }
             },
             onAccountTapped: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .account
+                    coordinator.currentScreen = .account
                 }
             },
             onTabUpdated: { updatedTab in
-                uiModel.activeTab = updatedTab
-                if let convKey = uiModel.conversationKey {
+                tabContextVM.activeTab = updatedTab
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(updatedTab, for: convKey)
                 }
             },
             onTabLeft: {
-                let leavingId = uiModel.activeTab?.id
-                uiModel.userTabs.removeAll { $0.id == leavingId }
-                uiModel.activeTab = nil
-                if let convKey = uiModel.conversationKey {
+                let leavingId = tabContextVM.activeTab?.id
+                tabContextVM.userTabs.removeAll { $0.id == leavingId }
+                tabContextVM.activeTab = nil
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(nil, for: convKey)
                 }
             },
             onTabDeleted: {
-                let deletedId = uiModel.activeTab?.id
-                uiModel.userTabs.removeAll { $0.id == deletedId }
-                uiModel.activeTab = nil
-                if let convKey = uiModel.conversationKey {
+                let deletedId = tabContextVM.activeTab?.id
+                tabContextVM.userTabs.removeAll { $0.id == deletedId }
+                tabContextVM.activeTab = nil
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(nil, for: convKey)
                     Task { try? await TabService.shared.removeConversationMapping(conversationKey: convKey) }
                 }
@@ -817,7 +831,7 @@ struct RootContainerView: View {
                 }
                 messageReceiptVM.openedMessageDocId = docId
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .messageViewer
+                    coordinator.currentScreen = .messageViewer
                 }
                 Task { @MainActor in
                     do {
@@ -836,15 +850,26 @@ struct RootContainerView: View {
                     }
                 }
             },
-            onSendSettlementCard: uiModel.sendSettlementCard,
-            onApplePayHandoff: uiModel.sendApplePayHandoff,
-            onSendRequestCard: uiModel.sendRequestCard,
-            openInSafari: uiModel.openInSafari,
+            onSendSettlementCard: { [bus] fromName, toName, amountCents, methodName, tabColorHex in
+                bus.sendSettlementCard(fromName: fromName, toName: toName,
+                                       amountCents: amountCents, methodName: methodName,
+                                       tabColorHex: tabColorHex)
+            },
+            onApplePayHandoff: { [bus] fromName, toName, amountCents, tabColorHex in
+                bus.sendApplePayHandoff(fromName: fromName, toName: toName,
+                                        amountCents: amountCents, tabColorHex: tabColorHex)
+            },
+            onSendRequestCard: { [bus] creditorName, debtorName, amountCents, tabColorHex, metadata in
+                bus.sendRequestCard(creditorName: creditorName, debtorName: debtorName,
+                                    amountCents: amountCents, tabColorHex: tabColorHex,
+                                    metadata: metadata)
+            },
+            openInSafari: { [bus] url in bus.openInSafari(url) },
             pendingPayRequest: messageReceiptVM.pendingPayRequest,
             onConsumePendingPayRequest: {
                 messageReceiptVM.pendingPayRequest = nil
             },
-            paymentsRefreshNonce: uiModel.tabReceiptsRefreshNonce,
+            paymentsRefreshNonce: tabContextVM.tabReceiptsRefreshNonce,
             onRequestCollapse: onCollapse
         )
     }
@@ -852,7 +877,7 @@ struct RootContainerView: View {
     @ViewBuilder
     private var fillContent: some View {
         ManualInputView(
-            viewModel: uiModel,
+            viewModel: coordinator,
             receiptName: $receiptName,
             amountString: $amountString,
             tipAmount: $tipAmount,
@@ -861,20 +886,20 @@ struct RootContainerView: View {
                 amountString = "0"
                 tipAmount = ""
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tabview
+                    coordinator.currentScreen = .tabview
                 }
             },
             onNext: {
                 receiptDraftVM.currentReceipt = makePreviewReceipt()
                 confirmationCameFromManual = true
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .confirmation
+                    coordinator.currentScreen = .confirmation
                 }
             },
             onAddTip: {
                 confirmationCameFromManual = true
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tipview
+                    coordinator.currentScreen = .tipview
                 }
             },
             onRequestExpand: onExpand,
@@ -892,10 +917,10 @@ struct RootContainerView: View {
         TipPanelView(
             preTipTotalCents: preTip,
             existingTipCents: receiptDraftVM.currentReceipt?.tipCents ?? 0,
-            isExpanded: uiModel.isExpanded,
+            isExpanded: coordinator.isExpanded,
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = confirmationCameFromManual ? .fill : .confirmation
+                    coordinator.currentScreen = confirmationCameFromManual ? .fill : .confirmation
                 }
             },
             onApply: { tip, _ in
@@ -919,7 +944,7 @@ struct RootContainerView: View {
                     receiptDraftVM.currentReceipt = makePreviewReceipt()
                 }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .confirmation
+                    coordinator.currentScreen = .confirmation
                 }
             }
         )
@@ -929,8 +954,9 @@ struct RootContainerView: View {
     private var confirmationContent: some View {
         let activeSplitDraft = receiptDraftVM.currentSplitDraft
         ConfirmationView(
-            uiModel: uiModel,
+            coordinator: coordinator,
             receiptDraftVM: receiptDraftVM,
+            tabContextVM: tabContextVM,
             receiptName: receiptName,
             amount: totalAmount,
             participantCount: participantCount,
@@ -940,7 +966,7 @@ struct RootContainerView: View {
             cameFromManual: confirmationCameFromManual,
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .fill
+                    coordinator.currentScreen = .fill
                 }
             },
             onSend: {
@@ -951,7 +977,7 @@ struct RootContainerView: View {
                 receiptName = ""
                 amountString = "0"
                 tipAmount = ""
-                if let key = uiModel.conversationKey {
+                if let key = tabContextVM.conversationKey {
                     SessionPersistence.clear(conversationKey: key)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -961,19 +987,19 @@ struct RootContainerView: View {
                     // .messageViewer. Without this guard, the post-send
                     // resets stomp on the user's new context, flipping the
                     // screen back to .tabview and clearing the opened bubble.
-                    guard uiModel.currentScreen == .confirmation else { return }
+                    guard coordinator.currentScreen == .confirmation else { return }
 
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         if !hasPaymentMethodsConfigured() {
                             paymentMethodsIsPostSend = true
-                            uiModel.currentScreen = .paymentMethods
+                            coordinator.currentScreen = .paymentMethods
                         } else {
                             // Set view
-                            uiModel.currentScreen = .tabview
+                            coordinator.currentScreen = .tabview
                         }
                     }
                     // Reset states
-                    uiModel.resetForNewReceipt()
+                    tabContextVM.resetForNewReceipt()
                     receiptDraftVM.reset()
                     messageReceiptVM.reset()
                     pendingTranscriptTask?.cancel()
@@ -987,7 +1013,7 @@ struct RootContainerView: View {
                 }
             },
             onDeleteToLanding: {
-                uiModel.resetForNewReceipt()
+                tabContextVM.resetForNewReceipt()
                 receiptDraftVM.reset()
                 messageReceiptVM.reset()
                 pendingTranscriptTask?.cancel()
@@ -998,12 +1024,12 @@ struct RootContainerView: View {
                 capturedImage = nil
                 photoLibraryImage = nil
                 analyzeError = nil
-                uiModel.currentScreen = .tabview
+                coordinator.currentScreen = .tabview
             },
             onGoToSplit: { showSplitViewSheet = true },
             onAddTip: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tipview
+                    coordinator.currentScreen = .tipview
                 }
             },
             onTipChanged: { tip, _ in
@@ -1093,17 +1119,19 @@ struct RootContainerView: View {
     private var messageViewerContent: some View {
         if let payload = messageReceiptVM.openedMessagePayload {
             MessageReceiptViewer(
-                uiModel: uiModel,
-                userTabs: uiModel.userTabs,
+                coordinator: coordinator,
+                userTabs: tabContextVM.userTabs,
                 receiptDraftVM: receiptDraftVM,
                 messageReceiptVM: messageReceiptVM,
+                tabContextVM: tabContextVM,
+                bus: bus,
                 payload: payload,
                 onClose: {
                     messageReceiptVM.openedMessagePayload = nil
                     messageReceiptVM.openedMessageDocId = nil
                     messageReceiptVM.messageLoadingState = .idle
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .tabview
+                        coordinator.currentScreen = .tabview
                     }
                 },
                 onRequestCollapse: onCollapse
@@ -1138,7 +1166,7 @@ struct RootContainerView: View {
                     messageReceiptVM.openedMessagePayload = nil
                     messageReceiptVM.openedMessageDocId = nil
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .tabview
+                        coordinator.currentScreen = .tabview
                     }
                 }
                 .buttonStyle(.bordered)
@@ -1152,14 +1180,14 @@ struct RootContainerView: View {
     @ViewBuilder
     private var newTabContent: some View {
         NewTabView(
-            uiModel: uiModel,
-            isExpanded: uiModel.isExpanded,
+            coordinator: coordinator,
+            isExpanded: coordinator.isExpanded,
             onRequestExpand: onExpand,
             onBack: {
                 pendingTabId = ""
-                uiModel.activeTab = nil
+                tabContextVM.activeTab = nil
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tabview
+                    coordinator.currentScreen = .tabview
                 }
             },
             onNext: { name, colorHex in
@@ -1171,13 +1199,13 @@ struct RootContainerView: View {
                 pendingTabColor = tab.colorHex ?? colorHex
                 pendingTabId = tabId
                 tabInviteCameFromTabView = false
-                uiModel.activeTab = tab
-                if let convKey = uiModel.conversationKey {
+                tabContextVM.activeTab = tab
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(tab, for: convKey)
                 }
                 onCollapse()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tabInviteConfirmation
+                    coordinator.currentScreen = .tabInviteConfirmation
                 }
             },
             tabName: $pendingTabName,
@@ -1188,42 +1216,42 @@ struct RootContainerView: View {
     @ViewBuilder
     private var tabInviteContent: some View {
         TabInviteConfirmationView(
-            uiModel: uiModel,
+            coordinator: coordinator,
             tabName: pendingTabName,
             tabColor: pendingTabColor,
             tabId: pendingTabId,
             creatorName: myName.isEmpty ? "Me" : myName,
-            joinedCount: max(1, uiModel.activeTab?.members.filter(\.isActive).count ?? 1),
+            joinedCount: max(1, tabContextVM.activeTab?.members.filter(\.isActive).count ?? 1),
             targetCount: max(1, participantCount),
             onBack: {
                 if tabInviteCameFromTabView {
                     onExpand()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .tabview
+                        coordinator.currentScreen = .tabview
                     }
                 } else {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .newTab
+                        coordinator.currentScreen = .newTab
                     }
                 }
             },
             onSend: { tabName, tabColorHex, tabId in
                 // Upload is intentionally deferred until invite send. If this tab does not
                 // exist in the local list yet, insert it locally and then upload in background.
-                let hasLocalTab = uiModel.userTabs.contains(where: { $0.id == tabId })
+                let hasLocalTab = tabContextVM.userTabs.contains(where: { $0.id == tabId })
                 if !hasLocalTab {
                     let localTab: LootTab
-                    if let active = uiModel.activeTab, active.id == tabId {
+                    if let active = tabContextVM.activeTab, active.id == tabId {
                         localTab = active
                     } else {
                         localTab = TabService.shared.createLocalTab(name: tabName, colorHex: tabColorHex, tabId: tabId)
                     }
 
-                    uiModel.userTabs.append(localTab)
+                    tabContextVM.userTabs.append(localTab)
 
                     Task {
                         do {
-                            try await TabService.shared.uploadTab(localTab, tabId: tabId, conversationKey: uiModel.conversationKey ?? "")
+                            try await TabService.shared.uploadTab(localTab, tabId: tabId, conversationKey: tabContextVM.conversationKey ?? "")
                             print("[RootContainer] Tab uploaded on invite send: \(tabId)")
                         } catch {
                             print("[RootContainer] Tab upload failed on invite send: \(error)")
@@ -1233,7 +1261,7 @@ struct RootContainerView: View {
                 onSendTabInvite?(tabName, tabColorHex, tabId)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        uiModel.currentScreen = .tabview
+                        coordinator.currentScreen = .tabview
                     }
                 }
             },
@@ -1244,19 +1272,20 @@ struct RootContainerView: View {
     @ViewBuilder
     private var joinTabContent: some View {
         JoinTabView(
-            uiModel: uiModel,
-            isExpanded: uiModel.isExpanded,
+            coordinator: coordinator,
+            tabContextVM: tabContextVM,
+            isExpanded: coordinator.isExpanded,
             onRequestExpand: onExpand,
             onBack: {
-                uiModel.pendingTabInviteId = nil
+                tabContextVM.pendingTabInviteId = nil
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tabview
+                    coordinator.currentScreen = .tabview
                 }
             },
             onJoined: { tab in
-                uiModel.activeTab = tab
-                uiModel.pendingTabInviteId = nil
-                if let convKey = uiModel.conversationKey {
+                tabContextVM.activeTab = tab
+                tabContextVM.pendingTabInviteId = nil
+                if let convKey = tabContextVM.conversationKey {
                     TabService.shared.cacheTab(tab, for: convKey)
                     Task {
                         try? await TabService.shared.associateConversation(
@@ -1266,7 +1295,7 @@ struct RootContainerView: View {
                     }
                 }
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tabview
+                    coordinator.currentScreen = .tabview
                 }
             },
             onSendTabInviteUpdate: { tabId in
@@ -1274,7 +1303,7 @@ struct RootContainerView: View {
             },
             onAccountTapped: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .account
+                    coordinator.currentScreen = .account
                 }
             }
         )
@@ -1285,14 +1314,14 @@ struct RootContainerView: View {
         AccountView(
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .tabview
+                    coordinator.currentScreen = .tabview
                 }
             },
             onRequestExpand: onExpand,
             onPaymentMethods: {
                 paymentMethodsIsPostSend = false
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = .paymentMethods
+                    coordinator.currentScreen = .paymentMethods
                 }
             }
         )
@@ -1303,13 +1332,13 @@ struct RootContainerView: View {
         PaymentMethodView(
             onBack: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = paymentMethodsIsPostSend ? .tabview : .account
+                    coordinator.currentScreen = paymentMethodsIsPostSend ? .tabview : .account
                 }
             },
             onRequestExpand: onExpand,
             onSaved: {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    uiModel.currentScreen = paymentMethodsIsPostSend ? .tabview : .account
+                    coordinator.currentScreen = paymentMethodsIsPostSend ? .tabview : .account
                 }
             },
             isPostSendPrompt: paymentMethodsIsPostSend
