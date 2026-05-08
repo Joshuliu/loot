@@ -1437,18 +1437,43 @@ extension MessagesViewController {
 
 extension MessagesViewController: MessageBus {
     func openInSafari(_ url: URL) {
-        // iMessage extensions can't import UIKit's UIApplication directly,
-        // and `extensionContext?.open(_:completionHandler:)` silently fails
-        // on custom URL schemes (venmo://, cash.app/$..., paypal.me/...).
-        // The runtime KVC hack reaches UIApplication.shared and calls the
-        // legacy `openURL:` selector, which actually launches the target
-        // app. This was the original wiring before commit `086ac9b`
-        // ("Post-beta bug fixes") "cleaned" it to extensionContext.open
-        // and silently broke every payment method integration.
-        guard let appClass = NSClassFromString("UIApplication"),
-              let app = appClass.value(forKey: "sharedApplication") as? NSObject
-        else { return }
-        app.perform(NSSelectorFromString("openURL:"), with: url)
+        // iMessage extensions can't directly use `UIApplication.shared` —
+        // it's marked `@available(iOSApplicationExtension, unavailable)`.
+        // Three ways to reach a working UIApplication from inside an
+        // extension, tried in order:
+        //   1. Walk the responder chain (most reliable on iOS 13+).
+        //   2. NSClassFromString + KVC + perform("openURL:") legacy hack.
+        //      Apple has been tightening this on recent iOS versions.
+        //   3. extensionContext.open — silently fails on custom URL
+        //      schemes (venmo://, paypal.me/...), but works for https://.
+        print("[Pay] openInSafari called with url=\(url) scheme=\(url.scheme ?? "nil")")
+
+        // 1. Responder chain
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let app = r as? UIApplication {
+                print("[Pay] openInSafari: found UIApplication via responder chain — calling open(_:options:completionHandler:)")
+                app.open(url, options: [:]) { success in
+                    print("[Pay] openInSafari responder-chain result: \(success)")
+                }
+                return
+            }
+            responder = r.next
+        }
+
+        // 2. KVC hack
+        if let appClass = NSClassFromString("UIApplication"),
+           let app = appClass.value(forKey: "sharedApplication") as? NSObject {
+            print("[Pay] openInSafari: falling back to KVC hack")
+            app.perform(NSSelectorFromString("openURL:"), with: url)
+            return
+        }
+
+        // 3. extensionContext.open (last resort, silently fails for custom schemes)
+        print("[Pay] openInSafari: falling back to extensionContext.open")
+        extensionContext?.open(url, completionHandler: { success in
+            print("[Pay] openInSafari extensionContext result: \(success)")
+        })
     }
 
     func sendSettlementCard(fromName: String, toName: String, amountCents: Int, methodName: String, tabColorHex: String?) {
