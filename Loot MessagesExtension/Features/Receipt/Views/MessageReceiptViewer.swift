@@ -9,7 +9,18 @@
 import SwiftUI
 
 struct MessageReceiptViewer: View {
-    @ObservedObject var uiModel: LootUIModel
+    // Phase 3 step 13c (option α): plain `let` reference instead of
+    // `@ObservedObject`. uiModel is still used imperatively in event
+    // handlers (sendBillUpdate, mutating activeTab/receiptTab), but the
+    // view no longer re-renders on every `@Published` change to uiModel.
+    // userTabs (the only body-relevant uiModel field) is passed
+    // explicitly from the parent. This eliminates spurious re-renders
+    // during the broadcast retract window — see the deferred-bug entry
+    // for the in-place bubble update bug for why that matters.
+    let uiModel: LootUIModel
+    let userTabs: [LootTab]
+    @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
+    @ObservedObject var messageReceiptVM: MessageReceiptViewModel
     let payload: LootMessagePayload
     let onClose: () -> Void
     let onRequestCollapse: () -> Void
@@ -19,16 +30,18 @@ struct MessageReceiptViewer: View {
 
     private var canEdit: Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
-        return payload.canEdit(myUid: myUid, userTabs: uiModel.userTabs)
+        return payload.canEdit(myUid: myUid, userTabs: userTabs)
     }
 
     var body: some View {
         SplitsSummaryView(
             uiModel: uiModel,
+            receiptDraftVM: receiptDraftVM,
+            messageReceiptVM: messageReceiptVM,
             split: payload.s,
             items: payload.r.i,
             onEditSplit: {
-                editSplitPayload = uiModel.openedMessagePayload ?? payload
+                editSplitPayload = messageReceiptVM.openedMessagePayload ?? payload
             },
             onEditReceipt: {
                 if canEdit {
@@ -47,10 +60,10 @@ struct MessageReceiptViewer: View {
                 onRequestCollapse()
             }
         )
-        .id(uiModel.openedMessageDocId ?? payload.r.id)
+        .id(messageReceiptVM.openedMessageDocId ?? payload.r.id)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .sheet(item: $editSplitPayload) { editPayload in
-            let docId = uiModel.openedMessageDocId ?? editPayload.r.id
+            let docId = messageReceiptVM.openedMessageDocId ?? editPayload.r.id
             EditSplitView(payload: editPayload, docId: docId, onSave: { updatedPayload in
                 handleSplitSave(updatedPayload)
                 editSplitPayload = nil
@@ -61,8 +74,9 @@ struct MessageReceiptViewer: View {
         .sheet(isPresented: $showEditReceipt) {
             EditReceiptView(
                 uiModel: uiModel,
+                receiptDraftVM: receiptDraftVM,
                 onSave: { updatedReceipt in
-                    uiModel.currentReceipt = updatedReceipt
+                    receiptDraftVM.currentReceipt = updatedReceipt
                     handleReceiptEdit(updatedReceipt)
                     showEditReceipt = false
                 },
@@ -76,8 +90,8 @@ struct MessageReceiptViewer: View {
     // MARK: - Receipt Edit Handler
 
     private func handleReceiptEdit(_ updatedReceipt: ReceiptDisplay) {
-        guard var currentPayload = uiModel.openedMessagePayload else { return }
-        let docId = uiModel.openedMessageDocId ?? currentPayload.r.id
+        guard var currentPayload = messageReceiptVM.openedMessagePayload else { return }
+        let docId = messageReceiptVM.openedMessageDocId ?? currentPayload.r.id
 
         let oldTotal = currentPayload.s.tot
         let oldItems = currentPayload.r.i
@@ -123,7 +137,7 @@ struct MessageReceiptViewer: View {
                 taxCents: updatedReceipt.taxCents,
                 tipCents: updatedReceipt.tipCents
             )
-            uiModel.openedMessagePayload = currentPayload
+            messageReceiptVM.openedMessagePayload = currentPayload
             persistPayload(currentPayload, docId: docId)
 
         case .custom where totalChanged:
@@ -144,7 +158,7 @@ struct MessageReceiptViewer: View {
                 }
                 currentPayload.s.o = scaled
             }
-            uiModel.openedMessagePayload = currentPayload
+            messageReceiptVM.openedMessagePayload = currentPayload
             editSplitPayload = currentPayload
 
         case .byItems:
@@ -169,7 +183,7 @@ struct MessageReceiptViewer: View {
                 taxCents: updatedReceipt.taxCents,
                 tipCents: updatedReceipt.tipCents
             )
-            uiModel.openedMessagePayload = currentPayload
+            messageReceiptVM.openedMessagePayload = currentPayload
 
             if hasNewItems {
                 // Open split editor so user can assign new items to guests
@@ -180,7 +194,7 @@ struct MessageReceiptViewer: View {
 
         default:
             // .custom with no total change — just persist
-            uiModel.openedMessagePayload = currentPayload
+            messageReceiptVM.openedMessagePayload = currentPayload
             persistPayload(currentPayload, docId: docId)
         }
     }
@@ -188,18 +202,18 @@ struct MessageReceiptViewer: View {
     // MARK: - Split Save Handler
 
     private func handleSplitSave(_ updatedPayload: LootMessagePayload) {
-        let docId = uiModel.openedMessageDocId ?? updatedPayload.r.id
-        uiModel.openedMessagePayload = updatedPayload
-        uiModel.currentReceipt = updatedPayload.toReceiptDisplay()
+        let docId = messageReceiptVM.openedMessageDocId ?? updatedPayload.r.id
+        messageReceiptVM.openedMessagePayload = updatedPayload
+        receiptDraftVM.currentReceipt = updatedPayload.toReceiptDisplay()
         persistPayload(updatedPayload, docId: docId)
     }
 
     private func removeFromTab() {
-        guard var currentPayload = uiModel.openedMessagePayload,
+        guard var currentPayload = messageReceiptVM.openedMessagePayload,
               let tabId = currentPayload.tid, !tabId.isEmpty
         else { return }
 
-        let docId = uiModel.openedMessageDocId ?? currentPayload.r.id
+        let docId = messageReceiptVM.openedMessageDocId ?? currentPayload.r.id
         // Capture the tab name BEFORE we strip the association — used in the
         // bubble's summaryText so the receiver sees "<sender> removed a bill
         // from <tabName>" instead of a generic "removed from a tab".
@@ -221,8 +235,8 @@ struct MessageReceiptViewer: View {
         // tid/trid/tab fields explicitly because JSONEncoder omits nil
         // optional properties, so a plain `updatePayload` merge would NOT
         // clear them in Firestore).
-        uiModel.openedMessagePayload = currentPayload
-        uiModel.currentReceipt = currentPayload.toReceiptDisplay()
+        messageReceiptVM.openedMessagePayload = currentPayload
+        receiptDraftVM.currentReceipt = currentPayload.toReceiptDisplay()
 
         uiModel.sendBillUpdate?(currentPayload, docId, .removedFromTab(tabName: removedTabName))
 

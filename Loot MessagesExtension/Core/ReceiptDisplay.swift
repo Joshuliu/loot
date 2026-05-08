@@ -243,41 +243,12 @@ final class LootUIModel: ObservableObject {
         }
     }
 
-    @Published var currentReceipt: ReceiptDisplay? = nil
-    @Published var parsedReceipt: ParsedReceipt? = nil
-
-    @Published var scanImageOriginal: UIImage? = nil
-    @Published var scanImageCropped: UIImage? = nil
-
-    // NEW: last split draft while creating (used by sender to encode into message)
-    @Published var currentSplitDraft: SplitDraft? = nil
-
-    // NEW: decoded message payload when user taps a Loot message
-    @Published var openedMessagePayload: LootMessagePayload? = nil
-
-    // Firestore doc ID of the opened message (needed for updates like slot claims)
-    @Published var openedMessageDocId: String? = nil
-
-    // Active iMessage session for the currently opened receipt bubble.
-    @Published var activeMessageSession: MSSession? = nil
-
-    // Firestore message loading state
-    @Published var messageLoadingState: LoadingState<LootMessagePayload> = .idle
-
-    // Two-phase parsing: items loading state (phase 2 runs in background)
-    @Published var itemsLoadingState: LoadingState<Phase2Result> = .idle
-
-    /// Optional pre-tip total override chosen in EditReceiptView.
-    /// This is kept separate from ReceiptDisplay fields so we can preserve explicit
-    /// "Override total" intent across re-opens of Edit Receipt until the user removes it.
-    @Published var preTipTotalOverrideCents: Int? = nil
-
-    // Debug: OCR chunk images from last scan (populated when DEBUG_SHOW_CHUNKS = true)
-    @Published var debugChunkImages: [UIImage] = []
-    var phase2Task: Task<Void, Never>? = nil
-
-    // True while phase 1 LLM is running (shows BillCardLoadingView on confirmation screen)
-    @Published var isLoadingReceipt: Bool = false
+    // Phase 3 step 13a: opened-bubble state (`openedMessagePayload`,
+    // `openedMessageDocId`, `activeMessageSession`, `messageLoadingState`,
+    // `pendingPayRequest`, `pendingApplePayInfo`, `ignoredUUIDs*` + helpers)
+    // moved to `MessageReceiptViewModel`. What remains on LootUIModel from
+    // this point is tab/conversation state (next: step 14) plus the four
+    // UIKit-bridge closures (next: step 13b's MessageBus).
 
     // MARK: - Loot Tabs state
 
@@ -381,25 +352,15 @@ final class LootUIModel: ObservableObject {
     @Published var userTabs: [LootTab] = []
     @Published var localParticipantId: String? = nil
     @Published var conversationKey: String? = nil
-    /// Bill-scoped ignored Keychain UUIDs from inline payload envelope (or local session edits).
-    @Published var ignoredUUIDsByBill: [String: [String]] = [:]
-    /// Tracks whether a bill had an explicit ignoredUUIDs list in the inline payload envelope.
-    @Published var hasIgnoredUUIDsListByBill: [String: Bool] = [:]
     @Published var pendingTabInviteId: String? = nil
     /// Bumped every time `applyMessage` re-handles a tab-invite URL. Lets
     /// JoinTabView's `.task(id:)` re-fire when the user re-taps the SAME
     /// invite bubble (which doesn't change `pendingTabInviteId` and so
     /// otherwise wouldn't trigger a fresh fetch).
     @Published var pendingTabInviteRefreshNonce: Int = 0
-    @Published var pendingPayRequest: PendingPayRequest? = nil
     /// Member IDs (Keychain UUIDs) of the tab associated with the current conversation.
     /// Used to sort userTabs by relevance — most overlapping members shown first.
     @Published var conversationMemberIds: Set<String> = []
-    /// When set, the LootTabView's compact strip swaps its normal "Add
-    /// Receipt" content for an Apple Pay reminder so the sender can see the
-    /// payment info while reaching the iMessage Apple Cash drawer. Cleared
-    /// by tapping the X on the reminder card.
-    @Published var pendingApplePayInfo: PendingApplePayInfo? = nil
 
     /// Opens a URL in Safari app (via extensionContext). Set by MessagesViewController.
     var openInSafari: ((URL) -> Void)?
@@ -423,97 +384,21 @@ final class LootUIModel: ObservableObject {
     /// Args: (payload, Firestore docId, action that triggered the update)
     var sendBillUpdate: ((LootMessagePayload, String, BillUpdateAction) -> Void)?
 
-    func hasIgnoredUUIDsList(for billId: String?) -> Bool {
-        guard let billId else { return false }
-        return hasIgnoredUUIDsListByBill[billId] == true
-    }
-
-    func ignoredUUIDs(for billId: String?) -> [String] {
-        guard let billId else { return [] }
-        return ignoredUUIDsByBill[billId] ?? []
-    }
-
-    func setInlineIgnoredState(ignoredUUIDs: [String], hasList: Bool, for billId: String?) {
-        guard let billId else { return }
-        if hasList {
-            hasIgnoredUUIDsListByBill[billId] = true
-            ignoredUUIDsByBill[billId] = Self.normalizedUUIDs(ignoredUUIDs)
-        } else {
-            hasIgnoredUUIDsListByBill[billId] = false
-            ignoredUUIDsByBill.removeValue(forKey: billId)
-        }
-    }
-
-    func addIgnoredUUID(_ uuid: String, for billId: String?) {
-        guard let billId else { return }
-        let trimmed = uuid.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        hasIgnoredUUIDsListByBill[billId] = true
-        var current = ignoredUUIDsByBill[billId] ?? []
-        if !current.contains(trimmed) {
-            current.append(trimmed)
-            ignoredUUIDsByBill[billId] = current
-        }
-    }
-
-    func removeIgnoredUUID(_ uuid: String, for billId: String?) {
-        guard let billId else { return }
-        let trimmed = uuid.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        guard hasIgnoredUUIDsList(for: billId) else { return }
-        guard var current = ignoredUUIDsByBill[billId] else { return }
-        current.removeAll { $0 == trimmed }
-        ignoredUUIDsByBill[billId] = current
-    }
-
-    func isIgnoredUUID(_ uuid: String, for billId: String?) -> Bool {
-        let trimmed = uuid.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
-        return ignoredUUIDs(for: billId).contains(trimmed)
-    }
-
-    private static func normalizedUUIDs(_ uuids: [String]) -> [String] {
-        var seen: Set<String> = []
-        var out: [String] = []
-        for raw in uuids {
-            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            if seen.insert(trimmed).inserted {
-                out.append(trimmed)
-            }
-        }
-        return out
-    }
+    // Phase 3 step 13a: ignored-UUID helpers moved to MessageReceiptViewModel.
 
     func resetForNewReceipt() {
-        // Cancel any running phase 2 task
-        phase2Task?.cancel()
-        phase2Task = nil
+        // Phase 3 step 12a/b/c: in-flight bill, OCR, and scan-image state
+        // are owned by `ReceiptDraftViewModel.reset()`.
+        // Phase 3 step 13a: opened-bubble + ignored-UUID + pending-pay state
+        // is owned by `MessageReceiptViewModel.reset()`.
+        // Callers invoke both VM resets alongside this method.
 
         // Clear any persisted session for this conversation
         if let key = conversationKey {
             SessionPersistence.clear(conversationKey: key)
         }
 
-        parsedReceipt = nil
-        currentReceipt = nil
-        scanImageOriginal = nil
-        scanImageCropped = nil
-        currentSplitDraft = nil
-        preTipTotalOverrideCents = nil
-        openedMessagePayload = nil
-        openedMessageDocId = nil
-        ignoredUUIDsByBill = [:]
-        hasIgnoredUUIDsListByBill = [:]
-        activeMessageSession = nil
         receiptTab = nil
-        pendingPayRequest = nil
-        messageLoadingState = .idle
-        itemsLoadingState = .idle
-        isLoadingReceipt = false
-        debugChunkImages = []
     }
 }
 

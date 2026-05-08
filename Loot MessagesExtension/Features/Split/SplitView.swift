@@ -427,7 +427,7 @@ extension ConfirmationView {
     }
 
     /// Syncs the current `byItemItems` (form-state) into
-    /// `uiModel.currentSplitDraft.items`, building a draft if none exists.
+    /// `receiptDraftVM.currentSplitDraft.items`, building a draft if none exists.
     /// Called whenever assignments change so the rest of the pipeline
     /// (ring rendering, send) sees up-to-date data without depending on the
     /// split editor's "Save" button.
@@ -443,18 +443,18 @@ extension ConfirmationView {
                 )
             }
 
-        if var draft = uiModel.currentSplitDraft {
+        if var draft = receiptDraftVM.currentSplitDraft {
             draft.items = items
-            uiModel.currentSplitDraft = draft
+            receiptDraftVM.currentSplitDraft = draft
         } else {
-            uiModel.currentSplitDraft = buildSplitDraft()
+            receiptDraftVM.currentSplitDraft = buildSplitDraft()
         }
     }
 
     func seedByItemsFromReceipt() {
         didInitByItem = true
 
-        let receiptItems = uiModel.currentReceipt?.items ?? []
+        let receiptItems = receiptDraftVM.currentReceipt?.items ?? []
         byItemItems = receiptItems.map { it in
             LineItemForm(
                 id: UUID(),
@@ -464,7 +464,7 @@ extension ConfirmationView {
             )
         }
 
-        let r = uiModel.currentReceipt
+        let r = receiptDraftVM.currentReceipt
         feesString = (r?.feesCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.feesCents ?? 0)
         taxString = (r?.taxCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.taxCents ?? 0)
         tipString = (r?.tipCents ?? 0) == 0 ? "" : ReceiptDisplay.money(r?.tipCents ?? 0)
@@ -524,7 +524,7 @@ extension ConfirmationView {
             perGuestCents: guestAmountsCents,
             items: items,
             feesCents: stringToCents(feesString),
-            discountCents: uiModel.currentReceipt?.discountCents ?? 0,
+            discountCents: receiptDraftVM.currentReceipt?.discountCents ?? 0,
             taxCents: stringToCents(taxString),
             tipCents: stringToCents(tipString)
         )
@@ -979,7 +979,7 @@ extension ConfirmationView {
 
             Button(action: {
                 let draft = buildSplitDraft()
-                uiModel.currentSplitDraft = draft
+                receiptDraftVM.currentSplitDraft = draft
                 onSelectMode(mode)
                 onGuestsChanged(guests, includedIDs, payerID)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()

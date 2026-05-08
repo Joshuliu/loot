@@ -3,6 +3,7 @@ import UIKit
 
 struct ConfirmationView: View {
     @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
 
     let receiptName: String
     let amount: String
@@ -27,7 +28,7 @@ struct ConfirmationView: View {
     let onRequestExpand: () -> Void
 
     var isLoadingItems: Bool {
-        uiModel.itemsLoadingState.isLoading
+        receiptDraftVM.itemsLoadingState.isLoading
     }
 
     @State private var cardOffset: CGSize = .zero
@@ -104,14 +105,14 @@ struct ConfirmationView: View {
     private var gold: Color { Color(hex: "#DAA806") }
 
     private var shouldShowSendCue: Bool {
-        dragIntent == .none && !uiModel.isLoadingReceipt && !isLoadingItems && !hasSent
+        dragIntent == .none && !receiptDraftVM.isLoadingReceipt && !isLoadingItems && !hasSent
     }
 
     private var guidanceText: String {
         if dragIntent == .left { return "Swipe left to delete" }
         if dragIntent == .right { return "Swipe right to tip" }
         if dragIntent == .down { return "Swipe down for split options" }
-        if uiModel.isLoadingReceipt { return "Swipe left to delete" }
+        if receiptDraftVM.isLoadingReceipt { return "Swipe left to delete" }
         if isLoadingItems { return "Swipe up to send without items" }
         return "To send, swipe the receipt card up"
     }
@@ -239,7 +240,7 @@ struct ConfirmationView: View {
 
         // Reset loading animation state each time screen appears.
         // For manual entry, skip loading card immediately.
-        if cameFromManual || !uiModel.isLoadingReceipt {
+        if cameFromManual || !receiptDraftVM.isLoadingReceipt {
             introAnimationDone = true
         } else {
             introAnimationDone = false
@@ -287,7 +288,7 @@ struct ConfirmationView: View {
     private func handleItemsLoadingStateChange(isNowLoading: Bool) {
         guard !isNowLoading else { return }
         billCardRefreshNonce += 1
-        if uiModel.itemsLoadingState.value != nil {
+        if receiptDraftVM.itemsLoadingState.value != nil {
             triggerBillCardBounce()
         }
         // Phase 2 just finished. Re-seed items immediately if already in byItems mode,
@@ -488,7 +489,7 @@ struct ConfirmationView: View {
                 // ✅ Up swipe = send (your existing logic)
                 if isMostlyVertical, dy < -max(verticalTrigger, 50), abs(dx) < 160 {
                     // Don't allow sending while phase 1 is still running (total is unknown)
-                    guard !uiModel.isLoadingReceipt else {
+                    guard !receiptDraftVM.isLoadingReceipt else {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                             cardOffset = .zero
                             cardRotation = 0
@@ -682,7 +683,7 @@ struct ConfirmationView: View {
 
                 // Card on top — covers the inner shaft ends, creating the peek effect
                 ZStack {
-                    if uiModel.isLoadingReceipt || !introAnimationDone {
+                    if receiptDraftVM.isLoadingReceipt || !introAnimationDone {
                         BillCardLoadingView(
                             participantCount: participantCount,
                             displayName: payerDisplayName(),
@@ -709,7 +710,7 @@ struct ConfirmationView: View {
                         .transition(.opacity)
                     }
                 }
-                .animation(.easeInOut(duration: 0.45), value: uiModel.isLoadingReceipt || !introAnimationDone)
+                .animation(.easeInOut(duration: 0.45), value: receiptDraftVM.isLoadingReceipt || !introAnimationDone)
                 .cardPhysics(isDragging: cardOffset != .zero)
                 .scaleEffect(cardScale)
                 .frame(width: 260 * cardScale, height: cardH)
@@ -845,8 +846,8 @@ struct ConfirmationView: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0" || uiModel.isLoadingReceipt || isLoadingItems)
-                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0" || uiModel.isLoadingReceipt || isLoadingItems) ? 0.4 : 1.0)
+                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt)
+                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt) ? 0.4 : 1.0)
                         .opacity(dragIntent == .right ? 1 : buttonsOpacity)
                     }
                 }
@@ -943,10 +944,10 @@ struct ConfirmationView: View {
         .onChange(of: confirmed) { _, newValue in handleConfirmedChange(newValue) }
         .onChange(of: uiModel.isExpanded) { _, isNowExpanded in handleIsExpandedChange(isNowExpanded) }
         .onChange(of: amount) { _, newAmount in handleAmountChange(newAmount) }
-        .onChange(of: uiModel.isLoadingReceipt) { _, isNowLoading in
+        .onChange(of: receiptDraftVM.isLoadingReceipt) { _, isNowLoading in
             if !isNowLoading { introAnimationDone = true }
         }
-        .onChange(of: uiModel.itemsLoadingState.isLoading) { _, isNowLoading in
+        .onChange(of: receiptDraftVM.itemsLoadingState.isLoading) { _, isNowLoading in
             handleItemsLoadingStateChange(isNowLoading: isNowLoading)
         }
         .onChange(of: introAnimationDone) { _, isDone in handleIntroAnimationDoneChange(isDone) }
@@ -1078,6 +1079,7 @@ struct ConfirmationView: View {
     private var editReceiptSheet: some View {
         EditReceiptView(
             uiModel: uiModel,
+            receiptDraftVM: receiptDraftVM,
             onSave: handleEditReceiptSave,
             onCancel: { showEditReceipt = false }
         )
@@ -1109,9 +1111,9 @@ struct ConfirmationView: View {
             )
         }
         didInitByItem = true
-        uiModel.currentReceipt = updatedReceipt
+        receiptDraftVM.currentReceipt = updatedReceipt
         // Sync splitDraft fields from the edited receipt.
-        if var draft = uiModel.currentSplitDraft {
+        if var draft = receiptDraftVM.currentSplitDraft {
             draft.feesCents = updatedReceipt.feesCents
             draft.discountCents = updatedReceipt.discountCents
             draft.taxCents = updatedReceipt.taxCents
@@ -1127,7 +1129,7 @@ struct ConfirmationView: View {
                         assignedGuestIds: item.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
                     )
                 }
-            uiModel.currentSplitDraft = draft
+            receiptDraftVM.currentSplitDraft = draft
         }
         // In by-items mode, also run the canonical sync path so owed/ring state
         // updates immediately while the panel is open.

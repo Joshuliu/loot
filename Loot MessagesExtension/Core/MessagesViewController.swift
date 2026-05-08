@@ -20,7 +20,9 @@ final class MessagesViewController: MSMessagesAppViewController {
 
     // Lazy so transcript bubble instances never allocate these
     private lazy var uiModel = LootUIModel()
-    private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
+    private lazy var receiptDraftVM = ReceiptDraftViewModel()
+    private lazy var messageReceiptVM = MessageReceiptViewModel()
+    private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel, receiptDraftVM: receiptDraftVM, messageReceiptVM: messageReceiptVM))
     private var hasSetupRootView = false
     private var isTranscript = false
     private var isConversationAutoSendReady = false
@@ -270,19 +272,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         var updated = original
         updated.s.g[claimIndex].uid = myUid
 
-        // Embed the joiner's local display name when the slot's name is
-        // empty. Without this, the broadcast bubble carries an unnamed
-        // slot, and the sender's view falls through to "Guest N" until
-        // the Firestore users/{uid} lookup resolves (which can fail
-        // silently if the joiner's user doc isn't synced yet).
-        // A manually-entered name from the bill creator wins.
-        let trimmedExisting = updated.s.g[claimIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedExisting.isEmpty {
-            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-            if !myName.isEmpty {
-                updated.s.g[claimIndex].n = myName
-            }
-        }
+        // Per spec: g[i].n is sender-set and never overwritten by joiners.
+        // The drawer's autoClaimSlotAfterViewLoad path writes our user doc
+        // to Firestore so the sender's view can resolve our display name
+        // via the standard users/{uid} lookup. Transcript controller has
+        // no Firebase, so we can't write here — but the drawer always
+        // expands within ~200ms after this broadcast, and its claimSlot
+        // call upserts the user doc.
 
         let cardImage = renderCardImage(
             receiptName: updated.r.t,
@@ -393,12 +389,15 @@ final class MessagesViewController: MSMessagesAppViewController {
            !tabId.isEmpty {
             let tabName = comps?.queryItems?.first(where: { $0.name == "tn" })?.value ?? "Tab"
             let tabColorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
+            let creatorName = comps?.queryItems?.first(where: { $0.name == "cn" })?.value ?? ""
+            let joinedCount = Int(comps?.queryItems?.first(where: { $0.name == "jc" })?.value ?? "") ?? 0
+            let targetCount = Int(comps?.queryItems?.first(where: { $0.name == "mc" })?.value ?? "") ?? 0
             let card = TabInviteCardView(
                 tabName: tabName,
                 tabColorHex: tabColorHex ?? "#007AFF",
-                creatorName: "",
-                joinedCount: 0,
-                targetCount: 0,
+                creatorName: creatorName,
+                joinedCount: joinedCount,
+                targetCount: targetCount,
                 showJoinPulse: true
             )
             embedTranscriptCard(AnyView(card))
@@ -493,8 +492,8 @@ extension MessagesViewController {
     }
 
     private func shouldAdoptFetchedPayload(_ fetched: LootMessagePayload, for docId: String) -> Bool {
-        guard uiModel.openedMessageDocId == docId else { return true }
-        guard let current = uiModel.openedMessagePayload else { return true }
+        guard messageReceiptVM.openedMessageDocId == docId else { return true }
+        guard let current = messageReceiptVM.openedMessagePayload else { return true }
 
         let fetchedSignature = splitSignature(for: fetched.s)
         let currentSignature = splitSignature(for: current.s)
@@ -677,8 +676,8 @@ extension MessagesViewController {
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
-        let ignoredToWrite: [String]? = uiModel.hasIgnoredUUIDsList(for: docId)
-            ? uiModel.ignoredUUIDs(for: docId)
+        let ignoredToWrite: [String]? = messageReceiptVM.hasIgnoredUUIDsList(for: docId)
+            ? messageReceiptVM.ignoredUUIDs(for: docId)
             : nil
         LootMessageCodec.writePayload(
             into: &components,
@@ -731,7 +730,7 @@ extension MessagesViewController {
         }
 
         let pendingRequest = pendingPayRequest(from: comps)
-        uiModel.pendingPayRequest = pendingRequest
+        messageReceiptVM.pendingPayRequest = pendingRequest
         if pendingRequest != nil {
             requestPresentationStyle(.expanded)
         }
@@ -747,34 +746,34 @@ extension MessagesViewController {
             let inlinePayload = decodedInline?.payload
 
             if let decodedInline {
-                uiModel.setInlineIgnoredState(
+                messageReceiptVM.setInlineIgnoredState(
                     ignoredUUIDs: decodedInline.ignoredUUIDs,
                     hasList: decodedInline.hasIgnoredUUIDsList,
                     for: docId
                 )
-                uiModel.openedMessagePayload = decodedInline.payload
-                uiModel.currentReceipt = decodedInline.payload.toReceiptDisplay()
-                uiModel.messageLoadingState = .loaded(decodedInline.payload)
+                messageReceiptVM.openedMessagePayload = decodedInline.payload
+                receiptDraftVM.currentReceipt = decodedInline.payload.toReceiptDisplay()
+                messageReceiptVM.messageLoadingState = .loaded(decodedInline.payload)
             } else {
                 // No local payload available, so fall back to the loading state.
-                uiModel.openedMessagePayload = nil
-                uiModel.messageLoadingState = .loading
-                uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
+                messageReceiptVM.openedMessagePayload = nil
+                messageReceiptVM.messageLoadingState = .loading
+                messageReceiptVM.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
             }
 
-            uiModel.openedMessageDocId = docId
+            messageReceiptVM.openedMessageDocId = docId
             uiModel.currentScreen = .messageViewer
 
             Task { @MainActor in
                 do {
                     let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
                     guard shouldAdoptFetchedPayload(payload, for: docId) else { return }
-                    uiModel.openedMessagePayload = payload
-                    uiModel.currentReceipt = payload.toReceiptDisplay()
+                    messageReceiptVM.openedMessagePayload = payload
+                    receiptDraftVM.currentReceipt = payload.toReceiptDisplay()
                     if let captureImage {
-                        uiModel.scanImageCropped = captureImage
+                        receiptDraftVM.scanImageCropped = captureImage
                     }
-                    uiModel.messageLoadingState = .loaded(payload)
+                    messageReceiptVM.messageLoadingState = .loaded(payload)
                     if let tabData = payload.tab { await applyTabData(tabData) }
                 } catch {
                     print("[applyMessage] Firestore fetch failed: \(error)")
@@ -782,9 +781,9 @@ extension MessagesViewController {
                         // Use the baked-in payload so the receipt opens immediately,
                         // even without a network connection.
                         print("[applyMessage] Falling back to inline payload for \(docId)")
-                        uiModel.openedMessagePayload = inline
-                        uiModel.currentReceipt = inline.toReceiptDisplay()
-                        uiModel.messageLoadingState = .loaded(inline)
+                        messageReceiptVM.openedMessagePayload = inline
+                        receiptDraftVM.currentReceipt = inline.toReceiptDisplay()
+                        messageReceiptVM.messageLoadingState = .loaded(inline)
                         if let tabData = inline.tab { await applyTabData(tabData) }
                         // Heal: upload the inline payload to Firestore so future
                         // recipients (and slot-claim updates) can use the doc.
@@ -797,7 +796,7 @@ extension MessagesViewController {
                             }
                         }
                     } else {
-                        uiModel.messageLoadingState = .failed(error)
+                        messageReceiptVM.messageLoadingState = .failed(error)
                     }
                 }
             }
@@ -851,15 +850,15 @@ extension MessagesViewController {
         if let decodedInline = LootMessageCodec.decodedInlinePayload(from: url) {
             let billId = decodedInline.payload.r.id
             bindBillUpdateAnchor(from: msg, docId: billId, conversation: conversation)
-            uiModel.setInlineIgnoredState(
+            messageReceiptVM.setInlineIgnoredState(
                 ignoredUUIDs: decodedInline.ignoredUUIDs,
                 hasList: decodedInline.hasIgnoredUUIDsList,
                 for: billId
             )
             let payload = decodedInline.payload
-            uiModel.openedMessagePayload = payload
-            uiModel.openedMessageDocId = billId
-            uiModel.currentReceipt = payload.toReceiptDisplay()
+            messageReceiptVM.openedMessagePayload = payload
+            messageReceiptVM.openedMessageDocId = billId
+            receiptDraftVM.currentReceipt = payload.toReceiptDisplay()
             uiModel.currentScreen = .messageViewer
             if let tabData = payload.tab { Task { @MainActor in await self.applyTabData(tabData) } }
         }
@@ -867,7 +866,25 @@ extension MessagesViewController {
 
     private func applyTabData(_ tabData: TabPayload) async {
         let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
-        uiModel.receiptTab = minimal
+
+        // Only assign receiptTab when activeTab doesn't already cover this
+        // tab. This is the ONLY @Published mutation that fires differently
+        // between tab and non-tab bills in the applyMessage flow — for the
+        // SENDER of a tab bill, activeTab already points at the same tab,
+        // so receiptTab is redundant. Setting it anyway fires a SwiftUI
+        // re-render across the drawer view tree, and that re-render
+        // (during the bubble's lifecycle, between tap-time and edit-time)
+        // appears to be what invalidates iOS's cached MSSession reference
+        // for the bubble — causing subsequent edit broadcasts to silently
+        // append a new bubble instead of retracting in place. Skipping the
+        // assignment when redundant collapses the tab-edit workflow into
+        // exactly the same shape as non-tab. All readers of receiptTab
+        // (SplitsSummaryView.associatedTab, settlement URL builders) fall
+        // back to activeTab when receiptTab is nil, so visual styling is
+        // preserved.
+        if uiModel.activeTab?.id != tabData.id {
+            uiModel.receiptTab = minimal
+        }
 
         // No switch needed if the receipt belongs to the already-active tab
         guard uiModel.activeTab?.id != tabData.id else { return }
@@ -985,6 +1002,8 @@ extension MessagesViewController {
 
         hostingController.rootView = RootContainerView(
             uiModel: uiModel,
+            receiptDraftVM: receiptDraftVM,
+            messageReceiptVM: messageReceiptVM,
             participantCount: participantCount,
             onScan:   { print("Scan tapped") },
             onExpand: { [weak self] in self?.requestPresentationStyle(.expanded) },
@@ -1210,7 +1229,7 @@ extension MessagesViewController {
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
         let fallbackTotalCents = stringToCents(amount)
-        let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
+        let receiptDisplay = receiptDraftVM.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
             title: receiptName.isEmpty ? "New Receipt" : receiptName,
             createdAt: Date(),
@@ -1222,7 +1241,7 @@ extension MessagesViewController {
             items: []
         )
 
-        let draft = uiModel.currentSplitDraft
+        let draft = receiptDraftVM.currentSplitDraft
         let splitPayload = SplitPayload.from(draft: draft,
                                              participantCount: participantCount,
                                              totalCents: receiptDisplay.totalCents)
@@ -1235,7 +1254,7 @@ extension MessagesViewController {
         }
 
         // Capture scan image before async block (will be nil for manual receipts)
-        let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+        let captureImage = receiptDraftVM.scanImageCropped ?? receiptDraftVM.scanImageOriginal
         let cardImage = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
@@ -1247,14 +1266,14 @@ extension MessagesViewController {
 
         // Pre-generate a Firestore doc ID (local, no network)
         let docId = SharedReceiptService.shared.generateDocId()
-        uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: true, for: docId)
+        messageReceiptVM.setInlineIgnoredState(ignoredUUIDs: [], hasList: true, for: docId)
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
         LootMessageCodec.writePayload(
             into: &components,
             payload: payload,
-            ignoredUUIDs: uiModel.ignoredUUIDs(for: docId)
+            ignoredUUIDs: messageReceiptVM.ignoredUUIDs(for: docId)
         )
 
         let alternateLayout = MSMessageTemplateLayout()
@@ -1311,20 +1330,29 @@ extension MessagesViewController {
         guard let conversation = activeConversation else { return }
 
         let targetCount = max(1, conversation.remoteParticipantIdentifiers.count + 1)
+        let creatorName = myDisplayNameFromDefaults()
         let card = TabInviteCardView(
             tabName: tabName,
             tabColorHex: tabColorHex,
-            creatorName: myDisplayNameFromDefaults(),
+            creatorName: creatorName,
             joinedCount: joinedCount,
             targetCount: targetCount
         )
-        let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
+        let cardImage = renderView(card, size: CGSize(width: 260, height: 160))
 
+        // Encode counts + creator name on the URL so the live-layout
+        // transcript bubble can show real values instead of the
+        // hardcoded "0/1 joined" placeholder. Re-broadcasts via
+        // sendTabInviteUpdate carry refreshed values, so the bubble
+        // updates in place when someone joins.
         var components = lootURLComponents()
         let queryItems: [URLQueryItem] = [
             URLQueryItem(name: queryItemName, value: tabId),
             URLQueryItem(name: "tn", value: tabName),
-            URLQueryItem(name: "tc", value: tabColorHex)
+            URLQueryItem(name: "tc", value: tabColorHex),
+            URLQueryItem(name: "jc", value: String(joinedCount)),
+            URLQueryItem(name: "mc", value: String(targetCount)),
+            URLQueryItem(name: "cn", value: creatorName)
         ]
         components.queryItems = queryItems
 
