@@ -108,7 +108,18 @@ enum SplitMath {
                 for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
             }
 
-            let extras = feesCents - max(0, discountCents) + max(0, taxCents) + max(0, tipCents)
+            // Anchor `extras` on `totalCents - itemsTotal` rather than
+            // `feesCents - discountCents + taxCents + tipCents`. The latter
+            // formula assumed `sum(item.priceCents) == subtotal`, which
+            // breaks whenever items don't fully account for the subtotal —
+            // empty items array (Phase 2 OCR returned nothing), partial
+            // capture, or items dropped by the `isComplete` filter at
+            // payload-build time. Result of the old formula: per-guest
+            // owed cents summed below `totalCents`, and the bill card
+            // donut ring visibly under-filled. Anchoring on `totalCents`
+            // guarantees `owed.sum == totalCents` for every input.
+            let itemsTotal = subtotals.reduce(0, +)
+            let extras = max(0, totalCents - itemsTotal)
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {
