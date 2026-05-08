@@ -520,7 +520,14 @@ struct ConfirmationView: View {
                 onSwipeLeftDelete: { onDeleteToLanding() },
                 onSwipeRightTip: { performSwipeRightTip() },
                 onSwipeDownExpand: { performSwipeDownExpand() },
-                onTap: { showEditReceipt = true }
+                onTap: {
+                    // Don't open the editor while Phase 1 is still running —
+                    // there's no real receipt to edit yet, and the prompt text
+                    // below already reads "Loading receipt items..." rather
+                    // than "Tap to edit receipt" during this window.
+                    guard !receiptDraftVM.isLoadingReceipt else { return }
+                    showEditReceipt = true
+                }
             )
 
             VStack(spacing: 6) {

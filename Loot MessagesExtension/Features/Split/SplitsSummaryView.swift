@@ -1410,15 +1410,20 @@ struct SplitsSummaryView: View {
                                            amountCents: info.amountCents,
                                            methodName: method.type.displayName,
                                            tabColorHex: nil)
+                    // Toggle paid + persist BEFORE openInSafari/openURL: those
+                    // dismiss the extension, and any sendBillUpdate triggered
+                    // after dismissal gets demoted from `conversation.send` to
+                    // "insert into draft" because isConversationAutoSendReady
+                    // is going false.
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        togglePaid(guestIndex: info.guestIndex)
+                    }
                     if let url = deepLink {
                         // extensionContext.open is required in iMessage extensions —
                         // SwiftUI's openURL silently no-ops for non-http schemes here.
                         bus.openInSafari(url)
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
-                    }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        togglePaid(guestIndex: info.guestIndex)
                     }
                 }
             )

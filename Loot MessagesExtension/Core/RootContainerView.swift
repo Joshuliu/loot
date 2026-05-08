@@ -23,6 +23,12 @@ struct RootContainerView: View {
     @State private var showSplitViewSheet: Bool = false
     @State private var confirmationCameFromManual: Bool = false
     @State private var paymentMethodsIsPostSend: Bool = false
+    /// True from the moment `onSend` starts until the post-send 2s cleanup
+    /// fires. Suppresses `saveSession` so the `.onChange(of:
+    /// receiptDraftVM.currentReceipt)` triggered by
+    /// `applySplitDraftToCurrentReceipt`'s mutation can't re-write a stale
+    /// session right after the synchronous `SessionPersistence.clear`.
+    @State private var isSending: Bool = false
 
     @State private var receiptName: String = ""
     @State private var amountString: String = "0"
@@ -149,6 +155,7 @@ struct RootContainerView: View {
     // MARK: - Session persistence helpers
 
     private func saveSession(screen: AppScreen) {
+        guard !isSending else { return }
         guard let key = tabContextVM.conversationKey else { return }
         guard screen.isPersistableScreen else {
             if screen == .tabview { SessionPersistence.clear(conversationKey: key) }
@@ -970,6 +977,7 @@ struct RootContainerView: View {
                 }
             },
             onSend: {
+                isSending = true
                 if let draft = receiptDraftVM.currentSplitDraft {
                     receiptDraftVM.applySplitDraftToCurrentReceipt(draft, tipAmount: tipAmount)
                 }
@@ -981,6 +989,10 @@ struct RootContainerView: View {
                     SessionPersistence.clear(conversationKey: key)
                 }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                    // Always clear isSending — even if we bail out below.
+                    // Otherwise saveSession stays suppressed for the rest of
+                    // this session.
+                    isSending = false
                     // Bail if the user navigated away from .confirmation in
                     // the meantime — most commonly because they tapped the
                     // bubble they just sent and the drawer is now showing
