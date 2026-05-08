@@ -119,6 +119,62 @@ enum SplitMath {
         }
     }
 
+    /// Computes per-guest owed amounts from an in-flight `SplitDraft`,
+    /// falling back to an equal split across `participantCount` when no
+    /// draft exists yet (Phase 1 still running). Used by ConfirmationView's
+    /// bill card to drive the owed-ring rendering. Lifted out of
+    /// ConfirmationView in Phase 4 — pure compute, depends only on inputs.
+    static func owedFromDraft(
+        _ draft: SplitDraft?,
+        fallbackTotalCents: Int,
+        participantCount: Int
+    ) -> [Int]? {
+        if let draft {
+            guard !draft.includedGuests.isEmpty else { return nil }
+
+            let mode: SplitPayload.Mode = {
+                switch draft.mode {
+                case .equally: return .equally
+                case .custom: return .custom
+                case .byItems: return .byItems
+                }
+            }()
+
+            let guests: [SplitPayload.Guest] = draft.guests.map { p in
+                SplitPayload.Guest(n: p.displayName, inc: draft.includedIDs.contains(p.id), uid: p.userId)
+            }
+
+            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerID }) ?? 0
+
+            let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
+                let slots = item.assignedGuestIds.compactMap { gid in
+                    draft.guests.firstIndex(where: { $0.id == gid })
+                }
+                return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
+            }
+
+            // Prefer the draft's total; fall back to the live `amount` prop
+            // when the draft total is still 0 (Phase 1 not yet returned).
+            let effectiveTotal = (draft.totalCents > 0) ? draft.totalCents : fallbackTotalCents
+
+            return computeOwedCents(
+                mode: mode,
+                guests: guests,
+                payerIndex: payerIndex,
+                totalCents: effectiveTotal,
+                perGuestActive: draft.perGuestCents,
+                items: items,
+                feesCents: draft.feesCents,
+                discountCents: draft.discountCents,
+                taxCents: draft.taxCents,
+                tipCents: draft.tipCents
+            )
+        } else {
+            guard participantCount > 0 else { return nil }
+            return splitCentsEvenly(total: fallbackTotalCents, count: participantCount)
+        }
+    }
+
     private static func allocateProportional(total: Int, base: [Int], included: [Int]) -> [Int] {
         var out = Array(repeating: 0, count: base.count)
         guard total != 0 else { return out }

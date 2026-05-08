@@ -5,6 +5,7 @@ struct ConfirmationView: View {
     @ObservedObject var coordinator: AppCoordinator
     @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
     @ObservedObject var tabContextVM: TabContextViewModel
+    @StateObject var splitEditorVM: SplitEditorViewModel
 
     let receiptName: String
     let amount: String
@@ -28,6 +29,60 @@ struct ConfirmationView: View {
     let onRequestCollapse: () -> Void
     let onRequestExpand: () -> Void
 
+    init(
+        coordinator: AppCoordinator,
+        receiptDraftVM: ReceiptDraftViewModel,
+        tabContextVM: TabContextViewModel,
+        receiptName: String,
+        amount: String,
+        participantCount: Int,
+        splitMode: SplitDraft.Mode?,
+        splitDraft: SplitDraft?,
+        tipAmount: String,
+        cameFromManual: Bool,
+        onBack: @escaping () -> Void,
+        onSend: @escaping () -> Void,
+        onDeleteToLanding: @escaping () -> Void,
+        onGoToSplit: @escaping () -> Void,
+        onAddTip: @escaping () -> Void,
+        onTipChanged: @escaping (String, String) -> Void,
+        onSelectMode: @escaping (SplitDraft.Mode) -> Void,
+        onGuestsChanged: @escaping ([Person], Set<PersonID>, PersonID) -> Void,
+        onRequestCollapse: @escaping () -> Void,
+        onRequestExpand: @escaping () -> Void
+    ) {
+        self.coordinator = coordinator
+        self.receiptDraftVM = receiptDraftVM
+        self.tabContextVM = tabContextVM
+        self.receiptName = receiptName
+        self.amount = amount
+        self.participantCount = participantCount
+        self.splitMode = splitMode
+        self.splitDraft = splitDraft
+        self.tipAmount = tipAmount
+        self.cameFromManual = cameFromManual
+        self.onBack = onBack
+        self.onSend = onSend
+        self.onDeleteToLanding = onDeleteToLanding
+        self.onGoToSplit = onGoToSplit
+        self.onAddTip = onAddTip
+        self.onTipChanged = onTipChanged
+        self.onSelectMode = onSelectMode
+        self.onGuestsChanged = onGuestsChanged
+        self.onRequestCollapse = onRequestCollapse
+        self.onRequestExpand = onRequestExpand
+        // The VM holds split-editor @Published state (mode, guests, included,
+        // amounts, etc.) and the math/mutation logic that used to live as
+        // `extension ConfirmationView`. @FocusState properties remain on the
+        // view because property wrappers tied to focus only work on Views.
+        _splitEditorVM = StateObject(wrappedValue: SplitEditorViewModel(
+            receiptDraftVM: receiptDraftVM,
+            tabContextVM: tabContextVM,
+            onSelectModeBroadcast: onSelectMode,
+            onGuestsChangedBroadcast: onGuestsChanged
+        ))
+    }
+
     var isLoadingItems: Bool {
         receiptDraftVM.itemsLoadingState.isLoading
     }
@@ -36,54 +91,23 @@ struct ConfirmationView: View {
     @State private var cardRotation: Double = 0
     @State private var hasSent: Bool = false
     @State private var showSuccess: Bool = false
-    @State private var dragIntent: DragIntent = .none
+    @State private var dragIntent: BillCardDragIntent = .none
     @State private var isBottomHeaderExpanded: Bool = false
     @State private var showTipPanel: Bool = false
 
-    // Guest drawer state
-    @State var showGuestEditor: Bool = false
-    @State var guestEditorMode: GuestEditorMode? = nil
-    @State var draftGuests: [Person] = []
-    @State var draftIncludedIDs: Set<PersonID> = []
-    @State var draftPayerID: PersonID = PersonID(rawValue: "")
-
-    // Split panel state (used by extension in SplitView.swift)
-    @State var mode: SplitDraft.Mode = .equally
-    @State var lastMode: SplitDraft.Mode = .equally
-    @State var guests: [Person] = []
-    @State var includedIDs: Set<PersonID> = []
-    @State var payerID: PersonID = PersonID(rawValue: "")
-    @State var guestSelectedIndex: Int = 0
-    @State var guestAmountsCents: [Int] = []
-    @State var donutDrag: DonutDrag? = nil
-    @State var fineTunerScrollTarget: Int? = nil
-    @State var isEditingAmount: Bool = false
-    @State var editingGuestIndex: Int? = nil
-    @State var amountInputText: String = ""
+    // Focus state stays on the view — @FocusState cannot live on an
+    // ObservableObject. View methods that wire focus into TextFields read
+    // from the VM but bind their `.focused(...)` modifiers to these.
     @FocusState var isAmountFieldFocused: Bool
-    @State var editingGuestNameID: PersonID? = nil
     @FocusState var guestNameFocusedID: PersonID?
-    @State var haptic = UIImpactFeedbackGenerator(style: .light)
-    @State var lastHapticCents: Int = 0
-    @State var byItemItems: [LineItemForm] = []
-    @State var byItemSelectedGuestID: PersonID = PersonID(rawValue: "")
-    @State var feesString: String = ""
-    @State var taxString: String = ""
-    @State var tipString: String = ""
-    @State var didInitByItem: Bool = false
-    @State var showEditReceipt: Bool = false
-    @State var confirmed: Bool = true
-    @State var introAnimationDone: Bool = false
-    @State var splitModesExpanded: Bool = false
-    @State var splitSnapshot: (mode: SplitDraft.Mode, guests: [Person], includedIDs: Set<PersonID>, payerID: PersonID, guestAmountsCents: [Int])? = nil
+
     @State private var keyboardHeight: CGFloat = 0
-    @State private var sendHintAnimating: Bool = false
     @State private var billCardRefreshNonce: Int = 0
     @State private var billCardBounceYOffset: CGFloat = 0
     @State private var billCardBounceToken: Int = 0
+    @State var introAnimationDone: Bool = false
+    @State var showEditReceipt: Bool = false
 
-
-    private enum DragIntent { case none, up, left, right, down }
 
 //    private let collapsedHeight: CGFloat = 60
 
@@ -152,71 +176,19 @@ struct ConfirmationView: View {
         !tipAmount.isEmpty && tipAmount != "$0" && tipAmount != "$0.00"
     }
 
-    // Extract owed amounts and total from split draft (or compute default equal split)
     private var owedAmounts: [Int]? {
-        let total = stringToCents(amount)
-
-        if let draft = splitDraft {
-            guard !draft.includedGuests.isEmpty else { return nil }
-
-            // Convert to SplitPayload types and use shared SplitMath
-            let mode: SplitPayload.Mode = {
-                switch draft.mode {
-                case .equally: return .equally
-                case .custom: return .custom
-                case .byItems: return .byItems
-                }
-            }()
-
-            let guests: [SplitPayload.Guest] = draft.guests.map { p in
-                SplitPayload.Guest(n: p.displayName, inc: draft.includedIDs.contains(p.id), uid: p.userId)
-            }
-
-            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerID }) ?? 0
-
-            let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
-                let slots = item.assignedGuestIds.compactMap { gid in
-                    draft.guests.firstIndex(where: { $0.id == gid })
-                }
-                return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
-            }
-
-            // Prefer the live `total` from the `amount` prop when the draft total is stale
-            // (draft is created on first appear before phase 1 returns the real total).
-            let effectiveTotal = (draft.totalCents > 0) ? draft.totalCents : total
-
-            let allOwed = SplitMath.computeOwedCents(
-                mode: mode,
-                guests: guests,
-                payerIndex: payerIndex,
-                totalCents: effectiveTotal,
-                perGuestActive: draft.perGuestCents,
-                items: items,
-                feesCents: draft.feesCents,
-                discountCents: draft.discountCents,
-                taxCents: draft.taxCents,
-                tipCents: draft.tipCents
-            )
-
-            // Return all guests' amounts (excluded guests get 0, preserving color slot indices)
-            return allOwed
-        } else {
-            // No draft yet - compute default equal split
-            guard participantCount > 0 else { return nil }
-            return equalSplit(total: total, count: participantCount)
-        }
+        SplitMath.owedFromDraft(
+            splitDraft,
+            fallbackTotalCents: stringToCents(amount),
+            participantCount: participantCount
+        )
     }
-    
+
     var totalCents: Int {
         if let draft = splitDraft, draft.totalCents > 0 {
             return draft.totalCents
         }
         return stringToCents(amount)
-    }
-    
-    // Helper to compute equal split
-    private func equalSplit(total: Int, count: Int) -> [Int] {
-        splitCentsEvenly(total: total, count: count)
     }
 
     // MARK: - onAppear / onChange helpers (extracted to keep body's
@@ -224,7 +196,7 @@ struct ConfirmationView: View {
     // inline seeding block was past the limit).
 
     private func notifyGuestsChanged() {
-        onGuestsChanged(draftGuests, draftIncludedIDs, draftPayerID)
+        onGuestsChanged(splitEditorVM.draftGuests, splitEditorVM.draftIncludedIDs, splitEditorVM.draftPayerID)
     }
 
     private func handleOnAppear() {
@@ -234,10 +206,6 @@ struct ConfirmationView: View {
         showSuccess = false
         billCardBounceToken += 1
         billCardBounceYOffset = 0
-        sendHintAnimating = false
-        withAnimation(.easeOut(duration: 1.05).repeatForever(autoreverses: false)) {
-            sendHintAnimating = true
-        }
 
         // Reset loading animation state each time screen appears.
         // For manual entry, skip loading card immediately.
@@ -247,8 +215,19 @@ struct ConfirmationView: View {
             introAnimationDone = false
         }
 
+        // Refresh the VM's stored closures in case the parent view's @State
+        // captures changed since this view was first created. Stored
+        // @StateObject persists across re-renders; the closures need to
+        // pick up the current capture context.
+        splitEditorVM.onSelectModeBroadcast = onSelectMode
+        splitEditorVM.onGuestsChangedBroadcast = onGuestsChanged
+
         seedDraftGuestsIfNeeded()
-        initializeSplitState()
+        splitEditorVM.initializeSplitState(
+            splitDraft: splitDraft,
+            participantCount: participantCount,
+            totalCents: totalCents
+        )
     }
 
     private func handleKeyboardWillShow(_ notif: Notification) {
@@ -260,15 +239,15 @@ struct ConfirmationView: View {
     private func handleConfirmedChange(_ newValue: Bool) {
         guard newValue else { return }
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-            splitModesExpanded = false
+            splitEditorVM.splitModesExpanded = false
         }
     }
 
     private func handleIsExpandedChange(_ isNowExpanded: Bool) {
         // When collapsing while mid-edit, commit so the ZStack is never empty
-        if !isNowExpanded && !confirmed {
-            confirmed = true
-            splitModesExpanded = false
+        if !isNowExpanded && !splitEditorVM.confirmed {
+            splitEditorVM.confirmed = true
+            splitEditorVM.splitModesExpanded = false
         }
     }
 
@@ -277,10 +256,12 @@ struct ConfirmationView: View {
         let newTotal = stringToCents(newAmount)
         // When Phase 1 completes and the total arrives, recalculate amounts if they
         // were seeded as zeros (because the view appeared before the total was known).
-        guard newTotal > 0, guestAmountsCents.allSatisfy({ $0 == 0 }), !guests.isEmpty else { return }
-        switch mode {
+        guard newTotal > 0,
+              splitEditorVM.guestAmountsCents.allSatisfy({ $0 == 0 }),
+              !splitEditorVM.guests.isEmpty else { return }
+        switch splitEditorVM.mode {
         case .equally, .custom:
-            guestAmountsCents = splitCentsEvenly(total: newTotal, count: activeCount)
+            splitEditorVM.guestAmountsCents = splitCentsEvenly(total: newTotal, count: splitEditorVM.activeCount)
         case .byItems:
             break
         }
@@ -294,20 +275,20 @@ struct ConfirmationView: View {
         }
         // Phase 2 just finished. Re-seed items immediately if already in byItems mode,
         // otherwise reset the flag so entering byItems mode later will seed from real data.
-        if mode == .byItems {
-            seedByItemsFromReceipt()
+        if splitEditorVM.mode == .byItems {
+            splitEditorVM.seedByItemsFromReceipt()
         } else {
-            didInitByItem = false
+            splitEditorVM.didInitByItem = false
         }
     }
 
     private func seedDraftGuestsIfNeeded() {
-        guard draftGuests.isEmpty else { return }
+        guard splitEditorVM.draftGuests.isEmpty else { return }
 
         if let draft = splitDraft, !draft.guests.isEmpty {
-            draftGuests = draft.guests
-            draftIncludedIDs = draft.includedIDs
-            draftPayerID = draft.payerID
+            splitEditorVM.draftGuests = draft.guests
+            splitEditorVM.draftIncludedIDs = draft.includedIDs
+            splitEditorVM.draftPayerID = draft.payerID
             return
         }
 
@@ -318,9 +299,9 @@ struct ConfirmationView: View {
                 let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
                 return Person.identified(userId: uid, displayName: member.displayName)
             }
-            draftGuests = seeded
-            draftIncludedIDs = Set(seeded.map(\.id))
-            draftPayerID = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
+            splitEditorVM.draftGuests = seeded
+            splitEditorVM.draftIncludedIDs = Set(seeded.map(\.id))
+            splitEditorVM.draftPayerID = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
                 ?? seeded.first?.id
                 ?? PersonID(rawValue: myUid)
             return
@@ -333,11 +314,11 @@ struct ConfirmationView: View {
                 seeded.append(Person.newGuest(displayName: ""))
             }
         }
-        draftGuests = seeded
-        draftIncludedIDs = Set(seeded.map(\.id))
-        draftPayerID = seeded.first?.id ?? PersonID(rawValue: myUid)
+        splitEditorVM.draftGuests = seeded
+        splitEditorVM.draftIncludedIDs = Set(seeded.map(\.id))
+        splitEditorVM.draftPayerID = seeded.first?.id ?? PersonID(rawValue: myUid)
     }
-    
+
     private func formatAmount(_ str: String) -> String {
         let trimmed = str.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "0.00" }
@@ -354,27 +335,6 @@ struct ConfirmationView: View {
         }
     }
 
-    // MARK: - Bottom Header
-//    private func header() -> some View {
-//        HStack {
-//            Text("Split Options")
-//                .font(.system(size: 15, weight: .semibold))
-//            Spacer()
-//            Image(systemName: isBottomHeaderExpanded ? "chevron.down" : "chevron.up")
-//                .font(.system(size: 14, weight: .medium))
-//                .foregroundColor(.secondary)
-//        }
-//        .padding(.horizontal, 16)
-//        .padding(.vertical, 12)
-//        .background(Color(.secondarySystemBackground))
-//        .contentShape(Rectangle())
-//        .onTapGesture {
-//            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-//                isBottomHeaderExpanded.toggle()
-//            }
-//        }
-//    }
-
     @ViewBuilder
     private func expandedBody() -> some View {
         VStack(spacing: 12) {
@@ -386,140 +346,31 @@ struct ConfirmationView: View {
         .padding(.vertical, 12)
     }
 
-    private var swipeCardGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in
-                cardOffset = value.translation
-                let normalized = Double(cardOffset.width / 200)
-                cardRotation = 12 * min(max(normalized, -1), 1)
-                
-                let dx = value.translation.width
-                let dy = value.translation.height
-
-                let isMostlyHorizontal = abs(dx) > abs(dy) * 1.2
-                let isMostlyVertical = abs(dy) > abs(dx) * 1.2
-
-                if isMostlyVertical, dy < 0 {
-                    dragIntent = .up
-                } else if isMostlyVertical, dy > 0 {
-                    dragIntent = .down
-                } else if isMostlyHorizontal, dx < 0 {
-                    dragIntent = .left
-                } else if isMostlyHorizontal, dx > 0 {
-                    dragIntent = .right
-                } else {
-                    dragIntent = .none
-                }
-            }
-            .onEnded { value in
-                guard !hasSent else { return }
-
-                let dx = value.translation.width
-                let dy = value.translation.height
-
-                // Thresholds
-                let horizontalTrigger: CGFloat = 120
-                let verticalTrigger: CGFloat = 80
-
-                // Decide intent by dominance (prevents diagonal confusion)
-                let isMostlyHorizontal = abs(dx) > abs(dy) * 1.2
-                let isMostlyVertical = abs(dy) > abs(dx) * 1.2
-
-                // ✅ Left swipe = delete -> landing
-                if isMostlyHorizontal, dx < -horizontalTrigger {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        cardOffset = CGSize(width: -500, height: 0)
-                        cardRotation = -6
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        onDeleteToLanding()
-                    }
-                    dragIntent = .none
-                    return
-                }
-
-                // ✅ Right swipe = add tip
-                if isMostlyHorizontal, dx > horizontalTrigger {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        cardOffset = CGSize(width: 500, height: 0)
-                        cardRotation = 6
-                    }
-
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                            showTipPanel = true
-                        }
-
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            cardOffset = .zero
-                            cardRotation = 0
-                        }
-                    }
-                    dragIntent = .none
-                    return
-                }
-                
-                // ✅ Down swipe = expand
-                if isMostlyVertical, dy > verticalTrigger {
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            cardOffset = CGSize(width: 0, height: 500)
-                            cardRotation = 6
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            splitModesExpanded = true
-                            onRequestExpand()
-                            captureSnapshot()
-                            selectMode(mode)
-                            confirmed = false
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                cardOffset = .zero
-                                cardRotation = 0
-                            }
-                        }
-                    dragIntent = .none
-                    return
-                }
-
-
-                // ✅ Up swipe = send (your existing logic)
-                if isMostlyVertical, dy < -max(verticalTrigger, 50), abs(dx) < 160 {
-                    // Don't allow sending while phase 1 is still running (total is unknown)
-                    guard !receiptDraftVM.isLoadingReceipt else {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            cardOffset = .zero
-                            cardRotation = 0
-                            dragIntent = .none
-                        }
-                        return
-                    }
-                    hasSent = true
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        cardOffset = CGSize(width: 0, height: -400)
-                        cardRotation = 0
-                    }
-
-                    withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
-                    onSend()
-                    dragIntent = .none
-                    return
-                }
-
-                // Otherwise snap back
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    cardOffset = .zero
-                    cardRotation = 0
-                    dragIntent = .none
-                }
-            }
+    /// Up-swipe outcome handed to ReceiptCardView. The card animation already
+    /// fired by the time we get here; we just trigger the success overlay and
+    /// the parent send callback.
+    private func performSwipeUpSend() {
+        withAnimation(.easeInOut(duration: 0.2)) { showSuccess = true }
+        onSend()
     }
+
+    /// Down-swipe (and Edit-Split-button) outcome: enter the split editor
+    /// expanded state. Order mirrors the historical inline gesture body.
+    private func performSwipeDownExpand() {
+        splitEditorVM.splitModesExpanded = true
+        onRequestExpand()
+        splitEditorVM.captureSnapshot()
+        splitEditorVM.selectMode(splitEditorVM.mode, totalCents: totalCents)
+        splitEditorVM.confirmed = false
+    }
+
+    /// Right-swipe outcome: open the tip panel.
+    private func performSwipeRightTip() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+            showTipPanel = true
+        }
+    }
+
     private func animateDeleteThenAct() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -538,17 +389,36 @@ struct ConfirmationView: View {
         }
     }
 
-    private func animateSplitThenAct() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        
+    /// Tap-Add-Tip outcome: matches the right-swipe gesture's animation
+    /// before opening the tip panel. Used by the BillActionButtons row.
+    private func animateAddTipThenAct() {
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             cardOffset = CGSize(width: 500, height: 0)
             cardRotation = 6
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            onGoToSplit()
+            performSwipeRightTip()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                cardOffset = .zero
+                cardRotation = 0
+            }
+        }
+    }
 
-            // reset so it’s visible when sheet dismisses (same fix as before)
+    /// Tap-Edit-Split outcome: matches the down-swipe gesture. Skips the
+    /// drop-down card animation when the drawer is already expanded (the
+    /// panel will swallow the card visually anyway).
+    private func animateEditSplitThenAct() {
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        if !coordinator.isExpanded {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                cardOffset = CGSize(width: 0, height: 500)
+                cardRotation = 0
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            performSwipeDownExpand()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                 cardOffset = .zero
                 cardRotation = 0
@@ -618,112 +488,40 @@ struct ConfirmationView: View {
                 .padding(.top, 10)
 
             if shouldShowSendCue {
-                sendCueView()
+                SendCueView()
                     .padding(.top, 10)
             } else {
                 Color.clear.frame(height: 28)
             }
 
-            // Card with long arrow hints whose shafts disappear behind the card
-            ZStack(alignment: .center) {
-                // Hint layer — two independent sublayers so arrows don't compete with labels for space
-                ZStack {
-                    // Arrow shafts: span the full side width (card covers the inner ends)
-                    HStack(alignment: .center, spacing: 0) {
-                        HStack(spacing: 0) {
-                            Image(systemName: "arrowtriangle.left.fill")
-                                .font(.system(size: 8))
-                            Rectangle()
-                                .frame(height: 1.5)
-                        }
-                        .foregroundColor(.red)
-                        .padding(.leading, 54)
-                        .frame(maxWidth: .infinity)
-
-                        Color.clear.frame(width: 220 * cardScale)
-
-                        HStack(spacing: 0) {
-                            Rectangle()
-                                .frame(height: 1.5)
-                            Image(systemName: "arrowtriangle.right.fill")
-                                .font(.system(size: 8))
-                        }
-                        .foregroundColor(.blue)
-                        .padding(.trailing, 54)
-                        .frame(maxWidth: .infinity)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    // Labels: float at screen edges on top of arrow outer ends
-                    HStack(alignment: .center) {
-                        VStack(spacing: 3) {
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Delete")
-                                .font(.system(size: 10, weight: .medium))
-                        }
-                        .foregroundColor(.red)
-                        .padding(.leading, 20)
-                        Spacer()
-                        VStack(spacing: 3) {
-                            Image(systemName: "dollarsign.circle.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Tip")
-                                .font(.system(size: 10, weight: .medium))
-                        }
-                        .foregroundColor(.blue)
-                        .padding(.trailing, 24)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: cardH)
-                .opacity(buttonsOpacity * 0.55)
-                .allowsHitTesting(false)
-                .zIndex(0)
-
-                // Card on top — covers the inner shaft ends, creating the peek effect
-                ZStack {
-                    if receiptDraftVM.isLoadingReceipt || !introAnimationDone {
-                        BillCardLoadingView(
-                            participantCount: participantCount,
-                            displayName: payerDisplayName(),
-                            tabName: tabContextVM.activeTab?.name,
-                            splitLabel: splitLabel,
-                            tabColorHex: tabContextVM.activeTab?.colorHex,
-                            onAnimationComplete: {
-                                introAnimationDone = true
-                            }
-                        )
-                        .transition(.opacity)
-                    } else {
-                        BillCardView(
-                            receiptName: receiptName,
-                            displayAmount: displayAmount,
-                            displayName: payerDisplayName(),
-                            splitLabel: splitLabel,
-                            owedAmounts: owedAmounts,
-                            totalCents: totalCents,
-                            tabName: tabContextVM.activeTab?.name,
-                            tabColorHex: tabContextVM.activeTab?.colorHex
-                        )
-                        .id("confirmation-bill-card-\(billCardRefreshNonce)-\(totalCents)-\(displayAmount)")
-                        .transition(.opacity)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.45), value: receiptDraftVM.isLoadingReceipt || !introAnimationDone)
-                .cardPhysics(isDragging: cardOffset != .zero)
-                .scaleEffect(cardScale)
-                .frame(width: 260 * cardScale, height: cardH)
-                .offset(x: cardOffset.width, y: cardOffset.height + billCardBounceYOffset)
-                .rotationEffect(.degrees(cardRotation), anchor: .bottom)
-                .gesture(swipeCardGesture)
-                .simultaneousGesture(TapGesture().onEnded { if !isLoadingItems { showEditReceipt = true } })
-                .contentShape(Rectangle())
-                .zIndex(1)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: cardH)
+            ReceiptCardView(
+                receiptName: receiptName,
+                displayAmount: displayAmount,
+                payerName: splitEditorVM.payerDisplayName(),
+                splitLabel: splitLabel,
+                owedAmounts: owedAmounts,
+                totalCents: totalCents,
+                tabName: tabContextVM.activeTab?.name,
+                tabColorHex: tabContextVM.activeTab?.colorHex,
+                participantCount: participantCount,
+                isLoadingReceipt: receiptDraftVM.isLoadingReceipt,
+                isLoadingItems: isLoadingItems,
+                cardScale: cardScale,
+                cardHeight: cardH,
+                billCardRefreshNonce: billCardRefreshNonce,
+                arrowHintsOpacity: buttonsOpacity,
+                cardOffset: $cardOffset,
+                cardRotation: $cardRotation,
+                dragIntent: $dragIntent,
+                hasSent: $hasSent,
+                introAnimationDone: $introAnimationDone,
+                billCardBounceYOffset: $billCardBounceYOffset,
+                onSwipeUpSend: { performSwipeUpSend() },
+                onSwipeLeftDelete: { onDeleteToLanding() },
+                onSwipeRightTip: { performSwipeRightTip() },
+                onSwipeDownExpand: { performSwipeDownExpand() },
+                onTap: { showEditReceipt = true }
+            )
 
             VStack(spacing: 6) {
                 Text(isLoadingItems ? "Loading receipt items..." : "Tap to edit receipt")
@@ -736,170 +534,47 @@ struct ConfirmationView: View {
             if coordinator.isExpanded { Spacer(minLength: 0) }
 
             Group {
-                if splitModesExpanded {
+                if splitEditorVM.splitModesExpanded {
                     splitModePicker(closesExpanded: true, capturesSnapshot: true)
                         .padding(.bottom, 7)
                 } else {
-                    HStack(spacing: 12) {
-                        // 1) Back or Delete
-                        let trashProgress = dragIntent == .left ? leftProgress : 0
-
-                        Button(action: {
-                             animateDeleteThenAct() }
-                        ) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "trash")
-                            }
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .foregroundStyle(
-                                trashProgress > 0.02 ? Color.white : Color.red
-                            )
-                            .background(
-                                RoundedRectangle(cornerRadius: 18)
-                                    .fill(buttonBase)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 18)
-                                            .fill(Color.red)
-                                            .opacity(Double(trashProgress))
-                                    )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(dragIntent == .left ? 1 : buttonsOpacity)
-
-                        // 2) Split — tap to expand mode selector
-                        let splitProgress = (dragIntent == .down) ? downProgress : 0
-
-                        Button(action: {
-                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            if !coordinator.isExpanded {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    cardOffset = CGSize(width: 0, height: 500)
-                                    cardRotation = 0
-                                }
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                splitModesExpanded = true
-                                onRequestExpand()
-                                captureSnapshot()
-                                selectMode(mode)
-                                confirmed = false
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    cardOffset = .zero
-                                    cardRotation = 0
-                                }
-                            }
-                        }) {
-                            Text("Edit Split")
-                                .multilineTextAlignment(.center)
-                                .font(.system(size: 16, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .frame(minWidth: 100)
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 1.5)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 18)
-                                        .fill(buttonBase)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 18)
-                                                .fill(gold)
-                                                .opacity(Double(splitProgress))
-                                        )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .opacity(dragIntent == .down ? 1 : buttonsOpacity)
-
-                        // 3) Add Tip
-                        let tipProgress = (dragIntent == .right) ? rightProgress : 0
-
-                        Button(action: {
-                            UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                cardOffset = CGSize(width: 500, height: 0)
-                                cardRotation = 6
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                                    showTipPanel = true
-                                }
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    cardOffset = .zero
-                                    cardRotation = 0
-                                }
-                            }
-                        }) {
-                            Text(hasTip ? "Tip: \(tipAmount)" : "Add Tip")
-                                .font(.system(size: 16, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .cornerRadius(18)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 18)
-                                        .fill(buttonBase)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 18)
-                                                .fill(.blue)
-                                                .opacity(Double(tipProgress))
-                                        )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt)
-                        .opacity((displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt) ? 0.4 : 1.0)
-                        .opacity(dragIntent == .right ? 1 : buttonsOpacity)
-                    }
+                    BillActionButtons(
+                        hasTip: hasTip,
+                        tipAmount: tipAmount,
+                        isTipDisabled: displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt,
+                        trashProgress: dragIntent == .left ? leftProgress : 0,
+                        splitProgress: dragIntent == .down ? downProgress : 0,
+                        tipProgress: dragIntent == .right ? rightProgress : 0,
+                        isLeftDrag: dragIntent == .left,
+                        isDownDrag: dragIntent == .down,
+                        isRightDrag: dragIntent == .right,
+                        buttonsOpacity: buttonsOpacity,
+                        buttonBase: buttonBase,
+                        gold: gold,
+                        onTrash: { animateDeleteThenAct() },
+                        onEditSplit: { animateEditSplitThenAct() },
+                        onAddTip: { animateAddTipThenAct() }
+                    )
                 }
             }
             .padding(.horizontal, 40)
             .padding(.vertical, 16)
-            .animation(.spring(response: 0.35, dampingFraction: 0.9), value: splitModesExpanded)
+            .animation(.spring(response: 0.35, dampingFraction: 0.9), value: splitEditorVM.splitModesExpanded)
 
         }
-    }
-
-    @ViewBuilder
-    private func sendCueView() -> some View {
-        ZStack(alignment: .bottom) {
-            Image(systemName: "arrow.up")
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color(hex: "#06A77D"))
-                .offset(y: sendHintAnimating ? -6 : 0)
-
-            Circle()
-                .fill(Color.white.opacity(0.95))
-                .frame(width: 5, height: 5)
-                .offset(x: -16, y: sendHintAnimating ? -22 : -8)
-                .opacity(sendHintAnimating ? 0 : 0.9)
-
-            Circle()
-                .fill(Color.white.opacity(0.95))
-                .frame(width: 4, height: 4)
-                .offset(x: 0, y: sendHintAnimating ? -30 : -12)
-                .opacity(sendHintAnimating ? 0.1 : 0.85)
-
-            Circle()
-                .fill(Color.white.opacity(0.95))
-                .frame(width: 3.5, height: 3.5)
-                .offset(x: 14, y: sendHintAnimating ? -18 : -6)
-                .opacity(sendHintAnimating ? 0 : 0.75)
-        }
-        .frame(height: 28)
     }
 
     @ViewBuilder private var panelViews: some View {
         // Donut panel (equally / custom)
-        if coordinator.isExpanded && confirmed == false && (mode == .equally || mode == .custom) {
+        if coordinator.isExpanded && splitEditorVM.confirmed == false && (splitEditorVM.mode == .equally || splitEditorVM.mode == .custom) {
             byGuestPanel(
-                interactive: mode == .custom
+                interactive: splitEditorVM.mode == .custom
             )
             .padding(.horizontal, 24)
             .padding(.top, 6)
         }
         // Items panel
-        if coordinator.isExpanded && confirmed == false && mode == .byItems {
+        if coordinator.isExpanded && splitEditorVM.confirmed == false && splitEditorVM.mode == .byItems {
             byItemPanel()
                 .padding(.horizontal, 24)
                 .padding(.top, 6)
@@ -909,7 +584,7 @@ struct ConfirmationView: View {
             tipPanel()
         }
         // Confirmation card: always in compact mode, or when confirmed in expanded mode
-        if (confirmed == true || !coordinator.isExpanded) && !showTipPanel {
+        if (splitEditorVM.confirmed == true || !coordinator.isExpanded) && !showTipPanel {
             confirmationPanel()
                 .padding(.top, 10)
         }
@@ -939,10 +614,10 @@ struct ConfirmationView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardHeight = 0 }
         .task { onRequestCollapse() }
         .onAppear(perform: handleOnAppear)
-        .onChange(of: draftGuests) { _, _ in notifyGuestsChanged() }
-        .onChange(of: draftIncludedIDs) { _, _ in notifyGuestsChanged() }
-        .onChange(of: draftPayerID) { _, _ in notifyGuestsChanged() }
-        .onChange(of: confirmed) { _, newValue in handleConfirmedChange(newValue) }
+        .onChange(of: splitEditorVM.draftGuests) { _, _ in notifyGuestsChanged() }
+        .onChange(of: splitEditorVM.draftIncludedIDs) { _, _ in notifyGuestsChanged() }
+        .onChange(of: splitEditorVM.draftPayerID) { _, _ in notifyGuestsChanged() }
+        .onChange(of: splitEditorVM.confirmed) { _, newValue in handleConfirmedChange(newValue) }
         .onChange(of: coordinator.isExpanded) { _, isNowExpanded in handleIsExpandedChange(isNowExpanded) }
         .onChange(of: amount) { _, newAmount in handleAmountChange(newAmount) }
         .onChange(of: receiptDraftVM.isLoadingReceipt) { _, isNowLoading in
@@ -953,6 +628,11 @@ struct ConfirmationView: View {
         }
         .onChange(of: introAnimationDone) { _, isDone in handleIntroAnimationDoneChange(isDone) }
         .onChange(of: liveTabMembersFingerprint) { _, _ in mergeLiveTabMembers() }
+        .onChange(of: splitEditorVM.isEditingAmount) { _, isNow in
+            // The VM owns the editing state; @FocusState lives on the view.
+            // Sync the focus binding to whatever the VM decided.
+            isAmountFieldFocused = isNow
+        }
         .sheet(isPresented: $showEditReceipt) { editReceiptSheet }
     }
 
@@ -974,7 +654,7 @@ struct ConfirmationView: View {
     /// receipt. Existing guests are preserved verbatim — this is additive only.
     private func mergeLiveTabMembers() {
         guard let tab = tabContextVM.activeTab else { return }
-        let existingUserIds = Set(draftGuests.compactMap(\.userId))
+        let existingUserIds = Set(splitEditorVM.draftGuests.compactMap(\.userId))
         let newMembers = tab.members.filter { member in
             guard member.isActive else { return false }
             let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
@@ -985,14 +665,14 @@ struct ConfirmationView: View {
             let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
             return Person.identified(userId: uid, displayName: member.displayName)
         }
-        draftGuests.append(contentsOf: newPersons)
-        draftIncludedIDs.formUnion(newPersons.map(\.id))
+        splitEditorVM.draftGuests.append(contentsOf: newPersons)
+        splitEditorVM.draftIncludedIDs.formUnion(newPersons.map(\.id))
         // Also reflect the new members into the split-panel mirror (which
         // initializeSplitState() set from draftGuests on first appear and is
         // otherwise independent until applyGuestEdits()).
-        guests.append(contentsOf: newPersons)
-        includedIDs.formUnion(newPersons.map(\.id))
-        ensureGuestArrays()
+        splitEditorVM.guests.append(contentsOf: newPersons)
+        splitEditorVM.includedIDs.formUnion(newPersons.map(\.id))
+        splitEditorVM.ensureGuestArrays()
     }
 
     @ViewBuilder
@@ -1029,7 +709,7 @@ struct ConfirmationView: View {
             Spacer()
             amountEditingOverlay()
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.spring(response: 0.35, dampingFraction: 0.9), value: isEditingAmount)
+                .animation(.spring(response: 0.35, dampingFraction: 0.9), value: splitEditorVM.isEditingAmount)
         }
         .offset(y: -keyboardHeight)
         .animation(.easeOut(duration: 0.22), value: keyboardHeight)
@@ -1065,7 +745,7 @@ struct ConfirmationView: View {
         }
     }
 
-    private func dragBackgroundOpacity(for intent: DragIntent) -> Double {
+    private func dragBackgroundOpacity(for intent: BillCardDragIntent) -> Double {
         guard dragIntent == intent else { return 0 }
         switch intent {
         case .up: return Double(upProgress)
@@ -1095,8 +775,8 @@ struct ConfirmationView: View {
         // Otherwise, switching to by-items after editing receipt fields can show
         // stale labels/prices until the user re-opens edit-receipt from by-items.
         var matched = Set<UUID>()
-        byItemItems = updatedReceipt.items.map { newItem in
-            if let existing = byItemItems.first(where: {
+        splitEditorVM.byItemItems = updatedReceipt.items.map { newItem in
+            if let existing = splitEditorVM.byItemItems.first(where: {
                 $0.label == newItem.label && !matched.contains($0.id)
             }) {
                 matched.insert(existing.id)
@@ -1111,7 +791,7 @@ struct ConfirmationView: View {
                 assignedGuestIds: []
             )
         }
-        didInitByItem = true
+        splitEditorVM.didInitByItem = true
         receiptDraftVM.currentReceipt = updatedReceipt
         // Sync splitDraft fields from the edited receipt.
         if var draft = receiptDraftVM.currentSplitDraft {
@@ -1120,7 +800,7 @@ struct ConfirmationView: View {
             draft.taxCents = updatedReceipt.taxCents
             draft.tipCents = updatedReceipt.tipCents
             draft.totalCents = updatedReceipt.totalCents
-            draft.items = byItemItems
+            draft.items = splitEditorVM.byItemItems
                 .filter { $0.isComplete }
                 .map { item in
                     SplitDraft.Item(
@@ -1134,63 +814,19 @@ struct ConfirmationView: View {
         }
         // In by-items mode, also run the canonical sync path so owed/ring state
         // updates immediately while the panel is open.
-        if mode == .byItems {
-            syncByItemsToSplitDraft()
+        if splitEditorVM.mode == .byItems {
+            splitEditorVM.syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
         }
         showEditReceipt = false
     }
 
     private func handleIntroAnimationDoneChange(_ isDone: Bool) {
-        guard isDone, !UserDefaults.standard.bool(forKey: "didSeeSwipeHint") else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            guard !hasSent else { return }
-            // Left #1
-            withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: -9, height: 0); cardRotation = -1.8 }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
-                // Left #2
-                DispatchQueue.main.asyncAfter(deadline: .now()) {
-                    guard !hasSent else { return }
-                    withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: -9, height: 0); cardRotation = -1.8 }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                        withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                            guard !hasSent else { return }
-                            // Right #1
-                            withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 9, height: 0); cardRotation = 1.8 }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                                withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
-                                // Right #2
-                                DispatchQueue.main.asyncAfter(deadline: .now()) {
-                                    guard !hasSent else { return }
-                                    withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 9, height: 0); cardRotation = 1.8 }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                                        withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero; cardRotation = 0 }
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-                                            guard !hasSent else { return }
-                                            // Down #1
-                                            withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 0, height: 9) }
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                                                withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero }
-                                                // Down #2
-                                                DispatchQueue.main.asyncAfter(deadline: .now()) {
-                                                    guard !hasSent else { return }
-                                                    withAnimation(.easeOut(duration: 0.18)) { cardOffset = CGSize(width: 0, height: 9) }
-                                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                                                        withAnimation(.spring(response: 0.55, dampingFraction: 0.38)) { cardOffset = .zero }
-                                                       UserDefaults.standard.set(true, forKey: "didSeeSwipeHint")
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        guard isDone else { return }
+        SwipeHintAnimator.play(
+            cardOffset: $cardOffset,
+            cardRotation: $cardRotation,
+            isCancelled: { hasSent }
+        )
     }
 }
 
