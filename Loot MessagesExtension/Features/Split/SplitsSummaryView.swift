@@ -1418,7 +1418,6 @@ struct SplitsSummaryView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         togglePaid(guestIndex: info.guestIndex)
                     }
-                    print("[Pay] onSelectMethod fired: method=\(method.type) deepLink=\(String(describing: deepLink))")
                     if let url = deepLink {
                         bus.openInSafari(url)
                     } else if method.type == .zelle {

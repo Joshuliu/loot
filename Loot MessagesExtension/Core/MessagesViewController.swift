@@ -1440,44 +1440,30 @@ extension MessagesViewController: MessageBus {
         // iMessage extensions can't use `UIApplication.shared` directly —
         // it's marked `@available(iOSApplicationExtension, unavailable)`.
         // The legacy `openURL:` selector has been force-returning false
-        // since iOS 13, so the old KVC + perform-selector trick no longer
-        // launches anything. We need to reach a UIApplication INSTANCE
-        // and call the modern `open(_:options:completionHandler:)` on it.
-        // Three ways, tried in order:
-        //   1. Walk the responder chain (cleanest, no private API).
-        //   2. NSClassFromString + KVC, cast to UIApplication, modern open.
-        //   3. extensionContext.open — silently fails on custom URL
-        //      schemes (venmo://, paypal.me/...), works for https://.
-        print("[Pay] openInSafari called with url=\(url) scheme=\(url.scheme ?? "nil")")
-
-        // 1. Responder chain → UIApplication
+        // since iOS 13, so the old KVC + perform-selector trick is dead.
+        // We need a UIApplication INSTANCE and the modern
+        // `open(_:options:completionHandler:)` method on it.
+        //
+        // Walk the responder chain (cleanest, no private API). Falls
+        // back to NSClassFromString + KVC if the chain doesn't reach
+        // UIApplication, and `extensionContext.open` as a last resort
+        // (works for https:// only, not custom schemes).
         var responder: UIResponder? = self
         while let r = responder {
             if let app = r as? UIApplication {
-                print("[Pay] openInSafari: UIApplication via responder chain")
-                app.open(url, options: [:]) { success in
-                    print("[Pay] openInSafari responder-chain result: \(success)")
-                }
+                app.open(url, options: [:], completionHandler: nil)
                 return
             }
             responder = r.next
         }
 
-        // 2. KVC + cast to UIApplication, then modern open
         if let appClass = NSClassFromString("UIApplication"),
            let app = appClass.value(forKey: "sharedApplication") as? UIApplication {
-            print("[Pay] openInSafari: UIApplication via KVC")
-            app.open(url, options: [:]) { success in
-                print("[Pay] openInSafari KVC-modern result: \(success)")
-            }
+            app.open(url, options: [:], completionHandler: nil)
             return
         }
 
-        // 3. extensionContext.open (last resort)
-        print("[Pay] openInSafari: extensionContext fallback")
-        extensionContext?.open(url, completionHandler: { success in
-            print("[Pay] openInSafari extensionContext result: \(success)")
-        })
+        extensionContext?.open(url, completionHandler: nil)
     }
 
     func sendSettlementCard(fromName: String, toName: String, amountCents: Int, methodName: String, tabColorHex: String?) {
