@@ -1437,22 +1437,24 @@ extension MessagesViewController {
 
 extension MessagesViewController: MessageBus {
     func openInSafari(_ url: URL) {
-        // iMessage extensions can't directly use `UIApplication.shared` —
+        // iMessage extensions can't use `UIApplication.shared` directly —
         // it's marked `@available(iOSApplicationExtension, unavailable)`.
-        // Three ways to reach a working UIApplication from inside an
-        // extension, tried in order:
-        //   1. Walk the responder chain (most reliable on iOS 13+).
-        //   2. NSClassFromString + KVC + perform("openURL:") legacy hack.
-        //      Apple has been tightening this on recent iOS versions.
+        // The legacy `openURL:` selector has been force-returning false
+        // since iOS 13, so the old KVC + perform-selector trick no longer
+        // launches anything. We need to reach a UIApplication INSTANCE
+        // and call the modern `open(_:options:completionHandler:)` on it.
+        // Three ways, tried in order:
+        //   1. Walk the responder chain (cleanest, no private API).
+        //   2. NSClassFromString + KVC, cast to UIApplication, modern open.
         //   3. extensionContext.open — silently fails on custom URL
-        //      schemes (venmo://, paypal.me/...), but works for https://.
+        //      schemes (venmo://, paypal.me/...), works for https://.
         print("[Pay] openInSafari called with url=\(url) scheme=\(url.scheme ?? "nil")")
 
-        // 1. Responder chain
+        // 1. Responder chain → UIApplication
         var responder: UIResponder? = self
         while let r = responder {
             if let app = r as? UIApplication {
-                print("[Pay] openInSafari: found UIApplication via responder chain — calling open(_:options:completionHandler:)")
+                print("[Pay] openInSafari: UIApplication via responder chain")
                 app.open(url, options: [:]) { success in
                     print("[Pay] openInSafari responder-chain result: \(success)")
                 }
@@ -1461,16 +1463,18 @@ extension MessagesViewController: MessageBus {
             responder = r.next
         }
 
-        // 2. KVC hack
+        // 2. KVC + cast to UIApplication, then modern open
         if let appClass = NSClassFromString("UIApplication"),
-           let app = appClass.value(forKey: "sharedApplication") as? NSObject {
-            print("[Pay] openInSafari: falling back to KVC hack")
-            app.perform(NSSelectorFromString("openURL:"), with: url)
+           let app = appClass.value(forKey: "sharedApplication") as? UIApplication {
+            print("[Pay] openInSafari: UIApplication via KVC")
+            app.open(url, options: [:]) { success in
+                print("[Pay] openInSafari KVC-modern result: \(success)")
+            }
             return
         }
 
-        // 3. extensionContext.open (last resort, silently fails for custom schemes)
-        print("[Pay] openInSafari: falling back to extensionContext.open")
+        // 3. extensionContext.open (last resort)
+        print("[Pay] openInSafari: extensionContext fallback")
         extensionContext?.open(url, completionHandler: { success in
             print("[Pay] openInSafari extensionContext result: \(success)")
         })
