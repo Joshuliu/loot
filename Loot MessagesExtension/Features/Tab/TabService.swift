@@ -604,7 +604,7 @@ final class TabService {
 
         let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
         let sharedReceipts = sharedPayloads.map { entry in
-            TabReceipt.from(payload: entry.payload, messagePayloadId: entry.docId, tab: tab)
+            TabReceiptAdapter.fromPayload(entry.payload, messagePayloadId: entry.docId, tab: tab)
         }
 
         let legacyReceipts = try await fetchLegacyTabReceiptsNeedingFallback(forTabId: tabId)

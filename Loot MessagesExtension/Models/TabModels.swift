@@ -205,7 +205,7 @@ extension LootTab {
             if seenMemberIds.contains(member.memberId) { continue }
             // Drop a duplicate by non-empty userId — a single Loot user
             // appearing twice with different memberIds is the corruption
-            // pattern that crashes `TabReceipt.from`'s uid → memberId dict.
+            // pattern that crashes `TabReceiptAdapter.fromPayload`'s uid → memberId dict.
             if let uid = member.userId, !uid.isEmpty {
                 if seenUserIds.contains(uid) { continue }
                 seenUserIds.insert(uid)
@@ -251,7 +251,7 @@ struct TabReceipt: Codable, Identifiable {
     var imageUrl: String?
     var messagePayloadId: String?
 
-    // Payload-derived. Populated by TabReceipt.from() so render doesn't
+    // Payload-derived. Populated by TabReceiptAdapter.fromPayload() so render doesn't
     // depend on activeTab.members being in sync at the moment of display.
     var payerDisplayName: String? = nil
 
@@ -289,94 +289,6 @@ struct Settlement: Codable, Identifiable {
     var toMemberId: String
     var amountCents: Int
     var note: String?
-}
-
-// MARK: - TabReceipt Factory
-
-extension TabReceipt {
-    /// Creates a TabReceipt from a sent message payload and the active tab.
-    static func from(payload: LootMessagePayload, messagePayloadId: String, tab: LootTab) -> TabReceipt {
-        let myId = KeychainHelper.getOrCreateUserId()
-        let split = payload.s
-        let receipt = payload.r
-
-        // Build a lookup from guest uid → tab memberId. `uniquingKeysWith`
-        // (rather than `uniqueKeysWithValues`) keeps this from trapping if the
-        // tab somehow still contains two members with the same userId — first
-        // entry wins, which matches `dedupedMembers()`'s behavior.
-        let uidToMemberId: [String: String] = Dictionary(
-            tab.members.compactMap { m in
-                guard let uid = m.userId, !uid.isEmpty else { return nil }
-                return (uid, m.memberId)
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        // Map payer slot to memberId
-        let payerUid = split.g[split.pi].uid ?? myId
-        let payerMemberId = uidToMemberId[payerUid] ?? myId
-
-        // Carry the payer's display name straight from the payload so the UI
-        // doesn't depend on activeTab.members being in sync at render time
-        // (live listener catch-up race produced "Paid by <UUID>" rows).
-        let payerDisplayName: String? = {
-            guard split.g.indices.contains(split.pi) else { return nil }
-            let raw = split.g[split.pi].n.trimmingCharacters(in: .whitespacesAndNewlines)
-            return raw.isEmpty ? nil : raw
-        }()
-
-        // Map split mode
-        let splitMode: SplitMode = {
-            switch split.m {
-            case .equally: return .equally
-            case .custom: return .custom
-            case .byItems: return .byItems
-            }
-        }()
-
-        // Build splits: for each included guest, map to tab member
-        let splits: [ReceiptSplit] = split.g.enumerated().compactMap { idx, guest in
-            guard guest.inc, split.o.indices.contains(idx), split.o[idx] > 0 else { return nil }
-            let uid = guest.uid ?? ""
-            let memberId = uidToMemberId[uid] ?? uid
-            guard !memberId.isEmpty else { return nil }
-            return ReceiptSplit(memberId: memberId, owedCents: split.o[idx])
-        }
-
-        // Build items (if by-items mode)
-        let items: [ReceiptItem]? = splitMode == .byItems ? receipt.i.map { item in
-            let assignedMemberIds = item.rs.compactMap { slotIdx -> String? in
-                guard split.g.indices.contains(slotIdx) else { return nil }
-                let uid = split.g[slotIdx].uid ?? ""
-                return uidToMemberId[uid] ?? uid
-            }
-            return ReceiptItem(
-                label: item.l,
-                priceCents: item.p,
-                quantity: 1,
-                assignedMemberIds: assignedMemberIds
-            )
-        } : nil
-
-        return TabReceipt(
-            title: receipt.t,
-            createdBy: myId,
-            createdAt: Timestamp(date: Date(timeIntervalSince1970: receipt.c)),
-            totalCents: receipt.tot,
-            subtotalCents: receipt.sub,
-            taxCents: receipt.tx,
-            tipCents: receipt.tip,
-            feesCents: receipt.f,
-            discountCents: receipt.d == 0 ? nil : receipt.d,
-            splitMode: splitMode,
-            payerMemberId: payerMemberId,
-            splits: splits,
-            items: items,
-            imageUrl: nil,
-            messagePayloadId: messagePayloadId,
-            payerDisplayName: payerDisplayName
-        )
-    }
 }
 
 // MARK: - Minimal Tab Construction
