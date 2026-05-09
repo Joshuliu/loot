@@ -1345,10 +1345,36 @@ struct SplitsSummaryView: View {
                 methods: info.methods,
                 tabColorHex: nil,
                 onSelectMethod: { method in
-                    // Apple Pay: stage the compact-mode reminder, send the
-                    // settlement card, navigate back to tabview (the receipt
-                    // viewer would otherwise hide the compact reminder behind
-                    // it), then collapse the extension.
+                    // ORDERING RULE: togglePaid (which broadcasts the bill
+                    // update via persistSplit → bus.sendBillUpdate) MUST fire
+                    // FIRST, before any other conversation.send or extension
+                    // dismissal. The broadcast retracts+replaces the original
+                    // bubble with the paid-marked card, and only auto-sends
+                    // when isConversationAutoSendReady is true at the moment
+                    // iOS processes the call. Subsequent operations
+                    // (sendSettlementCard's conversation.send, sendApplePayHandoff,
+                    // openInSafari) all degrade auto-send eligibility — even
+                    // when called synchronously in the same tap closure, iOS
+                    // appears to invalidate the user-tap context after the
+                    // first conversation.send, so a bill update fired second
+                    // gets demoted from `conversation.send` to "insert into
+                    // draft" and the user has to manually send (which then
+                    // appends a new bubble instead of retracting).
+                    //
+                    // SETTLEMENT CARD POLICY: only sent for tab-attached
+                    // receipts. For a non-tabbed receipt, the bill-update
+                    // broadcast above already retracts+replaces the bubble
+                    // with paid styling — that IS the "sent" signal. A
+                    // separate "sent a payment" card would be redundant
+                    // chat clutter. For tab-attached receipts the
+                    // settlement card represents the user's payment
+                    // against the tab balance and is kept.
+                    //
+                    // Apple Pay: stage the compact-mode reminder, broadcast
+                    // the bill update, optionally send the handoff card
+                    // (tab receipts only), navigate back to tabview (the
+                    // receipt viewer would otherwise hide the compact
+                    // reminder behind it), then collapse the extension.
                     if method.type == .applePay {
                         let tabColor = associatedTab?.colorHex
                         messageReceiptVM.pendingApplePayInfo = PendingApplePayInfo(
@@ -1356,10 +1382,12 @@ struct SplitsSummaryView: View {
                             amountCents: info.amountCents,
                             tabColorHex: tabColor
                         )
-                        bus.sendApplePayHandoff(fromName: info.fromName, toName: info.toName,
-                                                amountCents: info.amountCents, tabColorHex: tabColor)
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                             togglePaid(guestIndex: info.guestIndex)
+                        }
+                        if isTabReceipt {
+                            bus.sendApplePayHandoff(fromName: info.fromName, toName: info.toName,
+                                                    amountCents: info.amountCents, tabColorHex: tabColor)
                         }
                         // Preserve the tab association so LootTabView can color
                         // its compact strip with the same tab as the receipt.
@@ -1390,17 +1418,14 @@ struct SplitsSummaryView: View {
                         payeeName: info.toName,
                         zelleData: method.zelleData
                     )
-                    bus.sendSettlementCard(fromName: info.fromName, toName: info.toName,
-                                           amountCents: info.amountCents,
-                                           methodName: method.type.displayName,
-                                           tabColorHex: nil)
-                    // Toggle paid + persist BEFORE openInSafari/openURL: those
-                    // dismiss the extension, and any sendBillUpdate triggered
-                    // after dismissal gets demoted from `conversation.send` to
-                    // "insert into draft" because isConversationAutoSendReady
-                    // is going false.
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         togglePaid(guestIndex: info.guestIndex)
+                    }
+                    if isTabReceipt {
+                        bus.sendSettlementCard(fromName: info.fromName, toName: info.toName,
+                                               amountCents: info.amountCents,
+                                               methodName: method.type.displayName,
+                                               tabColorHex: nil)
                     }
                     if let url = deepLink {
                         bus.openInSafari(url)
