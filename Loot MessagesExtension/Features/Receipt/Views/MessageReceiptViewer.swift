@@ -295,12 +295,20 @@ struct MessageReceiptViewer: View {
                 if let tabId = payload.tid, !tabId.isEmpty {
                     if let refreshed = try await TabService.shared.syncTabDerivedState(tabId: tabId) {
                         await MainActor.run {
-                            if self.tabContextVM.activeTab?.id == tabId {
-                                self.tabContextVM.activeTab = refreshed
-                                if let ck = self.tabContextVM.conversationKey {
-                                    tabContextVM.cacheTab(refreshed, for: ck)
-                                }
-                            }
+                            // Don't reassign activeTab here. The Firestore listener
+                            // bound by TabContextViewModel.syncActiveTabListener
+                            // picks up the syncTabDerivedState write and assigns
+                            // activeTab itself, mirroring to cache via
+                            // TabContextViewModel.cacheTab. Reassigning explicitly
+                            // fires a redundant @Published mutation that races
+                            // with sheet dismiss when the sender edits a
+                            // tab-attached bill — only the sender's path passes
+                            // the `activeTab?.id == tabId` check (per applyTabData,
+                            // receivers have receiptTab set instead). That extra
+                            // re-render appears to invalidate iOS's cached
+                            // MSSession reference for the bubble, causing the
+                            // broadcast to append a new bubble instead of
+                            // retracting in place. (Bug #1 root cause, May 8 2026.)
                             if self.tabContextVM.receiptTab?.id == tabId {
                                 self.tabContextVM.receiptTab = refreshed
                             }
