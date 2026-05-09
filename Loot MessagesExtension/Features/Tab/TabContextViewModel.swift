@@ -139,6 +139,86 @@ final class TabContextViewModel: ObservableObject {
         receiptTab = nil
     }
 
+    // MARK: - Local Cache (Phase 5 step 20)
+
+    /// Returns the cached LootTab for a conversation key from local storage
+    /// (instant, no network). Used by `MessagesViewController` on extension
+    /// launch to seed `activeTab` before the Firestore listener has had time
+    /// to fire.
+    func cachedTab(for conversationKey: String) -> LootTab? {
+        guard let dict = UserDefaults.standard.dictionary(forKey: Self.cacheKey(for: conversationKey)),
+              let name = dict["name"] as? String,
+              let createdBy = dict["createdBy"] as? String,
+              let statusRaw = dict["status"] as? String,
+              let status = TabStatus(rawValue: statusRaw),
+              let memberIds = dict["memberIds"] as? [String],
+              let receiptCount = dict["receiptCount"] as? Int,
+              let membersArray = dict["members"] as? [[String: Any]]
+        else { return nil }
+
+        let members = membersArray.compactMap { m -> TabMember? in
+            guard let memberId = m["memberId"] as? String,
+                  let displayName = m["displayName"] as? String,
+                  let balanceCents = m["balanceCents"] as? Int,
+                  let isActive = m["isActive"] as? Bool
+            else { return nil }
+            return TabMember(
+                memberId: memberId,
+                userId: m["userId"] as? String,
+                displayName: displayName,
+                balanceCents: balanceCents,
+                isActive: isActive
+            )
+        }
+
+        var tab = LootTab(
+            name: name,
+            colorHex: dict["colorHex"] as? String,
+            createdBy: createdBy,
+            status: status,
+            members: members,
+            memberIds: memberIds,
+            receiptCount: receiptCount
+        )
+        tab.id = dict["id"] as? String
+        return tab
+    }
+
+    /// Persists the active tab for a conversation key to local storage. Pass
+    /// nil to clear. Mirrored from the Firestore listener so an extension
+    /// restart picks up the freshest member set immediately rather than
+    /// briefly showing stale data while the listener round-trips.
+    func cacheTab(_ tab: LootTab?, for conversationKey: String) {
+        let key = Self.cacheKey(for: conversationKey)
+        guard let tab else {
+            UserDefaults.standard.removeObject(forKey: key)
+            return
+        }
+        let dict: [String: Any] = [
+            "id": tab.id ?? "",
+            "name": tab.name,
+            "colorHex": tab.colorHex ?? "",
+            "createdBy": tab.createdBy,
+            "status": tab.status.rawValue,
+            "memberIds": tab.memberIds,
+            "receiptCount": tab.receiptCount,
+            "members": tab.members.map { m -> [String: Any] in
+                [
+                    "memberId": m.memberId,
+                    "userId": m.userId ?? "",
+                    "displayName": m.displayName,
+                    "balanceCents": m.balanceCents,
+                    "isActive": m.isActive
+                ]
+            }
+        ]
+        UserDefaults.standard.set(dict, forKey: key)
+    }
+
+    private static func cacheKey(for conversationKey: String) -> String {
+        "\(DefaultsKeys.conversationTabMap)_\(conversationKey)"
+    }
+
     private func syncActiveTabListener(oldId: String?, newId: String?) {
         // Same id (or both nil) means the listener-fed update is what
         // triggered didSet — leave the existing subscription alone.
@@ -167,7 +247,7 @@ final class TabContextViewModel: ObservableObject {
             // the freshest member set immediately rather than briefly showing
             // stale data while the listener round-trips.
             if let convKey = self.conversationKey {
-                TabService.shared.cacheTab(updated, for: convKey)
+                self.cacheTab(updated, for: convKey)
             }
         }
     }

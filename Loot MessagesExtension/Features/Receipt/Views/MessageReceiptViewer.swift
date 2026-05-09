@@ -251,7 +251,7 @@ struct MessageReceiptViewer: View {
             updated.receiptCount = max(0, active.receiptCount - 1)
             tabContextVM.activeTab = updated
             if let ck = tabContextVM.conversationKey {
-                TabService.shared.cacheTab(updated, for: ck)
+                tabContextVM.cacheTab(updated, for: ck)
             }
         }
         if let receiptTab = tabContextVM.receiptTab, receiptTab.id == tabId {
@@ -269,7 +269,7 @@ struct MessageReceiptViewer: View {
                         if self.tabContextVM.activeTab?.id == tabId {
                             self.tabContextVM.activeTab = refreshed
                             if let ck = self.tabContextVM.conversationKey {
-                                TabService.shared.cacheTab(refreshed, for: ck)
+                                tabContextVM.cacheTab(refreshed, for: ck)
                             }
                         }
                         self.tabContextVM.tabReceiptsRefreshNonce += 1
@@ -298,7 +298,7 @@ struct MessageReceiptViewer: View {
                             if self.tabContextVM.activeTab?.id == tabId {
                                 self.tabContextVM.activeTab = refreshed
                                 if let ck = self.tabContextVM.conversationKey {
-                                    TabService.shared.cacheTab(refreshed, for: ck)
+                                    tabContextVM.cacheTab(refreshed, for: ck)
                                 }
                             }
                             if self.tabContextVM.receiptTab?.id == tabId {

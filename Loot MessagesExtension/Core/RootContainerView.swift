@@ -765,7 +765,7 @@ struct RootContainerView: View {
             onSelectTab: { tab in
                 tabContextVM.activeTab = tab
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(tab, for: convKey)
+                    tabContextVM.cacheTab(tab, for: convKey)
                     Task {
                         do {
                             try await TabService.shared.associateConversation(
@@ -782,7 +782,7 @@ struct RootContainerView: View {
             onClearTab: {
                 tabContextVM.activeTab = nil
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(nil, for: convKey)
+                    tabContextVM.cacheTab(nil, for: convKey)
                     Task { try? await TabService.shared.removeConversationMapping(conversationKey: convKey) }
                 }
             },
@@ -806,7 +806,7 @@ struct RootContainerView: View {
             onTabUpdated: { updatedTab in
                 tabContextVM.activeTab = updatedTab
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(updatedTab, for: convKey)
+                    tabContextVM.cacheTab(updatedTab, for: convKey)
                 }
             },
             onTabLeft: {
@@ -814,7 +814,7 @@ struct RootContainerView: View {
                 tabContextVM.userTabs.removeAll { $0.id == leavingId }
                 tabContextVM.activeTab = nil
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(nil, for: convKey)
+                    tabContextVM.cacheTab(nil, for: convKey)
                 }
             },
             onTabDeleted: {
@@ -822,7 +822,7 @@ struct RootContainerView: View {
                 tabContextVM.userTabs.removeAll { $0.id == deletedId }
                 tabContextVM.activeTab = nil
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(nil, for: convKey)
+                    tabContextVM.cacheTab(nil, for: convKey)
                     Task { try? await TabService.shared.removeConversationMapping(conversationKey: convKey) }
                 }
             },
@@ -1213,7 +1213,7 @@ struct RootContainerView: View {
                 tabInviteCameFromTabView = false
                 tabContextVM.activeTab = tab
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(tab, for: convKey)
+                    tabContextVM.cacheTab(tab, for: convKey)
                 }
                 onCollapse()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -1298,7 +1298,7 @@ struct RootContainerView: View {
                 tabContextVM.activeTab = tab
                 tabContextVM.pendingTabInviteId = nil
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(tab, for: convKey)
+                    tabContextVM.cacheTab(tab, for: convKey)
                     Task {
                         try? await TabService.shared.associateConversation(
                             tabId: tab.id ?? "",

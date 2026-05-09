@@ -877,7 +877,7 @@ extension MessagesViewController {
             if cached.memberIds.contains(myId) {
                 setActiveTabIfChanged(cached)
                 if let ck = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(cached, for: ck)
+                    tabContextVM.cacheTab(cached, for: ck)
                 }
             }
             // Non-member: SplitsSummaryView's locked screen handles the UI
@@ -889,7 +889,7 @@ extension MessagesViewController {
             if tab.memberIds.contains(myId) {
                 setActiveTabIfChanged(tab)
                 if let ck = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(tab, for: ck)
+                    tabContextVM.cacheTab(tab, for: ck)
                 }
             }
             // Non-member: SplitsSummaryView's locked screen handles the UI
@@ -913,7 +913,7 @@ extension MessagesViewController {
         if let convKey = tabContextVM.conversationKey {
             // Instant: restore from local cache so the tab shows immediately
             if coordinator.currentScreen != .joinTab {
-                setActiveTabIfChanged(TabService.shared.cachedTab(for: convKey))
+                setActiveTabIfChanged(tabContextVM.cachedTab(for: convKey))
             }
 
             Task { @MainActor in
@@ -937,10 +937,10 @@ extension MessagesViewController {
                         // (guards against tabs the user has left).
                         if let t = tab, t.memberIds.contains(myId) {
                             setActiveTabIfChanged(t)
-                            TabService.shared.cacheTab(t, for: convKey)
+                            tabContextVM.cacheTab(t, for: convKey)
                         } else {
                             setActiveTabIfChanged(nil)
-                            TabService.shared.cacheTab(nil, for: convKey)
+                            tabContextVM.cacheTab(nil, for: convKey)
                         }
                     } catch {
                         // Keep the cached tab on transient lookup failures instead of
@@ -1286,7 +1286,7 @@ extension MessagesViewController {
                             self.tabContextVM.activeTab = refreshed
                         }
                         if let ck = self.tabContextVM.conversationKey {
-                            TabService.shared.cacheTab(refreshed, for: ck)
+                            tabContextVM.cacheTab(refreshed, for: ck)
                         }
                     }
                     print("[sendBillMessage] Synced tab aggregates for \(tabId)")
@@ -1404,7 +1404,7 @@ extension MessagesViewController {
                 }
 
                 if let convKey = tabContextVM.conversationKey {
-                    TabService.shared.cacheTab(refreshedTab, for: convKey)
+                    tabContextVM.cacheTab(refreshedTab, for: convKey)
                     do {
                         try await TabService.shared.associateConversation(
                             tabId: tabId,

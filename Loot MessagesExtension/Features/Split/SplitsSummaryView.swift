@@ -769,23 +769,7 @@ struct SplitsSummaryView: View {
     }
 
     private func persistSplit(broadcast: Bool = true, action: BillUpdateAction = .edited) {
-        guard var payload = messageReceiptVM.openedMessagePayload,
-              let docId = messageReceiptVM.openedMessageDocId else { return }
-
-        payload.s = split
-        messageReceiptVM.openedMessagePayload = payload
-        if broadcast {
-            bus.sendBillUpdate(payload: payload, docId: docId, action: action)
-        }
-
-        Task {
-            do {
-                try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
-                print("[SplitsSummaryView] Split persisted to \(docId)")
-            } catch {
-                print("[SplitsSummaryView] Failed to persist split: \(error)")
-            }
-        }
+        messageReceiptVM.persist(split: split, broadcast: broadcast, action: action, via: bus)
     }
 
     @ViewBuilder

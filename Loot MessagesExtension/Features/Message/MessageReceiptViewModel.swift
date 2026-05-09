@@ -133,6 +133,38 @@ final class MessageReceiptViewModel: ObservableObject {
         return out
     }
 
+    // MARK: - Persistence
+
+    /// Updates the in-memory payload with a new split, optionally broadcasts
+    /// the change via the message bus (so iMessage retracts and replaces the
+    /// bubble), and persists the updated payload to Firestore.
+    ///
+    /// No-op if no bubble is currently opened (no payload/docId).
+    func persist(
+        split: SplitPayload,
+        broadcast: Bool = true,
+        action: BillUpdateAction = .edited,
+        via bus: MessageBus
+    ) {
+        guard var payload = openedMessagePayload,
+              let docId = openedMessageDocId else { return }
+
+        payload.s = split
+        openedMessagePayload = payload
+        if broadcast {
+            bus.sendBillUpdate(payload: payload, docId: docId, action: action)
+        }
+
+        Task {
+            do {
+                try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
+                print("[MessageReceiptViewModel] Split persisted to \(docId)")
+            } catch {
+                print("[MessageReceiptViewModel] Failed to persist split: \(error)")
+            }
+        }
+    }
+
     // MARK: - Reset
 
     /// Clears bubble + ignored-UUID + pending-pay state. Called from
