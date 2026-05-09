@@ -131,6 +131,37 @@ final class MessagesViewController: MSMessagesAppViewController {
         isConversationAutoSendReady = true
         registerAsActiveDrawerControllerIfNeeded()
         flushAllPendingBillUpdatesIfNeeded(conversation: conversation)
+        refreshPaymentMethodsFromFirestore()
+    }
+
+    // MARK: - Payment methods sync
+
+    /// Pulls the local user's payment methods from Firestore and updates the
+    /// UserDefaults cache if they differ. The Keychain UUID syncs across
+    /// iCloud-shared devices (kSecAttrSynchronizable=true), so both phones
+    /// hit the same `users/{userId}` doc — but payment methods themselves
+    /// live in UserDefaults.standard which is per-device. Without this
+    /// fetch-on-launch hook, phone A's saved Venmo address never appears on
+    /// phone B until the user manually re-enters it.
+    ///
+    /// Fire-and-forget: a network failure leaves the local UserDefaults
+    /// cache untouched, so the worst case is "phone B sees stale methods
+    /// until next launch with connectivity," not data loss.
+    private func refreshPaymentMethodsFromFirestore() {
+        let userId = KeychainHelper.getOrCreateUserId()
+        Task {
+            do {
+                guard let remote = try await TabService.shared.fetchPaymentMethods(userId: userId) else {
+                    return
+                }
+                let local = savedPaymentMethods()
+                guard remote != local else { return }
+                savePaymentMethodsToDefaults(remote)
+                print("[PaymentMethods] Synced from Firestore: local=\(local.count) → remote=\(remote.count)")
+            } catch {
+                print("[PaymentMethods] Failed to fetch from Firestore: \(error)")
+            }
+        }
     }
 
     override func willResignActive(with conversation: MSConversation) {
