@@ -21,6 +21,7 @@
 //
 
 import Combine
+import FirebaseFirestore
 import Foundation
 import Messages
 import SwiftUI
@@ -34,8 +35,14 @@ final class MessageReceiptViewModel: ObservableObject {
     @Published var openedMessagePayload: LootMessagePayload? = nil
 
     /// Firestore doc ID of the opened message (needed for updates like
-    /// slot claims and bill-update broadcasts).
-    @Published var openedMessageDocId: String? = nil
+    /// slot claims and bill-update broadcasts). The `didSet` swaps a
+    /// Firestore snapshot listener via `syncOpenedReceiptListener` so the
+    /// open drawer stays in sync with remote slot claims / bill edits.
+    @Published var openedMessageDocId: String? = nil {
+        didSet {
+            syncOpenedReceiptListener(oldId: oldValue, newId: openedMessageDocId)
+        }
+    }
 
     /// Active iMessage session anchor for the currently opened bubble.
     /// Used by `sendBillUpdate` so Messages replaces the bubble in place
@@ -161,6 +168,45 @@ final class MessageReceiptViewModel: ObservableObject {
                 print("[MessageReceiptViewModel] Split persisted to \(docId)")
             } catch {
                 print("[MessageReceiptViewModel] Failed to persist split: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Live receipt listener
+
+    private var openedReceiptListener: ListenerRegistration? = nil
+
+    /// Tracks which docId the current listener is bound to so listener-fed
+    /// updates (which assign back to `openedMessagePayload` and may
+    /// re-trigger view reloads) can reject stale-firing snapshots after a
+    /// docId swap. Mirrors `TabContextViewModel.activeTabListenerId`.
+    private var openedReceiptListenerDocId: String? = nil
+
+    private func syncOpenedReceiptListener(oldId: String?, newId: String?) {
+        // Same id (or both nil) means a redundant assignment — leave the
+        // existing subscription alone. (Mirrors
+        // TabContextViewModel.syncActiveTabListener.)
+        guard oldId != newId else { return }
+
+        openedReceiptListener?.remove()
+        openedReceiptListener = nil
+        openedReceiptListenerDocId = nil
+
+        guard let newId, !newId.isEmpty else { return }
+
+        openedReceiptListenerDocId = newId
+        openedReceiptListener = SharedReceiptService.shared.listenToReceipt(docId: newId) { [weak self] payload in
+            guard let self, self.openedReceiptListenerDocId == newId else { return }
+            // Defensive equality check: skip if payload is unchanged. The
+            // listener fires for the local user's OWN writes too (every
+            // togglePaid / persistSplit / handleSplitSave round-trips
+            // Firestore and bounces back through the snapshot), and we
+            // don't want to re-render the view tree for a no-op update.
+            // Bug #1's root cause was the same shape of redundant
+            // @Published mutation; the equality check guards against
+            // reintroducing it here.
+            if self.openedMessagePayload != payload {
+                self.openedMessagePayload = payload
             }
         }
     }
