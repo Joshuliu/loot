@@ -136,7 +136,14 @@ struct SplitsSummaryView: View {
     private func unclaimCurrentUserIfNeeded() -> Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
         guard let gi = split.g.firstIndex(where: { $0.uid == myUid }) else { return false }
+        // Leaving a bill clears BOTH uid and the stored slot name. The
+        // display layer falls through to "Guest \(gi + 1)" automatically
+        // (see displayName(for:) above) so the slot reads as a clean
+        // unclaimed slot for whoever views the bill next. This is
+        // distinct from leaving a TAB (which preserves slot identity in
+        // historical bills); only opt-out-of-this-bill resets the slot.
         split.g[gi].uid = nil
+        split.g[gi].n = ""
         return true
     }
 
