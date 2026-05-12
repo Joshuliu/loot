@@ -55,7 +55,7 @@ struct TabInviteCardView: View {
         }
         .padding(.vertical, 14)
         .padding(.horizontal, 20)
-        .frame(width: 250, height: 150)
+        .frame(width: 260, height: 160)
         .background(Color(hex: tabColorHex))
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)

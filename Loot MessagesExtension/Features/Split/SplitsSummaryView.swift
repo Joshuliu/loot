@@ -10,7 +10,11 @@ import SwiftUI
 import UIKit
 
 struct SplitsSummaryView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
+    @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
+    let bus: MessageBus
     @State private var split: SplitPayload
     let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
     let onEditSplit: (() -> Void)?
@@ -20,12 +24,12 @@ struct SplitsSummaryView: View {
     let onRequestCollapse: (() -> Void)?
 
     private var canEdit: Bool {
-        guard let payload = uiModel.openedMessagePayload else { return false }
+        guard let payload = messageReceiptVM.openedMessagePayload else { return false }
         let myUid = KeychainHelper.getOrCreateUserId()
-        return payload.canEdit(myUid: myUid, userTabs: uiModel.userTabs)
+        return payload.canEdit(myUid: myUid, userTabs: tabContextVM.userTabs)
     }
 
-    private var isTabReceipt: Bool { uiModel.openedMessagePayload?.tid != nil }
+    private var isTabReceipt: Bool { messageReceiptVM.openedMessagePayload?.tid != nil }
 
     @State private var selectedIndex: Int? = nil
 
@@ -67,7 +71,11 @@ struct SplitsSummaryView: View {
     private let headerCollapseRange: CGFloat = 60
 
     init(
-        uiModel: LootUIModel,
+        coordinator: AppCoordinator,
+        receiptDraftVM: ReceiptDraftViewModel,
+        messageReceiptVM: MessageReceiptViewModel,
+        tabContextVM: TabContextViewModel,
+        bus: MessageBus,
         split: SplitPayload,
         items: [ReceiptItemPayload],
         onEditSplit: (() -> Void)? = nil,
@@ -76,7 +84,11 @@ struct SplitsSummaryView: View {
         onClose: (() -> Void)? = nil,
         onRequestCollapse: (() -> Void)? = nil
     ) {
-        self.uiModel = uiModel
+        self.coordinator = coordinator
+        self.receiptDraftVM = receiptDraftVM
+        self.messageReceiptVM = messageReceiptVM
+        self.tabContextVM = tabContextVM
+        self.bus = bus
         self._split = State(initialValue: split)
         self.items = items
         self.onEditSplit = onEditSplit
@@ -87,19 +99,19 @@ struct SplitsSummaryView: View {
     }
 
     private var receipt: ReceiptDisplay? {
-        uiModel.currentReceipt
+        receiptDraftVM.currentReceipt
     }
 
     private var captureImage: UIImage? {
-        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+        receiptDraftVM.scanImageCropped ?? receiptDraftVM.scanImageOriginal
     }
 
     private var currentBillId: String? {
-        uiModel.openedMessageDocId ?? uiModel.openedMessagePayload?.r.id
+        messageReceiptVM.openedMessageDocId ?? messageReceiptVM.openedMessagePayload?.r.id
     }
 
     private var hasIgnoredListForBill: Bool {
-        uiModel.hasIgnoredUUIDsList(for: currentBillId)
+        messageReceiptVM.hasIgnoredUUIDsList(for: currentBillId)
     }
 
     private var hasClaimableSlots: Bool {
@@ -108,28 +120,35 @@ struct SplitsSummaryView: View {
 
     private func addCurrentUserToIgnored() {
         let myUid = KeychainHelper.getOrCreateUserId()
-        uiModel.addIgnoredUUID(myUid, for: currentBillId)
+        messageReceiptVM.addIgnoredUUID(myUid, for: currentBillId)
     }
 
     private func removeCurrentUserFromIgnoredIfPresent() {
         let myUid = KeychainHelper.getOrCreateUserId()
-        uiModel.removeIgnoredUUID(myUid, for: currentBillId)
+        messageReceiptVM.removeIgnoredUUID(myUid, for: currentBillId)
     }
 
     private func isCurrentUserIgnored() -> Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
-        return uiModel.isIgnoredUUID(myUid, for: currentBillId)
+        return messageReceiptVM.isIgnoredUUID(myUid, for: currentBillId)
     }
 
     private func unclaimCurrentUserIfNeeded() -> Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
         guard let gi = split.g.firstIndex(where: { $0.uid == myUid }) else { return false }
+        // Leaving a bill clears BOTH uid and the stored slot name. The
+        // display layer falls through to "Guest \(gi + 1)" automatically
+        // (see displayName(for:) above) so the slot reads as a clean
+        // unclaimed slot for whoever views the bill next. This is
+        // distinct from leaving a TAB (which preserves slot identity in
+        // historical bills); only opt-out-of-this-bill resets the slot.
         split.g[gi].uid = nil
+        split.g[gi].n = ""
         return true
     }
 
     private var headerTitle: String {
-        receipt?.title ?? uiModel.openedMessagePayload?.r.t ?? "Receipt"
+        receipt?.title ?? messageReceiptVM.openedMessagePayload?.r.t ?? "Receipt"
     }
 
     private var headerDateText: String {
@@ -137,14 +156,14 @@ struct SplitsSummaryView: View {
     }
 
     private var associatedTab: LootTab? {
-        if let receiptTab = uiModel.receiptTab {
+        if let receiptTab = tabContextVM.receiptTab {
             return receiptTab
         }
-        if let payloadTab = uiModel.openedMessagePayload?.tab {
+        if let payloadTab = messageReceiptVM.openedMessagePayload?.tab {
             return LootTab.minimal(id: payloadTab.id, name: payloadTab.n, colorHex: payloadTab.c)
         }
         if isTabReceipt {
-            return uiModel.activeTab
+            return tabContextVM.activeTab
         }
         return nil
     }
@@ -173,10 +192,10 @@ struct SplitsSummaryView: View {
             // would briefly render "no members + UUID-as-name" until the
             // listener races back. The property-level guard in LootUIModel
             // also catches this, but skipping the write here is cleaner.
-            if let active = uiModel.activeTab, active.id == target.id {
+            if let active = tabContextVM.activeTab, active.id == target.id {
                 // Same tab — no-op, preserve the live state.
             } else {
-                uiModel.activeTab = target
+                tabContextVM.activeTab = target
             }
         }
         onClose?()
@@ -307,8 +326,8 @@ struct SplitsSummaryView: View {
 
     private func presentPendingRequestIfPossible() {
         guard paySheetInfo == nil,
-              let pending = uiModel.pendingPayRequest,
-              let docId = uiModel.openedMessageDocId,
+              let pending = messageReceiptVM.pendingPayRequest,
+              let docId = messageReceiptVM.openedMessageDocId,
               pending.receiptDocId == docId,
               let debtorId = pending.debtorId,
               let creditorId = pending.creditorId,
@@ -325,7 +344,7 @@ struct SplitsSummaryView: View {
             guestIndex: debtorIndex,
             methods: methods
         )
-        uiModel.pendingPayRequest = nil
+        messageReceiptVM.pendingPayRequest = nil
     }
 
     private var includedIndices: [Int] {
@@ -530,13 +549,13 @@ struct SplitsSummaryView: View {
                 .buttonStyle(.plain)
             } else if canRequest {
                 Button {
-                    uiModel.sendRequestCard?(
-                        to,
-                        from,
-                        amount,
-                        nil,
-                        RequestCardMetadata(
-                            receiptDocId: uiModel.openedMessageDocId,
+                    bus.sendRequestCard(
+                        creditorName: to,
+                        debtorName: from,
+                        amountCents: amount,
+                        tabColorHex: nil,
+                        metadata: RequestCardMetadata(
+                            receiptDocId: messageReceiptVM.openedMessageDocId,
                             tabId: nil,
                             creditorId: split.g[split.pi].uid,
                             debtorId: split.g[guestIndex].uid
@@ -655,19 +674,16 @@ struct SplitsSummaryView: View {
         let myUid = KeychainHelper.getOrCreateUserId()
         split.g[guestIndex].uid = myUid
 
-        // Embed the joiner's local display name into the wire payload when
-        // the slot's name is empty. The sender's view falls through to
-        // g.n when uidDisplayNames hasn't been populated yet (the recipient's
-        // Firestore user doc may not exist or may not have synced), so
-        // without this, the sender keeps seeing "Guest N" until a separate
-        // round-trip resolves the name. We deliberately only fill empty
-        // slots — a manually-entered name from the bill creator wins.
-        let trimmedExisting = split.g[guestIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedExisting.isEmpty {
-            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-            if !myName.isEmpty {
-                split.g[guestIndex].n = myName
-            }
+        // Per spec: g[i].n is the SENDER-set stored name and is never
+        // overwritten by joiners. Display falls through to g.n only when
+        // uid is unset; with uid set, the recipient's view looks up the
+        // user's display name via the Firestore users/{uid} doc.
+        // To shrink the lookup race for cross-sender viewers, ensure our
+        // user doc carries our current display name before the broadcast
+        // has propagated.
+        let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !myName.isEmpty {
+            Task { try? await TabService.shared.createOrUpdateUser(userId: myUid, displayName: myName) }
         }
 
         removeCurrentUserFromIgnoredIfPresent()
@@ -760,23 +776,7 @@ struct SplitsSummaryView: View {
     }
 
     private func persistSplit(broadcast: Bool = true, action: BillUpdateAction = .edited) {
-        guard var payload = uiModel.openedMessagePayload,
-              let docId = uiModel.openedMessageDocId else { return }
-
-        payload.s = split
-        uiModel.openedMessagePayload = payload
-        if broadcast {
-            uiModel.sendBillUpdate?(payload, docId, action)
-        }
-
-        Task {
-            do {
-                try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
-                print("[SplitsSummaryView] Split persisted to \(docId)")
-            } catch {
-                print("[SplitsSummaryView] Failed to persist split: \(error)")
-            }
-        }
+        messageReceiptVM.persist(split: split, broadcast: broadcast, action: action, via: bus)
     }
 
     @ViewBuilder
@@ -810,7 +810,7 @@ struct SplitsSummaryView: View {
         if let receipt {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(spacing: 0) {
-                        if uiModel.itemsLoadingState.isLoading {
+                        if receiptDraftVM.itemsLoadingState.isLoading {
                             VStack(spacing: 12) {
                                 ProgressView()
                                     .scaleEffect(0.9)
@@ -1302,7 +1302,7 @@ struct SplitsSummaryView: View {
             initializedClaimStateBillId = initBillId
             reconcileClaimState(shouldAutoJoin: true)
         }
-        .onChange(of: uiModel.openedMessagePayload?.s) { _, latestSplit in
+        .onChange(of: messageReceiptVM.openedMessagePayload?.s) { _, latestSplit in
             guard let latestSplit, latestSplit != split else { return }
             split = latestSplit
             reconcileClaimState()
@@ -1311,8 +1311,8 @@ struct SplitsSummaryView: View {
             let myUid = KeychainHelper.getOrCreateUserId()
 
             // Check tab membership — non-members see a locked view
-            if isTabReceipt, let tabId = uiModel.openedMessagePayload?.tid {
-                if uiModel.userTabs.contains(where: { $0.id == tabId }) {
+            if isTabReceipt, let tabId = messageReceiptVM.openedMessagePayload?.tid {
+                if tabContextVM.userTabs.contains(where: { $0.id == tabId }) {
                     tabMembershipState = .member
                 } else {
                     let tab = try? await TabService.shared.fetchTab(id: tabId)
@@ -1330,7 +1330,7 @@ struct SplitsSummaryView: View {
             }
 
         }
-        .onChange(of: uiModel.openedMessagePayload?.s) { _, newSplit in
+        .onChange(of: messageReceiptVM.openedMessagePayload?.s) { _, newSplit in
             if let newSplit {
                 split = newSplit
                 // The fresh payload may have introduced new uids
@@ -1345,29 +1345,56 @@ struct SplitsSummaryView: View {
             presentPendingRequestIfPossible()
         }
         .sheet(item: $paySheetInfo) { info in
-            let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
-            let sendSettlement = uiModel.sendSettlementCard
+            let note = messageReceiptVM.openedMessagePayload?.r.t ?? "Loot"
             TabPayNowSheet(
                 toName: info.toName,
                 amountCents: info.amountCents,
                 methods: info.methods,
                 tabColorHex: nil,
                 onSelectMethod: { method in
-                    // Apple Pay: stage the compact-mode reminder, send the
-                    // settlement card, navigate back to tabview (the receipt
-                    // viewer would otherwise hide the compact reminder behind
-                    // it), then collapse the extension.
+                    // ORDERING RULE: togglePaid (which broadcasts the bill
+                    // update via persistSplit → bus.sendBillUpdate) MUST fire
+                    // FIRST, before any other conversation.send or extension
+                    // dismissal. The broadcast retracts+replaces the original
+                    // bubble with the paid-marked card, and only auto-sends
+                    // when isConversationAutoSendReady is true at the moment
+                    // iOS processes the call. Subsequent operations
+                    // (sendSettlementCard's conversation.send, sendApplePayHandoff,
+                    // openInSafari) all degrade auto-send eligibility — even
+                    // when called synchronously in the same tap closure, iOS
+                    // appears to invalidate the user-tap context after the
+                    // first conversation.send, so a bill update fired second
+                    // gets demoted from `conversation.send` to "insert into
+                    // draft" and the user has to manually send (which then
+                    // appends a new bubble instead of retracting).
+                    //
+                    // SETTLEMENT CARD POLICY: only sent for tab-attached
+                    // receipts. For a non-tabbed receipt, the bill-update
+                    // broadcast above already retracts+replaces the bubble
+                    // with paid styling — that IS the "sent" signal. A
+                    // separate "sent a payment" card would be redundant
+                    // chat clutter. For tab-attached receipts the
+                    // settlement card represents the user's payment
+                    // against the tab balance and is kept.
+                    //
+                    // Apple Pay: stage the compact-mode reminder, broadcast
+                    // the bill update, optionally send the handoff card
+                    // (tab receipts only), navigate back to tabview (the
+                    // receipt viewer would otherwise hide the compact
+                    // reminder behind it), then collapse the extension.
                     if method.type == .applePay {
                         let tabColor = associatedTab?.colorHex
-                        uiModel.pendingApplePayInfo = PendingApplePayInfo(
+                        messageReceiptVM.pendingApplePayInfo = PendingApplePayInfo(
                             toName: info.toName,
                             amountCents: info.amountCents,
                             tabColorHex: tabColor
                         )
-                        uiModel.sendApplePayHandoff?(info.fromName, info.toName,
-                                                    info.amountCents, tabColor)
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                             togglePaid(guestIndex: info.guestIndex)
+                        }
+                        if isTabReceipt {
+                            bus.sendApplePayHandoff(fromName: info.fromName, toName: info.toName,
+                                                    amountCents: info.amountCents, tabColorHex: tabColor)
                         }
                         // Preserve the tab association so LootTabView can color
                         // its compact strip with the same tab as the receipt.
@@ -1375,8 +1402,8 @@ struct SplitsSummaryView: View {
                         // tab — `associatedTab` may be a payload-derived
                         // minimal stub that would downgrade rich live state.
                         if let target = associatedTab,
-                           uiModel.activeTab?.id != target.id {
-                            uiModel.activeTab = target
+                           tabContextVM.activeTab?.id != target.id {
+                            tabContextVM.activeTab = target
                         }
                         onClose?()
                         onRequestCollapse?()
@@ -1398,17 +1425,19 @@ struct SplitsSummaryView: View {
                         payeeName: info.toName,
                         zelleData: method.zelleData
                     )
-                    sendSettlement?(info.fromName, info.toName,
-                                    info.amountCents, method.type.displayName, nil)
-                    if let url = deepLink {
-                        // extensionContext.open is required in iMessage extensions —
-                        // SwiftUI's openURL silently no-ops for non-http schemes here.
-                        if let opener = uiModel.openInSafari { opener(url) } else { openURL(url) }
-                    } else if method.type == .zelle {
-                        UIPasteboard.general.string = method.identifier
-                    }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         togglePaid(guestIndex: info.guestIndex)
+                    }
+                    if isTabReceipt {
+                        bus.sendSettlementCard(fromName: info.fromName, toName: info.toName,
+                                               amountCents: info.amountCents,
+                                               methodName: method.type.displayName,
+                                               tabColorHex: nil)
+                    }
+                    if let url = deepLink {
+                        bus.openInSafari(url)
+                    } else if method.type == .zelle {
+                        UIPasteboard.general.string = method.identifier
                     }
                 }
             )

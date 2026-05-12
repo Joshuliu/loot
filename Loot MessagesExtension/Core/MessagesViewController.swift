@@ -19,8 +19,11 @@ final class MessagesViewController: MSMessagesAppViewController {
     private static let activeDrawerControllerRef = WeakControllerRef()
 
     // Lazy so transcript bubble instances never allocate these
-    private lazy var uiModel = LootUIModel()
-    private lazy var hostingController = UIHostingController(rootView: RootContainerView(uiModel: uiModel))
+    private lazy var coordinator = AppCoordinator()
+    private lazy var receiptDraftVM = ReceiptDraftViewModel()
+    private lazy var messageReceiptVM = MessageReceiptViewModel()
+    private lazy var tabContextVM = TabContextViewModel()
+    private lazy var hostingController = UIHostingController(rootView: RootContainerView(coordinator: coordinator, receiptDraftVM: receiptDraftVM, messageReceiptVM: messageReceiptVM, tabContextVM: tabContextVM, bus: self))
     private var hasSetupRootView = false
     private var isTranscript = false
     private var isConversationAutoSendReady = false
@@ -80,30 +83,10 @@ final class MessagesViewController: MSMessagesAppViewController {
         // is authenticated before the first write fires.
         Task { try? await SharedReceiptService.shared.ensureAnonymousAuth() }
 
-        uiModel.openInSafari = { [weak self] url in
-            self?.extensionContext?.open(url, completionHandler: nil)
-        }
-
-        uiModel.sendSettlementCard = { [weak self] fromName, toName, amountCents, methodName, tabColorHex in
-            self?.sendSettlementMessage(fromName: fromName, toName: toName,
-                                        amountCents: amountCents, methodName: methodName,
-                                        tabColorHex: tabColorHex)
-        }
-
-        uiModel.sendApplePayHandoff = { [weak self] fromName, toName, amountCents, tabColorHex in
-            self?.sendApplePayHandoff(fromName: fromName, toName: toName,
-                                      amountCents: amountCents, tabColorHex: tabColorHex)
-        }
-
-        uiModel.sendRequestCard = { [weak self] creditorName, debtorName, amountCents, tabColorHex, metadata in
-            self?.sendRequestMessage(creditorName: creditorName, debtorName: debtorName,
-                                     amountCents: amountCents, tabColorHex: tabColorHex,
-                                     metadata: metadata)
-        }
-
-        uiModel.sendBillUpdate = { [weak self] payload, docId, action in
-            self?.sendBillUpdate(payload: payload, docId: docId, action: action)
-        }
+        // Phase 3 step 13b: the five UIKit-bridge closures that used to be
+        // assigned on `uiModel` are now methods on the `MessageBus`
+        // protocol below (see extension at the bottom of this file).
+        // Views inject `let bus: MessageBus = self` and call directly.
 
         view.isOpaque = true
         view.backgroundColor = .systemBackground
@@ -148,6 +131,37 @@ final class MessagesViewController: MSMessagesAppViewController {
         isConversationAutoSendReady = true
         registerAsActiveDrawerControllerIfNeeded()
         flushAllPendingBillUpdatesIfNeeded(conversation: conversation)
+        refreshPaymentMethodsFromFirestore()
+    }
+
+    // MARK: - Payment methods sync
+
+    /// Pulls the local user's payment methods from Firestore and updates the
+    /// UserDefaults cache if they differ. The Keychain UUID syncs across
+    /// iCloud-shared devices (kSecAttrSynchronizable=true), so both phones
+    /// hit the same `users/{userId}` doc — but payment methods themselves
+    /// live in UserDefaults.standard which is per-device. Without this
+    /// fetch-on-launch hook, phone A's saved Venmo address never appears on
+    /// phone B until the user manually re-enters it.
+    ///
+    /// Fire-and-forget: a network failure leaves the local UserDefaults
+    /// cache untouched, so the worst case is "phone B sees stale methods
+    /// until next launch with connectivity," not data loss.
+    private func refreshPaymentMethodsFromFirestore() {
+        let userId = KeychainHelper.getOrCreateUserId()
+        Task {
+            do {
+                guard let remote = try await TabService.shared.fetchPaymentMethods(userId: userId) else {
+                    return
+                }
+                let local = savedPaymentMethods()
+                guard remote != local else { return }
+                savePaymentMethodsToDefaults(remote)
+                print("[PaymentMethods] Synced from Firestore: local=\(local.count) → remote=\(remote.count)")
+            } catch {
+                print("[PaymentMethods] Failed to fetch from Firestore: \(error)")
+            }
+        }
     }
 
     override func willResignActive(with conversation: MSConversation) {
@@ -169,7 +183,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         super.didTransition(to: presentationStyle)
         guard !isTranscript else { return }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-            uiModel.isExpanded = (presentationStyle == .expanded)
+            coordinator.isExpanded = (presentationStyle == .expanded)
         }
 
         // Force layout so the hosting controller picks up the new container size
@@ -187,12 +201,12 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func setActiveTabIfChanged(_ tab: LootTab?) {
-        let currentId = uiModel.activeTab?.id
+        let currentId = tabContextVM.activeTab?.id
         let newId = tab?.id
 
         if currentId == newId {
-            if currentId == nil, uiModel.activeTab == nil, tab == nil { return }
-            if let current = uiModel.activeTab, let tab {
+            if currentId == nil, tabContextVM.activeTab == nil, tab == nil { return }
+            if let current = tabContextVM.activeTab, let tab {
                 // Don't downgrade rich state to a minimal stub for the same tab.
                 // Settlement-card and bubble URL paths build a `LootTab.minimal`
                 // (empty members) so the UI can render immediately while full
@@ -216,7 +230,7 @@ final class MessagesViewController: MSMessagesAppViewController {
             }
         }
 
-        uiModel.activeTab = tab
+        tabContextVM.activeTab = tab
     }
 
     // MARK: - Transcript (lightweight UIKit-only path)
@@ -270,19 +284,13 @@ final class MessagesViewController: MSMessagesAppViewController {
         var updated = original
         updated.s.g[claimIndex].uid = myUid
 
-        // Embed the joiner's local display name when the slot's name is
-        // empty. Without this, the broadcast bubble carries an unnamed
-        // slot, and the sender's view falls through to "Guest N" until
-        // the Firestore users/{uid} lookup resolves (which can fail
-        // silently if the joiner's user doc isn't synced yet).
-        // A manually-entered name from the bill creator wins.
-        let trimmedExisting = updated.s.g[claimIndex].n.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmedExisting.isEmpty {
-            let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-            if !myName.isEmpty {
-                updated.s.g[claimIndex].n = myName
-            }
-        }
+        // Per spec: g[i].n is sender-set and never overwritten by joiners.
+        // The drawer's autoClaimSlotAfterViewLoad path writes our user doc
+        // to Firestore so the sender's view can resolve our display name
+        // via the standard users/{uid} lookup. Transcript controller has
+        // no Firebase, so we can't write here — but the drawer always
+        // expands within ~200ms after this broadcast, and its claimSlot
+        // call upserts the user doc.
 
         let cardImage = renderCardImage(
             receiptName: updated.r.t,
@@ -393,12 +401,15 @@ final class MessagesViewController: MSMessagesAppViewController {
            !tabId.isEmpty {
             let tabName = comps?.queryItems?.first(where: { $0.name == "tn" })?.value ?? "Tab"
             let tabColorHex = comps?.queryItems?.first(where: { $0.name == "tc" })?.value
+            let creatorName = comps?.queryItems?.first(where: { $0.name == "cn" })?.value ?? ""
+            let joinedCount = Int(comps?.queryItems?.first(where: { $0.name == "jc" })?.value ?? "") ?? 0
+            let targetCount = Int(comps?.queryItems?.first(where: { $0.name == "mc" })?.value ?? "") ?? 0
             let card = TabInviteCardView(
                 tabName: tabName,
                 tabColorHex: tabColorHex ?? "#007AFF",
-                creatorName: "",
-                joinedCount: 0,
-                targetCount: 0,
+                creatorName: creatorName,
+                joinedCount: joinedCount,
+                targetCount: targetCount,
                 showJoinPulse: true
             )
             embedTranscriptCard(AnyView(card))
@@ -493,8 +504,8 @@ extension MessagesViewController {
     }
 
     private func shouldAdoptFetchedPayload(_ fetched: LootMessagePayload, for docId: String) -> Bool {
-        guard uiModel.openedMessageDocId == docId else { return true }
-        guard let current = uiModel.openedMessagePayload else { return true }
+        guard messageReceiptVM.openedMessageDocId == docId else { return true }
+        guard let current = messageReceiptVM.openedMessagePayload else { return true }
 
         let fetchedSignature = splitSignature(for: fetched.s)
         let currentSignature = splitSignature(for: current.s)
@@ -677,8 +688,8 @@ extension MessagesViewController {
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
-        let ignoredToWrite: [String]? = uiModel.hasIgnoredUUIDsList(for: docId)
-            ? uiModel.ignoredUUIDs(for: docId)
+        let ignoredToWrite: [String]? = messageReceiptVM.hasIgnoredUUIDsList(for: docId)
+            ? messageReceiptVM.ignoredUUIDs(for: docId)
             : nil
         LootMessageCodec.writePayload(
             into: &components,
@@ -715,7 +726,7 @@ extension MessagesViewController {
 
     private func applyMessage(_ message: MSMessage?, conversation: MSConversation) {
         // expansion state
-        uiModel.isExpanded = (presentationStyle == .expanded)
+        coordinator.isExpanded = (presentationStyle == .expanded)
 
         guard let msg = message, let url = msg.url else { return }
         let comps = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -726,12 +737,12 @@ extension MessagesViewController {
            let senderMajor = Int(mvString),
            senderMajor > LootVersion.major {
             requestPresentationStyle(.expanded)
-            uiModel.currentScreen = .updateRequired
+            coordinator.currentScreen = .updateRequired
             return
         }
 
         let pendingRequest = pendingPayRequest(from: comps)
-        uiModel.pendingPayRequest = pendingRequest
+        messageReceiptVM.pendingPayRequest = pendingRequest
         if pendingRequest != nil {
             requestPresentationStyle(.expanded)
         }
@@ -747,34 +758,34 @@ extension MessagesViewController {
             let inlinePayload = decodedInline?.payload
 
             if let decodedInline {
-                uiModel.setInlineIgnoredState(
+                messageReceiptVM.setInlineIgnoredState(
                     ignoredUUIDs: decodedInline.ignoredUUIDs,
                     hasList: decodedInline.hasIgnoredUUIDsList,
                     for: docId
                 )
-                uiModel.openedMessagePayload = decodedInline.payload
-                uiModel.currentReceipt = decodedInline.payload.toReceiptDisplay()
-                uiModel.messageLoadingState = .loaded(decodedInline.payload)
+                messageReceiptVM.openedMessagePayload = decodedInline.payload
+                receiptDraftVM.currentReceipt = decodedInline.payload.toReceiptDisplay()
+                messageReceiptVM.messageLoadingState = .loaded(decodedInline.payload)
             } else {
                 // No local payload available, so fall back to the loading state.
-                uiModel.openedMessagePayload = nil
-                uiModel.messageLoadingState = .loading
-                uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
+                messageReceiptVM.openedMessagePayload = nil
+                messageReceiptVM.messageLoadingState = .loading
+                messageReceiptVM.setInlineIgnoredState(ignoredUUIDs: [], hasList: false, for: docId)
             }
 
-            uiModel.openedMessageDocId = docId
-            uiModel.currentScreen = .messageViewer
+            messageReceiptVM.openedMessageDocId = docId
+            coordinator.currentScreen = .messageViewer
 
             Task { @MainActor in
                 do {
                     let (payload, captureImage) = try await SharedReceiptService.shared.fetch(id: docId)
                     guard shouldAdoptFetchedPayload(payload, for: docId) else { return }
-                    uiModel.openedMessagePayload = payload
-                    uiModel.currentReceipt = payload.toReceiptDisplay()
+                    messageReceiptVM.openedMessagePayload = payload
+                    receiptDraftVM.currentReceipt = payload.toReceiptDisplay()
                     if let captureImage {
-                        uiModel.scanImageCropped = captureImage
+                        receiptDraftVM.scanImageCropped = captureImage
                     }
-                    uiModel.messageLoadingState = .loaded(payload)
+                    messageReceiptVM.messageLoadingState = .loaded(payload)
                     if let tabData = payload.tab { await applyTabData(tabData) }
                 } catch {
                     print("[applyMessage] Firestore fetch failed: \(error)")
@@ -782,9 +793,9 @@ extension MessagesViewController {
                         // Use the baked-in payload so the receipt opens immediately,
                         // even without a network connection.
                         print("[applyMessage] Falling back to inline payload for \(docId)")
-                        uiModel.openedMessagePayload = inline
-                        uiModel.currentReceipt = inline.toReceiptDisplay()
-                        uiModel.messageLoadingState = .loaded(inline)
+                        messageReceiptVM.openedMessagePayload = inline
+                        receiptDraftVM.currentReceipt = inline.toReceiptDisplay()
+                        messageReceiptVM.messageLoadingState = .loaded(inline)
                         if let tabData = inline.tab { await applyTabData(tabData) }
                         // Heal: upload the inline payload to Firestore so future
                         // recipients (and slot-claim updates) can use the doc.
@@ -797,7 +808,7 @@ extension MessagesViewController {
                             }
                         }
                     } else {
-                        uiModel.messageLoadingState = .failed(error)
+                        messageReceiptVM.messageLoadingState = .failed(error)
                     }
                 }
             }
@@ -813,13 +824,13 @@ extension MessagesViewController {
             // Navigate immediately so the screen change is synchronous —
             // avoids race with didTransition when re-tapping the same invite.
             requestPresentationStyle(.expanded)
-            uiModel.pendingTabInviteId = tabId
-            uiModel.currentScreen = .joinTab
+            tabContextVM.pendingTabInviteId = tabId
+            coordinator.currentScreen = .joinTab
             // Bump the nonce so re-tapping the SAME invite while JoinTabView
             // is already on screen triggers a fresh fetch — without this,
             // both `pendingTabInviteId` and `currentScreen` are unchanged
             // and SwiftUI's `.task(id:)` doesn't re-fire.
-            uiModel.pendingTabInviteRefreshNonce &+= 1
+            tabContextVM.pendingTabInviteRefreshNonce &+= 1
             return
         }
 
@@ -837,13 +848,13 @@ extension MessagesViewController {
             }
             // Try to upgrade with full tab data in background
             Task { @MainActor in
-                if let cached = uiModel.userTabs.first(where: { $0.id == tabId }) {
+                if let cached = tabContextVM.userTabs.first(where: { $0.id == tabId }) {
                     setActiveTabIfChanged(cached)
                 } else if let full = try? await TabService.shared.fetchTab(id: tabId) {
                     setActiveTabIfChanged(full)
                 }
             }
-            uiModel.currentScreen = .tabview
+            coordinator.currentScreen = .tabview
             return
         }
 
@@ -851,35 +862,53 @@ extension MessagesViewController {
         if let decodedInline = LootMessageCodec.decodedInlinePayload(from: url) {
             let billId = decodedInline.payload.r.id
             bindBillUpdateAnchor(from: msg, docId: billId, conversation: conversation)
-            uiModel.setInlineIgnoredState(
+            messageReceiptVM.setInlineIgnoredState(
                 ignoredUUIDs: decodedInline.ignoredUUIDs,
                 hasList: decodedInline.hasIgnoredUUIDsList,
                 for: billId
             )
             let payload = decodedInline.payload
-            uiModel.openedMessagePayload = payload
-            uiModel.openedMessageDocId = billId
-            uiModel.currentReceipt = payload.toReceiptDisplay()
-            uiModel.currentScreen = .messageViewer
+            messageReceiptVM.openedMessagePayload = payload
+            messageReceiptVM.openedMessageDocId = billId
+            receiptDraftVM.currentReceipt = payload.toReceiptDisplay()
+            coordinator.currentScreen = .messageViewer
             if let tabData = payload.tab { Task { @MainActor in await self.applyTabData(tabData) } }
         }
     }
 
     private func applyTabData(_ tabData: TabPayload) async {
         let minimal = LootTab.minimal(id: tabData.id, name: tabData.n, colorHex: tabData.c)
-        uiModel.receiptTab = minimal
+
+        // Only assign receiptTab when activeTab doesn't already cover this
+        // tab. This is the ONLY @Published mutation that fires differently
+        // between tab and non-tab bills in the applyMessage flow — for the
+        // SENDER of a tab bill, activeTab already points at the same tab,
+        // so receiptTab is redundant. Setting it anyway fires a SwiftUI
+        // re-render across the drawer view tree, and that re-render
+        // (during the bubble's lifecycle, between tap-time and edit-time)
+        // appears to be what invalidates iOS's cached MSSession reference
+        // for the bubble — causing subsequent edit broadcasts to silently
+        // append a new bubble instead of retracting in place. Skipping the
+        // assignment when redundant collapses the tab-edit workflow into
+        // exactly the same shape as non-tab. All readers of receiptTab
+        // (SplitsSummaryView.associatedTab, settlement URL builders) fall
+        // back to activeTab when receiptTab is nil, so visual styling is
+        // preserved.
+        if tabContextVM.activeTab?.id != tabData.id {
+            tabContextVM.receiptTab = minimal
+        }
 
         // No switch needed if the receipt belongs to the already-active tab
-        guard uiModel.activeTab?.id != tabData.id else { return }
+        guard tabContextVM.activeTab?.id != tabData.id else { return }
 
         let myId = KeychainHelper.getOrCreateUserId()
 
         // Check local cache first (avoids a network round-trip)
-        if let cached = uiModel.userTabs.first(where: { $0.id == tabData.id }) {
+        if let cached = tabContextVM.userTabs.first(where: { $0.id == tabData.id }) {
             if cached.memberIds.contains(myId) {
                 setActiveTabIfChanged(cached)
-                if let ck = uiModel.conversationKey {
-                    TabService.shared.cacheTab(cached, for: ck)
+                if let ck = tabContextVM.conversationKey {
+                    tabContextVM.cacheTab(cached, for: ck)
                 }
             }
             // Non-member: SplitsSummaryView's locked screen handles the UI
@@ -890,8 +919,8 @@ extension MessagesViewController {
         if let tab = try? await TabService.shared.fetchTab(id: tabData.id) {
             if tab.memberIds.contains(myId) {
                 setActiveTabIfChanged(tab)
-                if let ck = uiModel.conversationKey {
-                    TabService.shared.cacheTab(tab, for: ck)
+                if let ck = tabContextVM.conversationKey {
+                    tabContextVM.cacheTab(tab, for: ck)
                 }
             }
             // Non-member: SplitsSummaryView's locked screen handles the UI
@@ -904,25 +933,25 @@ extension MessagesViewController {
         // Cache localParticipantIdentifier for convenience
         let localId = conversation.localParticipantIdentifier.uuidString
         UserDefaults.standard.set(localId, forKey: DefaultsKeys.localParticipantId)
-        uiModel.localParticipantId = localId
+        tabContextVM.localParticipantId = localId
 
         // Compute conversation key from ALL participant identifiers (local + remote)
         var identifiers = conversation.remoteParticipantIdentifiers.map { $0.uuidString }
         identifiers.append(localId)
-        uiModel.conversationKey = TabService.conversationKey(from: identifiers)
+        tabContextVM.conversationKey = TabService.conversationKey(from: identifiers)
 
         // Try to load active tab for this conversation and sync user doc
-        if let convKey = uiModel.conversationKey {
+        if let convKey = tabContextVM.conversationKey {
             // Instant: restore from local cache so the tab shows immediately
-            if uiModel.currentScreen != .joinTab {
-                setActiveTabIfChanged(TabService.shared.cachedTab(for: convKey))
+            if coordinator.currentScreen != .joinTab {
+                setActiveTabIfChanged(tabContextVM.cachedTab(for: convKey))
             }
 
             Task { @MainActor in
                 // Only restore the conversation's tab if we're not in the middle
                 // of a join flow — otherwise this would overwrite the tab the user
                 // is about to join / just joined.
-                if uiModel.currentScreen != .joinTab {
+                if coordinator.currentScreen != .joinTab {
                     let myId = KeychainHelper.getOrCreateUserId()
                     do {
                         let tab = try await TabService.shared.getTabForConversation(conversationKey: convKey)
@@ -930,19 +959,19 @@ extension MessagesViewController {
                         // Store conversation member IDs for tab relevance sorting,
                         // regardless of whether the current user is still a member.
                         if let t = tab {
-                            uiModel.conversationMemberIds = Set(t.memberIds)
+                            tabContextVM.conversationMemberIds = Set(t.memberIds)
                         } else {
-                            uiModel.conversationMemberIds = []
+                            tabContextVM.conversationMemberIds = []
                         }
 
                         // Only set as active if this user is still an active member
                         // (guards against tabs the user has left).
                         if let t = tab, t.memberIds.contains(myId) {
                             setActiveTabIfChanged(t)
-                            TabService.shared.cacheTab(t, for: convKey)
+                            tabContextVM.cacheTab(t, for: convKey)
                         } else {
                             setActiveTabIfChanged(nil)
-                            TabService.shared.cacheTab(nil, for: convKey)
+                            tabContextVM.cacheTab(nil, for: convKey)
                         }
                     } catch {
                         // Keep the cached tab on transient lookup failures instead of
@@ -951,17 +980,17 @@ extension MessagesViewController {
                     }
                 }
                 do {
-                    uiModel.userTabs = try await TabService.shared.fetchUserTabs()
+                    tabContextVM.userTabs = try await TabService.shared.fetchUserTabs()
                 } catch {
                     print("[setupRootView] fetchUserTabs failed: \(error)")
-                    uiModel.userTabs = []
+                    tabContextVM.userTabs = []
                 }
 
                 // If user closed Loot to retrieve their Zelle QR code, route them back
                 // to Payment Methods as soon as the app reopens.
                 if UserDefaults.standard.bool(forKey: DefaultsKeys.pendingReturnToPaymentMethods) {
                     UserDefaults.standard.removeObject(forKey: DefaultsKeys.pendingReturnToPaymentMethods)
-                    uiModel.currentScreen = .paymentMethods
+                    coordinator.currentScreen = .paymentMethods
                 }
 
                 // Ensure user doc exists and display name stays in sync
@@ -979,12 +1008,16 @@ extension MessagesViewController {
         // willBecomeActive causes layout glitches when the extension is simply
         // collapsed (tap text field) and re-opened — the new view tree renders
         // while the container is still animating, producing an offset.
-        // State updates above still run every time via uiModel.
+        // State updates above still propagate via the four VMs / coordinator.
         guard !hasSetupRootView else { return }
         hasSetupRootView = true
 
         hostingController.rootView = RootContainerView(
-            uiModel: uiModel,
+            coordinator: coordinator,
+            receiptDraftVM: receiptDraftVM,
+            messageReceiptVM: messageReceiptVM,
+            tabContextVM: tabContextVM,
+            bus: self,
             participantCount: participantCount,
             onScan:   { print("Scan tapped") },
             onExpand: { [weak self] in self?.requestPresentationStyle(.expanded) },
@@ -1050,7 +1083,7 @@ extension MessagesViewController {
         let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
 
         // receiptTab is set when paying from a receipt viewer; activeTab is set otherwise.
-        let components = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab)
+        let components = lootURLComponents(tab: tabContextVM.receiptTab ?? tabContextVM.activeTab)
 
         let layout = MSMessageTemplateLayout()
         layout.image = cardImage
@@ -1085,7 +1118,7 @@ extension MessagesViewController {
 
         let message = MSMessage(session: MSSession())
         message.layout = layout
-        message.url = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab).url
+        message.url = lootURLComponents(tab: tabContextVM.receiptTab ?? tabContextVM.activeTab).url
         message.summaryText = "sent a payment"
         print("[ConvSend] sendApplePayHandoff: NEW SESSION (will appear as new bubble) summaryText=\"sent a payment\"")
         conversation.send(message) { error in
@@ -1102,7 +1135,7 @@ extension MessagesViewController {
                                      amountCents: amountCents, methodName: "",
                                      tabColorHex: tabColorHex, isRequest: true)
         let cardImage = renderView(card, size: CGSize(width: 260, height: 60))
-        var components = lootURLComponents(tab: uiModel.receiptTab ?? uiModel.activeTab)
+        var components = lootURLComponents(tab: tabContextVM.receiptTab ?? tabContextVM.activeTab)
         var items = components.queryItems ?? []
         items.append(URLQueryItem(name: "rq", value: "1"))
         items.append(URLQueryItem(name: "cn", value: creditorName))
@@ -1210,7 +1243,7 @@ extension MessagesViewController {
                          participantCount: Int) {
         guard let conversation = activeConversation else { return }
         let fallbackTotalCents = stringToCents(amount)
-        let receiptDisplay = uiModel.currentReceipt ?? ReceiptDisplay(
+        let receiptDisplay = receiptDraftVM.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
             title: receiptName.isEmpty ? "New Receipt" : receiptName,
             createdAt: Date(),
@@ -1222,39 +1255,39 @@ extension MessagesViewController {
             items: []
         )
 
-        let draft = uiModel.currentSplitDraft
+        let draft = receiptDraftVM.currentSplitDraft
         let splitPayload = SplitPayload.from(draft: draft,
                                              participantCount: participantCount,
                                              totalCents: receiptDisplay.totalCents)
 
         let receiptPayload = ReceiptPayload.from(receipt: receiptDisplay, split: splitPayload)
 
-        var payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: uiModel.activeTab?.id, su: KeychainHelper.getOrCreateUserId())
-        if let activeTab = uiModel.activeTab, let tabId = activeTab.id {
+        var payload = LootMessagePayload(r: receiptPayload, s: splitPayload, tid: tabContextVM.activeTab?.id, su: KeychainHelper.getOrCreateUserId())
+        if let activeTab = tabContextVM.activeTab, let tabId = activeTab.id {
             payload.tab = TabPayload(id: tabId, n: activeTab.name, c: activeTab.colorHex)
         }
 
         // Capture scan image before async block (will be nil for manual receipts)
-        let captureImage = uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+        let captureImage = receiptDraftVM.scanImageCropped ?? receiptDraftVM.scanImageOriginal
         let cardImage = renderCardImage(
             receiptName: receiptDisplay.title,
             displayAmount: ReceiptDisplay.money(receiptDisplay.totalCents),
             participantCount: participantCount,
             splitPayload: splitPayload,
-            tabName: uiModel.activeTab?.name,
-            tabColorHex: uiModel.activeTab?.colorHex
+            tabName: tabContextVM.activeTab?.name,
+            tabColorHex: tabContextVM.activeTab?.colorHex
         )
 
         // Pre-generate a Firestore doc ID (local, no network)
         let docId = SharedReceiptService.shared.generateDocId()
-        uiModel.setInlineIgnoredState(ignoredUUIDs: [], hasList: true, for: docId)
+        messageReceiptVM.setInlineIgnoredState(ignoredUUIDs: [], hasList: true, for: docId)
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
         LootMessageCodec.writePayload(
             into: &components,
             payload: payload,
-            ignoredUUIDs: uiModel.ignoredUUIDs(for: docId)
+            ignoredUUIDs: messageReceiptVM.ignoredUUIDs(for: docId)
         )
 
         let alternateLayout = MSMessageTemplateLayout()
@@ -1281,10 +1314,10 @@ extension MessagesViewController {
                 if let tabId = payload.tid {
                     if let refreshed = try await TabService.shared.syncTabDerivedState(tabId: tabId) {
                         await MainActor.run {
-                            self.uiModel.activeTab = refreshed
+                            self.tabContextVM.activeTab = refreshed
                         }
-                        if let ck = self.uiModel.conversationKey {
-                            TabService.shared.cacheTab(refreshed, for: ck)
+                        if let ck = self.tabContextVM.conversationKey {
+                            tabContextVM.cacheTab(refreshed, for: ck)
                         }
                     }
                     print("[sendBillMessage] Synced tab aggregates for \(tabId)")
@@ -1311,20 +1344,29 @@ extension MessagesViewController {
         guard let conversation = activeConversation else { return }
 
         let targetCount = max(1, conversation.remoteParticipantIdentifiers.count + 1)
+        let creatorName = myDisplayNameFromDefaults()
         let card = TabInviteCardView(
             tabName: tabName,
             tabColorHex: tabColorHex,
-            creatorName: myDisplayNameFromDefaults(),
+            creatorName: creatorName,
             joinedCount: joinedCount,
             targetCount: targetCount
         )
-        let cardImage = renderView(card, size: CGSize(width: 250, height: 150))
+        let cardImage = renderView(card, size: CGSize(width: 260, height: 160))
 
+        // Encode counts + creator name on the URL so the live-layout
+        // transcript bubble can show real values instead of the
+        // hardcoded "0/1 joined" placeholder. Re-broadcasts via
+        // sendTabInviteUpdate carry refreshed values, so the bubble
+        // updates in place when someone joins.
         var components = lootURLComponents()
         let queryItems: [URLQueryItem] = [
             URLQueryItem(name: queryItemName, value: tabId),
             URLQueryItem(name: "tn", value: tabName),
-            URLQueryItem(name: "tc", value: tabColorHex)
+            URLQueryItem(name: "tc", value: tabColorHex),
+            URLQueryItem(name: "jc", value: String(joinedCount)),
+            URLQueryItem(name: "mc", value: String(targetCount)),
+            URLQueryItem(name: "cn", value: creatorName)
         ]
         components.queryItems = queryItems
 
@@ -1360,7 +1402,7 @@ extension MessagesViewController {
     }
 
     func sendTabInvite(tabName: String, tabColorHex: String, tabId: String) {
-        let joinedCount = max(1, uiModel.activeTab?.members.filter(\.isActive).count ?? 1)
+        let joinedCount = max(1, tabContextVM.activeTab?.members.filter(\.isActive).count ?? 1)
         sendTabInviteMessage(
             tabName: tabName,
             tabColorHex: tabColorHex,
@@ -1385,15 +1427,15 @@ extension MessagesViewController {
                 }
 
                 setActiveTabIfChanged(refreshedTab)
-                uiModel.conversationMemberIds = Set(refreshedTab.memberIds)
-                if let index = uiModel.userTabs.firstIndex(where: { $0.id == refreshedTab.id }) {
-                    uiModel.userTabs[index] = refreshedTab
+                tabContextVM.conversationMemberIds = Set(refreshedTab.memberIds)
+                if let index = tabContextVM.userTabs.firstIndex(where: { $0.id == refreshedTab.id }) {
+                    tabContextVM.userTabs[index] = refreshedTab
                 } else {
-                    uiModel.userTabs.append(refreshedTab)
+                    tabContextVM.userTabs.append(refreshedTab)
                 }
 
-                if let convKey = uiModel.conversationKey {
-                    TabService.shared.cacheTab(refreshedTab, for: convKey)
+                if let convKey = tabContextVM.conversationKey {
+                    tabContextVM.cacheTab(refreshedTab, for: convKey)
                     do {
                         try await TabService.shared.associateConversation(
                             tabId: tabId,
@@ -1420,4 +1462,57 @@ extension MessagesViewController {
         }
     }
 
+}
+
+// MARK: - MessageBus conformance (Phase 3 step 13b)
+
+extension MessagesViewController: MessageBus {
+    func openInSafari(_ url: URL) {
+        // iMessage extensions can't use `UIApplication.shared` directly —
+        // it's marked `@available(iOSApplicationExtension, unavailable)`.
+        // The legacy `openURL:` selector has been force-returning false
+        // since iOS 13, so the old KVC + perform-selector trick is dead.
+        // We need a UIApplication INSTANCE and the modern
+        // `open(_:options:completionHandler:)` method on it.
+        //
+        // Walk the responder chain (cleanest, no private API). Falls
+        // back to NSClassFromString + KVC if the chain doesn't reach
+        // UIApplication, and `extensionContext.open` as a last resort
+        // (works for https:// only, not custom schemes).
+        var responder: UIResponder? = self
+        while let r = responder {
+            if let app = r as? UIApplication {
+                app.open(url, options: [:], completionHandler: nil)
+                return
+            }
+            responder = r.next
+        }
+
+        if let appClass = NSClassFromString("UIApplication"),
+           let app = appClass.value(forKey: "sharedApplication") as? UIApplication {
+            app.open(url, options: [:], completionHandler: nil)
+            return
+        }
+
+        extensionContext?.open(url, completionHandler: nil)
+    }
+
+    func sendSettlementCard(fromName: String, toName: String, amountCents: Int, methodName: String, tabColorHex: String?) {
+        sendSettlementMessage(fromName: fromName, toName: toName,
+                              amountCents: amountCents, methodName: methodName,
+                              tabColorHex: tabColorHex)
+    }
+
+    // The 4-arg overload routes to `sendApplePayHandoff(fromName:toName:amountCents:tabColorHex:)`
+    // already defined elsewhere; the protocol method shape matches the existing one
+    // by name, so no shim needed — the conformance is automatic.
+
+    func sendRequestCard(creditorName: String, debtorName: String, amountCents: Int, tabColorHex: String?, metadata: RequestCardMetadata?) {
+        sendRequestMessage(creditorName: creditorName, debtorName: debtorName,
+                           amountCents: amountCents, tabColorHex: tabColorHex,
+                           metadata: metadata)
+    }
+
+    // Same for `sendBillUpdate(payload:docId:action:)` — the 3-arg version
+    // already exists, satisfies the protocol automatically.
 }

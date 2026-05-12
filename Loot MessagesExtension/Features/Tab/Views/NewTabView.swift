@@ -6,7 +6,7 @@
 import SwiftUI
 
 struct NewTabView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
     var isExpanded: Bool
     
     let onRequestExpand: () -> Void

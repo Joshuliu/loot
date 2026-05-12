@@ -141,6 +141,12 @@ struct EditSplitView: View {
     // MARK: - Save
 
     private func save() {
+        // DEBUG: Phase 13a investigation — by-items save produces zero owed amounts.
+        print("[EditSplit.save] mode=\(mode) totalCents=\(totalCents)")
+        print("[EditSplit.save] guests=\(guests.map { "(name=\($0.displayName) id=\($0.id.rawValue) uid=\($0.userId ?? "nil"))" })")
+        print("[EditSplit.save] includedIDs=\(includedIDs.map(\.rawValue))")
+        print("[EditSplit.save] byItemItems=\(byItemItems.map { "(label=\($0.label) priceText=\($0.priceText) priceCents=\($0.priceCents) isComplete=\($0.isComplete) assigned=\($0.assignedGuestIds.map(\.rawValue)))" })")
+
         // Build SplitDraft from current state
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
@@ -152,6 +158,7 @@ struct EditSplitView: View {
                     assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
                 )
             }
+        print("[EditSplit.save] items_after_filter=\(items.map { "(label=\($0.label) priceCents=\($0.priceCents) assigned=\($0.assignedGuestIds.map(\.rawValue)))" })")
 
         let draft = SplitDraft(
             guests: guests,
@@ -173,6 +180,7 @@ struct EditSplitView: View {
             participantCount: guests.count,
             totalCents: totalCents
         )
+        print("[EditSplit.save] newSplit.o=\(newSplit.o) newSplit.tot=\(newSplit.tot) mode=\(newSplit.m)")
 
         // Preserve paid status from original split
         var updatedPayload = payload

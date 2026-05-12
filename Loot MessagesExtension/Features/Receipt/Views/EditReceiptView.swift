@@ -8,7 +8,8 @@
 import SwiftUI
 
 struct EditReceiptView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
     let onSave: (ReceiptDisplay) -> Void
     let onCancel: () -> Void
     
@@ -55,12 +56,13 @@ struct EditReceiptView: View {
         case tip
     }
     
-    init(uiModel: LootUIModel, onSave: @escaping (ReceiptDisplay) -> Void, onCancel: @escaping () -> Void) {
-        self.uiModel = uiModel
+    init(coordinator: AppCoordinator, receiptDraftVM: ReceiptDraftViewModel, onSave: @escaping (ReceiptDisplay) -> Void, onCancel: @escaping () -> Void) {
+        self.coordinator = coordinator
+        self.receiptDraftVM = receiptDraftVM
         self.onSave = onSave
         self.onCancel = onCancel
-        
-        let receipt = uiModel.currentReceipt ?? ReceiptDisplay(
+
+        let receipt = receiptDraftVM.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
             title: "New Receipt",
             createdAt: Date(),
@@ -157,7 +159,7 @@ struct EditReceiptView: View {
         let hasItems = !receipt.items.isEmpty
         let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents
 
-        if let persistedOverride = uiModel.preTipTotalOverrideCents {
+        if let persistedOverride = receiptDraftVM.preTipTotalOverrideCents {
             _preTipTotalOverride = State(initialValue: centsToDecimalString(persistedOverride))
         } else if !hasItems && calculatedPreTip > 0 {
             _preTipTotalOverride = State(initialValue: centsToDecimalString(calculatedPreTip))
@@ -432,9 +434,9 @@ struct EditReceiptView: View {
 
         // Persist explicit override intent only when user kept a non-empty override value.
         if preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            uiModel.preTipTotalOverrideCents = nil
+            receiptDraftVM.preTipTotalOverrideCents = nil
         } else {
-            uiModel.preTipTotalOverrideCents = preTipTotalCents
+            receiptDraftVM.preTipTotalOverrideCents = preTipTotalCents
         }
 
         let feeLineItems = completedFees.compactMap { fee -> ReceiptDisplay.LineItem? in
@@ -444,9 +446,9 @@ struct EditReceiptView: View {
         }
 
         let updatedReceipt = ReceiptDisplay(
-            id: uiModel.currentReceipt?.id ?? UUID().uuidString,
+            id: receiptDraftVM.currentReceipt?.id ?? UUID().uuidString,
             title: receiptName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "New Receipt" : receiptName,
-            createdAt: uiModel.currentReceipt?.createdAt ?? Date(),
+            createdAt: receiptDraftVM.currentReceipt?.createdAt ?? Date(),
             subtotalCents: subtotal,
             feesCents: feesTotal,
             discountCents: discountTotal,
@@ -467,7 +469,7 @@ struct EditReceiptView: View {
     }
     
     private var captureImage: UIImage? {
-        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+        receiptDraftVM.scanImageCropped ?? receiptDraftVM.scanImageOriginal
     }
 
     // MARK: - Body
@@ -488,7 +490,7 @@ struct EditReceiptView: View {
                     Spacer()
 
                     HStack(spacing: 16) {
-                        if !uiModel.debugChunkImages.isEmpty {
+                        if !receiptDraftVM.debugChunkImages.isEmpty {
                             Button {
                                 showChunks = true
                             } label: {
@@ -872,7 +874,7 @@ struct EditReceiptView: View {
             }
         }
         .sheet(isPresented: $showChunks) {
-            ChunkDebugView(chunks: uiModel.debugChunkImages)
+            ChunkDebugView(chunks: receiptDraftVM.debugChunkImages)
         }
     }
 }

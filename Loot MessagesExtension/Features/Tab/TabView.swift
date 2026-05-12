@@ -10,7 +10,9 @@ import FirebaseFirestore
 
 struct LootTabView: View {
     @Binding var tabName: String
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
 
     var onUpload: () -> Void
     var onScan: () -> Void
@@ -89,7 +91,7 @@ struct LootTabView: View {
                     // so it clears the account-initials overlay at top-right
                     // and the tabBar at the bottom. Expanded paths run the
                     // regular flow so the user can still navigate the app.
-                    if let info = uiModel.pendingApplePayInfo, !isExpanded {
+                    if let info = messageReceiptVM.pendingApplePayInfo, !isExpanded {
                         Spacer(minLength: 0)
                         applePayPendingCompactCard(info: info)
                             .transition(.asymmetric(
@@ -151,7 +153,8 @@ struct LootTabView: View {
             if let tab = activeTab {
                 TabSettingsView(
                     tab: tab,
-                    uiModel: uiModel,
+                    coordinator: coordinator,
+                    tabContextVM: tabContextVM,
                     onSave: { updatedTab in onTabUpdated?(updatedTab) },
                     onLeft: { onTabLeft?() },
                     onDeleted: { onTabDeleted?() }
@@ -210,7 +213,7 @@ struct LootTabView: View {
 
             Button {
                 withAnimation(.easeOut(duration: 0.15)) {
-                    uiModel.pendingApplePayInfo = nil
+                    messageReceiptVM.pendingApplePayInfo = nil
                 }
             } label: {
                 Image(systemName: "xmark.circle.fill")
@@ -393,7 +396,7 @@ struct LootTabView: View {
                     onConsumePendingPayRequest: onConsumePendingPayRequest,
                     onRequestCollapse: onRequestCollapse,
                     onApplePayPending: { toName, amountCents, colorHex in
-                        uiModel.pendingApplePayInfo = PendingApplePayInfo(
+                        messageReceiptVM.pendingApplePayInfo = PendingApplePayInfo(
                             toName: toName,
                             amountCents: amountCents,
                             tabColorHex: colorHex

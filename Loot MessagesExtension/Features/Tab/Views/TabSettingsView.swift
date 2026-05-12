@@ -7,7 +7,8 @@ import SwiftUI
 
 struct TabSettingsView: View {
     let tab: LootTab
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var tabContextVM: TabContextViewModel
     let onSave: (LootTab) -> Void
     var onLeft: (() -> Void)? = nil
     var onDeleted: (() -> Void)? = nil
@@ -31,12 +32,14 @@ struct TabSettingsView: View {
     private let myId = KeychainHelper.getOrCreateUserId()
 
     init(tab: LootTab,
-         uiModel: LootUIModel,
+         coordinator: AppCoordinator,
+         tabContextVM: TabContextViewModel,
          onSave: @escaping (LootTab) -> Void,
          onLeft: (() -> Void)? = nil,
          onDeleted: (() -> Void)? = nil) {
         self.tab = tab
-        self.uiModel = uiModel
+        self.coordinator = coordinator
+        self.tabContextVM = tabContextVM
         self.onSave = onSave
         self.onLeft = onLeft
         self.onDeleted = onDeleted
@@ -45,11 +48,11 @@ struct TabSettingsView: View {
         self._members = State(initialValue: tab.members)
     }
 
-    /// Merges live tab members from `uiModel.activeTab` into the local working
+    /// Merges live tab members from `tabContextVM.activeTab` into the local working
     /// list. Preserves any locally-added (not-yet-saved) guests — those are
     /// members with `userId == nil` whose memberId isn't in the remote list.
     private func mergeLiveMembers() {
-        guard let liveTab = uiModel.activeTab, liveTab.id == tab.id else { return }
+        guard let liveTab = tabContextVM.activeTab, liveTab.id == tab.id else { return }
         let remoteIds = Set(liveTab.members.map(\.memberId))
         let localOnly = members.filter { $0.userId == nil && !remoteIds.contains($0.memberId) }
         members = liveTab.members + localOnly
@@ -262,12 +265,12 @@ struct TabSettingsView: View {
         }
     }
 
-    /// Compact identity string for `uiModel.activeTab.members` so SwiftUI's
+    /// Compact identity string for `tabContextVM.activeTab.members` so SwiftUI's
     /// `.onChange(of:)` has a simple value-typed expression to type-check.
-    /// `uiModel.activeTab?.members` would otherwise blow the type-checker
+    /// `tabContextVM.activeTab?.members` would otherwise blow the type-checker
     /// budget when this Form body is already large.
     private var liveTabMembersFingerprint: String {
-        guard let tab = uiModel.activeTab, tab.id == self.tab.id else { return "" }
+        guard let tab = tabContextVM.activeTab, tab.id == self.tab.id else { return "" }
         return tab.members
             .map { "\($0.memberId):\($0.displayName):\($0.isActive ? 1 : 0)" }
             .joined(separator: "|")
@@ -304,7 +307,7 @@ struct TabSettingsView: View {
             do {
                 _ = try await TabService.shared.syncTabDerivedState(tabId: tabId)
                 await MainActor.run {
-                    if let liveTab = uiModel.activeTab, liveTab.id == tab.id {
+                    if let liveTab = tabContextVM.activeTab, liveTab.id == tab.id {
                         members = liveTab.members
                     }
                     isRecomputing = false

@@ -272,80 +272,6 @@ final class TabService {
         return hash.map { String(format: "%02x", $0) }.joined()
     }
 
-    // MARK: - Local Cache
-
-    /// Returns the cached LootTab for a conversation (instant, no network).
-    func cachedTab(for conversationKey: String) -> LootTab? {
-        guard let dict = UserDefaults.standard.dictionary(forKey: cacheKey(for: conversationKey)),
-              let name = dict["name"] as? String,
-              let createdBy = dict["createdBy"] as? String,
-              let statusRaw = dict["status"] as? String,
-              let status = TabStatus(rawValue: statusRaw),
-              let memberIds = dict["memberIds"] as? [String],
-              let receiptCount = dict["receiptCount"] as? Int,
-              let membersArray = dict["members"] as? [[String: Any]]
-        else { return nil }
-
-        let members = membersArray.compactMap { m -> TabMember? in
-            guard let memberId = m["memberId"] as? String,
-                  let displayName = m["displayName"] as? String,
-                  let balanceCents = m["balanceCents"] as? Int,
-                  let isActive = m["isActive"] as? Bool
-            else { return nil }
-            return TabMember(
-                memberId: memberId,
-                userId: m["userId"] as? String,
-                displayName: displayName,
-                balanceCents: balanceCents,
-                isActive: isActive
-            )
-        }
-
-        var tab = LootTab(
-            name: name,
-            colorHex: dict["colorHex"] as? String,
-            createdBy: createdBy,
-            status: status,
-            members: members,
-            memberIds: memberIds,
-            receiptCount: receiptCount
-        )
-        tab.id = dict["id"] as? String
-        return tab
-    }
-
-    /// Persists the active tab for a conversation locally.
-    func cacheTab(_ tab: LootTab?, for conversationKey: String) {
-        let key = cacheKey(for: conversationKey)
-        guard let tab else {
-            UserDefaults.standard.removeObject(forKey: key)
-            return
-        }
-        let dict: [String: Any] = [
-            "id": tab.id ?? "",
-            "name": tab.name,
-            "colorHex": tab.colorHex ?? "",
-            "createdBy": tab.createdBy,
-            "status": tab.status.rawValue,
-            "memberIds": tab.memberIds,
-            "receiptCount": tab.receiptCount,
-            "members": tab.members.map { m -> [String: Any] in
-                [
-                    "memberId": m.memberId,
-                    "userId": m.userId ?? "",
-                    "displayName": m.displayName,
-                    "balanceCents": m.balanceCents,
-                    "isActive": m.isActive
-                ]
-            }
-        ]
-        UserDefaults.standard.set(dict, forKey: key)
-    }
-
-    private func cacheKey(for conversationKey: String) -> String {
-        "\(DefaultsKeys.conversationTabMap)_\(conversationKey)"
-    }
-
     // MARK: - Tab Update
 
     /// Updates tab name, color, members, and memberIds in Firestore.
@@ -604,7 +530,7 @@ final class TabService {
 
         let sharedPayloads = try await fetchSharedReceiptPayloads(forTabId: tabId)
         let sharedReceipts = sharedPayloads.map { entry in
-            TabReceipt.from(payload: entry.payload, messagePayloadId: entry.docId, tab: tab)
+            TabReceiptAdapter.fromPayload(entry.payload, messagePayloadId: entry.docId, tab: tab)
         }
 
         let legacyReceipts = try await fetchLegacyTabReceiptsNeedingFallback(forTabId: tabId)

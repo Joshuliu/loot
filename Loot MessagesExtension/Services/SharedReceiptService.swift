@@ -104,6 +104,43 @@ final class SharedReceiptService {
         return (payload, captureImage)
     }
 
+    // MARK: - Live snapshot listener
+
+    /// Subscribes to a `/sharedReceipts/{docId}` doc and fires `onChange`
+    /// every time the doc updates. Used by `MessageReceiptViewModel` to keep
+    /// the open drawer's payload in sync with remote slot claims, paid
+    /// toggles, and bill edits — without requiring close+reopen. Mirrors
+    /// the shape of `TabService.listenToTab(tabId:onChange:)`.
+    ///
+    /// The captured image is not delivered through this path (it's a
+    /// one-shot fetch via `fetch(id:)`); only the decoded payload is.
+    func listenToReceipt(docId: String, onChange: @escaping @MainActor (LootMessagePayload) -> Void) -> ListenerRegistration {
+        Task { try? await ensureAnonymousAuth() }
+
+        return db.collection(collection).document(docId).addSnapshotListener { snapshot, error in
+            if let error {
+                print("[SharedReceiptService] listenToReceipt(\(docId)) error: \(error)")
+                return
+            }
+            guard let snapshot, snapshot.exists, var dict = snapshot.data() else { return }
+
+            // Strip metadata fields before decoding (mirrors fetch(id:)).
+            dict.removeValue(forKey: "_createdAt")
+            dict.removeValue(forKey: "_uid")
+            dict.removeValue(forKey: "_captureImage")
+
+            guard let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let payload = try? JSONDecoder().decode(LootMessagePayload.self, from: data) else {
+                print("[SharedReceiptService] listenToReceipt(\(docId)) decode failed")
+                return
+            }
+
+            Task { @MainActor in
+                onChange(payload)
+            }
+        }
+    }
+
     // MARK: - Update (slot claims, etc.)
 
     /// Merges updated payload fields into existing Firestore doc (preserves _createdAt, _uid, _captureImage).

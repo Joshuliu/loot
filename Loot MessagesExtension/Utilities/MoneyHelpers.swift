@@ -108,7 +108,18 @@ enum SplitMath {
                 for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
             }
 
-            let extras = feesCents - max(0, discountCents) + max(0, taxCents) + max(0, tipCents)
+            // Anchor `extras` on `totalCents - itemsTotal` rather than
+            // `feesCents - discountCents + taxCents + tipCents`. The latter
+            // formula assumed `sum(item.priceCents) == subtotal`, which
+            // breaks whenever items don't fully account for the subtotal —
+            // empty items array (Phase 2 OCR returned nothing), partial
+            // capture, or items dropped by the `isComplete` filter at
+            // payload-build time. Result of the old formula: per-guest
+            // owed cents summed below `totalCents`, and the bill card
+            // donut ring visibly under-filled. Anchoring on `totalCents`
+            // guarantees `owed.sum == totalCents` for every input.
+            let itemsTotal = subtotals.reduce(0, +)
+            let extras = max(0, totalCents - itemsTotal)
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {
@@ -116,6 +127,62 @@ enum SplitMath {
             }
 
             return owed
+        }
+    }
+
+    /// Computes per-guest owed amounts from an in-flight `SplitDraft`,
+    /// falling back to an equal split across `participantCount` when no
+    /// draft exists yet (Phase 1 still running). Used by ConfirmationView's
+    /// bill card to drive the owed-ring rendering. Lifted out of
+    /// ConfirmationView in Phase 4 — pure compute, depends only on inputs.
+    static func owedFromDraft(
+        _ draft: SplitDraft?,
+        fallbackTotalCents: Int,
+        participantCount: Int
+    ) -> [Int]? {
+        if let draft {
+            guard !draft.includedGuests.isEmpty else { return nil }
+
+            let mode: SplitPayload.Mode = {
+                switch draft.mode {
+                case .equally: return .equally
+                case .custom: return .custom
+                case .byItems: return .byItems
+                }
+            }()
+
+            let guests: [SplitPayload.Guest] = draft.guests.map { p in
+                SplitPayload.Guest(n: p.displayName, inc: draft.includedIDs.contains(p.id), uid: p.userId)
+            }
+
+            let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerID }) ?? 0
+
+            let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
+                let slots = item.assignedGuestIds.compactMap { gid in
+                    draft.guests.firstIndex(where: { $0.id == gid })
+                }
+                return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
+            }
+
+            // Prefer the draft's total; fall back to the live `amount` prop
+            // when the draft total is still 0 (Phase 1 not yet returned).
+            let effectiveTotal = (draft.totalCents > 0) ? draft.totalCents : fallbackTotalCents
+
+            return computeOwedCents(
+                mode: mode,
+                guests: guests,
+                payerIndex: payerIndex,
+                totalCents: effectiveTotal,
+                perGuestActive: draft.perGuestCents,
+                items: items,
+                feesCents: draft.feesCents,
+                discountCents: draft.discountCents,
+                taxCents: draft.taxCents,
+                tipCents: draft.tipCents
+            )
+        } else {
+            guard participantCount > 0 else { return nil }
+            return splitCentsEvenly(total: fallbackTotalCents, count: participantCount)
         }
     }
 

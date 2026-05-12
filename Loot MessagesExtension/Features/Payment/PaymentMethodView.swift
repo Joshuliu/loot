@@ -418,7 +418,18 @@ struct PaymentMethodView: View {
 
         Task {
             let userId = KeychainHelper.getOrCreateUserId()
-            try? await TabService.shared.updatePaymentMethods(userId: userId, methods: methods)
+            // Await the Firestore write before dismissing. If the user
+            // closes and quickly re-opens the extension, MessagesViewController
+            // .didBecomeActive's refreshPaymentMethodsFromFirestore would
+            // race ahead of an in-flight fire-and-forget save and overwrite
+            // the local UserDefaults with the pre-save remote state — losing
+            // the user's just-tapped change. Awaiting here keeps save and
+            // sync in order.
+            do {
+                try await TabService.shared.updatePaymentMethods(userId: userId, methods: methods)
+            } catch {
+                print("[PaymentMethodView] Failed to save to Firestore: \(error)")
+            }
             await MainActor.run {
                 isSaving = false
                 onSaved()

@@ -7,7 +7,7 @@ import SwiftUI
 import UIKit
 
 struct TabInviteConfirmationView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
 
     let tabName: String
     let tabColor: String
