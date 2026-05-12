@@ -1,40 +1,55 @@
 {
-  "capturedAt" : "2026-05-04T18:54:32Z",
+  "capturedAt" : "2026-05-12T07:41:13Z",
   "caseID" : "img_5139",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 0,
-    "breakdown" : 0.6,
+    "actualComputedTotalCents" : 14480,
+    "breakdown" : 0.8,
     "expectedTotalCents" : 14480,
-    "itemValues" : 0,
-    "lineItemValues" : 0,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
     "merchant" : 0,
-    "overall" : 0.21,
-    "passesTotalReconciliation" : false,
-    "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -14480,
-    "total" : 1
+    "overall" : 0.8300000000000002,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 0
   },
   "snapshot" : {
     "lineItems" : [
-
+      {
+        "cents" : 1286,
+        "label" : "Tax"
+      }
     ],
     "phase1" : {
-      "merchant" : "Table B1",
-      "total_cents" : 14480
+      "total_cents" : 17383
     },
     "phase2" : {
       "issues" : [
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Missing amount for tax row: Tax",
-        "Resolved rows differ from known total by 14480 cents"
+        "Resolved rows differ from known total by 2903 cents"
       ],
       "items" : [
+        {
+          "cents" : 9196,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
         {
           "label" : "White Rice & Salad",
           "qty" : 1
@@ -44,11 +59,11 @@
           "qty" : 1
         },
         {
-          "label" : "Moussaka",
+          "label" : "Mustard Mousier",
           "qty" : 1
         },
         {
-          "label" : "Persian Beer",
+          "label" : "Shams Persian Beer",
           "qty" : 1
         },
         {
@@ -56,16 +71,17 @@
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 14480
+      "subtotal_cents" : 16097,
+      "tax_cents" : 1286
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN|Unknown Item|9196\nUNKNOWN|Unknown Item|2299\nUNKNOWN|Unknown Item|899\nUNKNOWN|Unknown Item|800\nUNKNOWN|Unknown Item|13194\nUNKNOWN|Unknown Item|1286\nITEM|White Rice & Salad|\nITEM|Lamb Shank|\nITEM|Moussaka|\nITEM|Persian Beer|\nITEM|Koobideh|\nTAX|Tax|\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|9196\nITEM|Unknown Item|2299\nITEM|Unknown Item|899\nITEM|Unknown Item|800\nITEM|White Rice & Salad|\nITEM|Lamb Shank|\nITEM|Mustard Mousier|\nITEM|Shams Persian Beer|\nITEM|Koobideh|\nTAX|Tax|1286\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 3.0572829246520996,
-      "phase2Seconds" : 35.130383014678955,
-      "totalWorkflowSeconds" : 39.94671392440796,
-      "transcriptSeconds" : 1.759037971496582,
-      "transcriptToPhase1Seconds" : 3.0572829246520996,
-      "transcriptToPhase2Seconds" : 38.18767595291138,
+      "phase1Seconds" : 8.166544914245605,
+      "phase2Seconds" : 30.00450301170349,
+      "totalWorkflowSeconds" : 39.517948031425476,
+      "transcriptSeconds" : 1.346885085105896,
+      "transcriptToPhase1Seconds" : 8.166544914245605,
+      "transcriptToPhase2Seconds" : 38.171061992645264,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Table B1 2\/1\/26 7:07 PM $91.96 $22.99 $8.99 $8.00 $131.94 $12.86 $144.80 Suggested Tip: 18%: (Tip $23.75 Total $168.55) Total $171.19) 22%: (Tip $29.03 Total $173.83) Tip percentages are based on the check\nDISCOVER\nVISA Server: Pasha T Guest Count: 5 White Rice & Salad 1 Lamb Shank (Mahicheh) 1 Must 0 Mousier 1 Shams Persian Beer 20%: (Tip $26.39\nG Pay\n•Pay Check #71 Ordered: 4 Koobideh Subtotal Tax Total"

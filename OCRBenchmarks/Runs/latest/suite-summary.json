@@ -1,15 +1,15 @@
 [
   {
-    "averageOverallScore" : 0.5276766384892121,
-    "averagePhase1Seconds" : 1.519676508726897,
-    "averagePhase2Seconds" : 31.34027573355922,
-    "averageReconciliationScore" : 0.4074074074074074,
-    "averageTotalWorkflowSeconds" : 34.4544583691491,
-    "averageTranscriptSeconds" : 1.594491786426968,
-    "caseCount" : 27,
-    "failedCaseCount" : 0,
-    "passCount" : 11,
-    "scoredCaseCount" : 27,
+    "averageOverallScore" : 0.5997083191550868,
+    "averagePhase1Seconds" : 3.476813608202441,
+    "averagePhase2Seconds" : 30.686225444078445,
+    "averageReconciliationScore" : 0.5,
+    "averageTotalWorkflowSeconds" : 35.78996819257736,
+    "averageTranscriptSeconds" : 1.4509247253681052,
+    "caseCount" : 29,
+    "failedCaseCount" : 1,
+    "passCount" : 13,
+    "scoredCaseCount" : 26,
     "variantID" : "current"
   }
 ]

@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:47:01Z",
+  "capturedAt" : "2026-05-12T07:32:47Z",
   "caseID" : "img_2309",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -96,12 +96,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Beijing Roast Duck|1499\nITEM|Unknown Item|5176\nITEM|Soy Fried Rice|\nITEM|Vegetable Stir-Fried Noodles|1399\nITEM|Steamed Lamb & Carrot Dumplings|1799\nITEM|String Beans|1399\nITEM|String Beans|1399\nITEM|Home-Style Tofu|1399\nITEM|Beijing Zhajiang|1599\nITEM|Bottled Iced Tea (Sweetened)|897\nITEM|Wong Lo Kat Herbal Tea|598\nTAX|Tax|3028\nTIP|Tip|5326\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 3.2831239700317383,
-      "phase2Seconds" : 45.4302738904953,
-      "totalWorkflowSeconds" : 50.95414400100708,
-      "transcriptSeconds" : 2.2407370805740356,
-      "transcriptToPhase1Seconds" : 3.2831239700317383,
-      "transcriptToPhase2Seconds" : 48.713406920433044,
+      "phase1Seconds" : 0.9234240055084229,
+      "phase2Seconds" : 41.52094304561615,
+      "totalWorkflowSeconds" : 44.52916705608368,
+      "transcriptSeconds" : 2.084786057472229,
+      "transcriptToPhase1Seconds" : 0.9234249591827393,
+      "transcriptToPhase2Seconds" : 42.44438099861145,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Ti'an Bistro\nEuanston, IL 60201 810 Grove Street\nCheck #90 Server: Server 1\nGuest Count: 13 Table 12\nOrdered: 2\/1\/26 7:40 PM\nDuck set ) 1505* 2 (Whole) Beijing Roast $14.99\n5176.00\n40. Soy Fried Rice\n(Choice of\nPork\/Beef\/Chicken\/Shrimp)\nvike 01k\/4\/03\/d\nShrimp F\n1 35. Vegetable Stir-Fried\nNoodles * mi $13.99\n1 12. Steamed Lamb & Carrot\nDumplings 12PCs\n-99 12pcs$17\n1 74. String Beans\n(Dry-Fried\/Garlic)\n1 74. String Beans P4S20Pm\/**8) $13.99 Dry-Fried (Spicy Level:\nMild) TAd\n1 74. String Beans\n(Dry-Fried\/Garlic)\n(1\/x($13.99 Dry-Fried (Spicy Level:\nMild)Fhd\n1 31. Home-Style Tofu\n1 34. Beijing Zhajiang $15.99\nodes Sm$13.99 3 103. Bottled Iced\nTea (Sweetened)\nБЕЛФОКЕ* $8.97\n2 105. Wong Lo Kat Hearbal\nTea in CanE tri $5.98\nSubtotal $295.88\nTax $30.28\nTip $53.26\nTotal $379.42\nInput Type\nC (EMU Chip Read)\nit Mastercard\nxxxxxxxx0327\nTwe 8:58 PM\nTransaction Type Sale\nAuthoriscrenn Approued"

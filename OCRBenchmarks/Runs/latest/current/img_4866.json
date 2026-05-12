@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:48:58Z",
+  "capturedAt" : "2026-05-12T07:36:08Z",
   "caseID" : "img_4866",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -9,11 +9,11 @@
     "itemValues" : 0.46153846153846156,
     "lineItemValues" : 0,
     "merchant" : 0,
-    "overall" : 0.12923076923076923,
+    "overall" : 0.2792307692307692,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
     "reconciliationDifferenceCents" : -14814,
-    "total" : 0
+    "total" : 1
   },
   "snapshot" : {
     "lineItems" : [
@@ -27,17 +27,12 @@
       }
     ],
     "phase1" : {
-      "merchant" : "Wine Food cohol",
-      "total_cents" : 28950
+      "merchant" : "Wine Food",
+      "total_cents" : 30314
     },
     "phase2" : {
       "issues" : [
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Unclassified priced row: Unknown Item",
-        "Resolved rows differ from known total by 13450 cents"
+        "Resolved rows differ from known total by 14814 cents"
       ],
       "items" : [
         {
@@ -71,17 +66,17 @@
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 25850,
+      "subtotal_cents" : 27214,
       "tax_cents" : 3100
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Four|3000\nITEM|Wine|1600\nITEM|Food|1700\nITEM|Alcohol|2000\nITEM|Unknown Item|3200\nITEM|Unknown Item|900\nTAX|State Tax|2700\nTAX|Tax|400\nUNKNOWN|Unknown Item|25950\nUNKNOWN|Unknown Item|3000\nUNKNOWN|Unknown Item|1000\nUNKNOWN|Unknown Item|28950\nUNKNOWN|Unknown Item|1364\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.6488480567932129,
-      "phase2Seconds" : 35.39210593700409,
-      "totalWorkflowSeconds" : 36.856647968292236,
-      "transcriptSeconds" : 0.8156780004501343,
-      "transcriptToPhase1Seconds" : 0.6488480567932129,
-      "transcriptToPhase2Seconds" : 36.0409699678421,
+      "phase1Seconds" : 6.329506993293762,
+      "phase2Seconds" : 30.923897981643677,
+      "totalWorkflowSeconds" : 38.08498692512512,
+      "transcriptSeconds" : 0.8315689563751221,
+      "transcriptToPhase1Seconds" : 6.329506993293762,
+      "transcriptToPhase2Seconds" : 37.25341796875,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "$30 00 $16 00 $17.00 $42.00 $20.00 $36 00 $32.00 $31.00 $19 00 $6 50 $9.00 $27 00 $4.00 $259.50 $30.00 $10 00 $289.50 $13.64\nfour Wine Food Total cohol Total count Total Sub Total I State Tax"

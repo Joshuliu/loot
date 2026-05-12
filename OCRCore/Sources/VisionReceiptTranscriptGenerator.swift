@@ -315,7 +315,7 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
                     }
                     let prepared = prepareChunkForOCR(chunkImage)
                     let observations = (try? await detectTextBlocksDualPass(in: prepared)) ?? []
-                    let fullTranscript = buildTranscriptLines(from: observations).map(\.text).joined(separator: "\n")
+                    let fullTranscript = buildTranscriptLinesFromObservations(observations).map(\.text).joined(separator: "\n")
 
                     let trimmed: String
                     if isSingleChunk {
@@ -388,7 +388,137 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         return sorted[sorted.count / 2]
     }
 
+    /// Represents a text fragment with its bounding box, either from a full observation or
+    /// a word-level split of a tall stacked observation (e.g., a price column).
+    private struct TextFragment {
+        let text: String
+        let boundingBox: CGRect
+    }
+
+    /// Split observations that look like vertically stacked columns into individual fragments.
+    /// An observation is considered "stacked" when its height is much larger than a typical
+    /// single-line observation (>3× the median height) and its text contains multiple
+    /// whitespace-separated tokens. This breaks price columns like "$16.75 $19.65 $8.60"
+    /// into individual price fragments that can be correctly paired with item names.
+    private static func splitStackedObservations(_ observations: [VNRecognizedTextObservation]) -> [TextFragment] {
+        guard !observations.isEmpty else { return [] }
+
+        // Compute median observation height to detect outliers
+        let heights = observations.map(\.boundingBox.height).sorted()
+        let medianHeight = heights[heights.count / 2]
+
+        var fragments: [TextFragment] = []
+        for obs in observations {
+            guard let candidate = obs.topCandidates(1).first else { continue }
+            let text = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+
+            let heightRatio = medianHeight > 0 ? obs.boundingBox.height / medianHeight : 1
+            // Only split if observation is tall (>3× median) — likely a stacked column
+            if heightRatio > 2.0 {
+                // Try to get word-level bounding boxes
+                var ranges: [Range<String.Index>] = []
+                text.enumerateSubstrings(in: text.startIndex..., options: .byWords) { _, range, _, _ in
+                    ranges.append(range)
+                }
+                if ranges.count > 1 {
+                    var wordFragments: [TextFragment] = []
+                    for range in ranges {
+                        if let wordBox = try? candidate.boundingBox(for: range) {
+                            let wordText = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !wordText.isEmpty {
+                                wordFragments.append(TextFragment(text: wordText, boundingBox: wordBox.boundingBox))
+                            }
+                        }
+                    }
+                    if !wordFragments.isEmpty {
+                        fragments.append(contentsOf: wordFragments)
+                        continue
+                    }
+                }
+            }
+
+            // Keep as single fragment
+            fragments.append(TextFragment(text: text, boundingBox: obs.boundingBox))
+        }
+        return fragments
+    }
+
     private static func buildTranscriptLines(from observations: [VNRecognizedTextObservation]) -> [TranscriptLine] {
+        return buildTranscriptLinesFromObservations(observations)
+    }
+
+    private static func buildTranscriptLinesFromFragments(_ fragments: [TextFragment]) -> [TranscriptLine] {
+        let sortedFragments = fragments.sorted { lhs, rhs in
+            let lhsY = lhs.boundingBox.midY
+            let rhsY = rhs.boundingBox.midY
+            if abs(lhsY - rhsY) > 0.001 { return lhsY > rhsY }
+            return lhs.boundingBox.minX < rhs.boundingBox.minX
+        }
+
+        let globalSlope = estimateGlobalSlopeFromFragments(sortedFragments)
+
+        var usedIndices = Set<Int>()
+        var lines: [TranscriptLine] = []
+
+        for anchorIndex in sortedFragments.indices {
+            guard !usedIndices.contains(anchorIndex) else { continue }
+            let anchor = sortedFragments[anchorIndex]
+            var lineFragments: [TextFragment] = [anchor]
+            usedIndices.insert(anchorIndex)
+
+            let globalFit = (
+                slope: globalSlope,
+                intercept: anchor.boundingBox.midY - globalSlope * anchor.boundingBox.midX
+            )
+
+            var didGrow = true
+            while didGrow {
+                didGrow = false
+                let fit = lineFragments.count >= 2 ? fitLineFromFragments(lineFragments) : globalFit
+                let meanHeight = lineFragments.map(\.boundingBox.height).reduce(0, +) / CGFloat(lineFragments.count)
+
+                for candidateIndex in sortedFragments.indices where !usedIndices.contains(candidateIndex) {
+                    let candidate = sortedFragments[candidateIndex]
+                    if shouldJoinLineFragment(candidate: candidate, anchor: anchor, fit: fit, meanHeight: meanHeight) {
+                        lineFragments.append(candidate)
+                        usedIndices.insert(candidateIndex)
+                        didGrow = true
+                    }
+                }
+            }
+
+            let ordered = lineFragments.sorted { $0.boundingBox.minX < $1.boundingBox.minX }
+            let finalFit = fitLineFromFragments(ordered)
+            let texts = ordered.map(\.text).filter { !$0.isEmpty }
+
+            if !texts.isEmpty {
+                var maxAboveCenter: CGFloat = 0
+                var maxBelowCenter: CGFloat = 0
+                for frag in ordered {
+                    let centerY = finalFit.slope * frag.boundingBox.midX + finalFit.intercept
+                    maxAboveCenter = max(maxAboveCenter, frag.boundingBox.maxY - centerY)
+                    maxBelowCenter = max(maxBelowCenter, centerY - frag.boundingBox.minY)
+                }
+
+                lines.append(TranscriptLine(
+                    text: texts.joined(separator: " "),
+                    highestY: ordered.map(\.boundingBox.maxY).max() ?? 0,
+                    lowestY: ordered.map(\.boundingBox.minY).min() ?? 0,
+                    slope: finalFit.slope,
+                    intercept: finalFit.intercept,
+                    maxAboveCenter: maxAboveCenter,
+                    maxBelowCenter: maxBelowCenter
+                ))
+            }
+        }
+
+        return lines
+    }
+
+    /// Legacy observation-level line builder, used within chunk analysis where
+    /// observations are already from a single-line crop.
+    private static func buildTranscriptLinesFromObservations(_ observations: [VNRecognizedTextObservation]) -> [TranscriptLine] {
         let sortedObservations = observations.sorted { lhs, rhs in
             let lhsY = lhs.boundingBox.midY
             let rhsY = rhs.boundingBox.midY
@@ -601,4 +731,59 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         return overlap / base.height
     }
 
+    // MARK: - Fragment-level helpers (for split stacked observations)
+
+    private static func estimateGlobalSlopeFromFragments(_ fragments: [TextFragment]) -> CGFloat {
+        var estimates: [CGFloat] = []
+        let n = min(fragments.count, 60)
+        for i in 0..<n {
+            for j in (i + 1)..<n {
+                let a = fragments[i].boundingBox
+                let b = fragments[j].boundingBox
+                let dx = b.midX - a.midX
+                guard abs(dx) > 0.10 else { continue }
+                let dy = b.midY - a.midY
+                let heightRef = max(a.height, b.height)
+                guard abs(dy) < heightRef * 0.6 else { continue }
+                let slope = dy / dx
+                guard abs(slope) < 0.2 else { continue }
+                estimates.append(slope)
+            }
+        }
+        guard !estimates.isEmpty else { return 0 }
+        let sorted = estimates.sorted()
+        return sorted[sorted.count / 2]
+    }
+
+    private static func fitLineFromFragments(_ fragments: [TextFragment]) -> (slope: CGFloat, intercept: CGFloat) {
+        guard fragments.count >= 2 else {
+            return (0, fragments.first?.boundingBox.midY ?? 0)
+        }
+        let points = fragments.map { CGPoint(x: $0.boundingBox.midX, y: $0.boundingBox.midY) }
+        let meanX = points.map(\.x).reduce(0, +) / CGFloat(points.count)
+        let meanY = points.map(\.y).reduce(0, +) / CGFloat(points.count)
+        let numerator = points.reduce(CGFloat.zero) { $0 + (($1.x - meanX) * ($1.y - meanY)) }
+        let denominator = points.reduce(CGFloat.zero) { $0 + pow($1.x - meanX, 2) }
+        let slope: CGFloat = denominator > 0.000001 ? (numerator / denominator) : 0
+        return (slope, meanY - slope * meanX)
+    }
+
+    private static func shouldJoinLineFragment(candidate: TextFragment, anchor: TextFragment, fit: (slope: CGFloat, intercept: CGFloat), meanHeight: CGFloat) -> Bool {
+        let candidateBox = candidate.boundingBox
+        let anchorBox = anchor.boundingBox
+        let referenceHeight = min(anchorBox.height, meanHeight)
+
+        if verticalOverlapRatio(of: anchorBox, with: candidateBox) >= 0.60 { return true }
+
+        let predictedMidY = fit.slope * candidateBox.midX + fit.intercept
+        let baselineDistance = abs(candidateBox.midY - predictedMidY)
+        let distanceThreshold = max(referenceHeight, candidateBox.height) * 0.65
+
+        let anchorDeTiltedY = anchorBox.midY - fit.slope * anchorBox.midX
+        let candidateDeTiltedY = candidateBox.midY - fit.slope * candidateBox.midX
+        let anchorDistance = abs(candidateDeTiltedY - anchorDeTiltedY)
+        let verticalWindow = max(max(referenceHeight, candidateBox.height), anchorBox.height) * 1.0
+
+        return baselineDistance <= distanceThreshold && anchorDistance <= verticalWindow
+    }
 }

@@ -1,0 +1,49 @@
+{
+  "capturedAt" : "2026-05-08T19:26:25Z",
+  "caseID" : "71149364570__9c77ae29-9016-48b0-93b8-f8fa5f0592e4",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 0,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 3890,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.08000000000000002,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -3890,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "AR 5er9\/r3 cases",
+      "total_cents" : 3400
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 3400 cents"
+      ],
+      "items" : [
+
+      ],
+      "subtotal_cents" : 3400
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN|Total|3400\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 14.394972085952759,
+      "phase2Seconds" : 60.93132710456848,
+      "totalWorkflowSeconds" : 76.26570701599121,
+      "transcriptSeconds" : 0.9393959045410156,
+      "transcriptToPhase1Seconds" : 14.394972085952759,
+      "transcriptToPhase2Seconds" : 75.3263111114502,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "• AR 5er9\/r3 cases Dine In Invoice: 238 Credit Sale Status: Card Type: Card Numbe Card Owner Entry Meti Auth Code APPLAB: 1 Gemel 1 Orec 1 Serv Subtota Sales 1 Total VISA - Servi AMOUN\nAID: TC:\n34"
+  },
+  "sourceFilename" : "71149364570__9C77AE29-9016-48B0-93B8-F8FA5F0592E4.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

@@ -119,14 +119,27 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         let req = GenerateContentRequest(
             contents: [Content(role: "user", parts: [Part(text: "Extract merchant and total from this receipt transcript:\n\n\(transcript)")])],
             systemInstruction: Content(role: "system", parts: [Part(text: """
+            Extract the merchant name and the final total from a receipt transcript.
             Return ONLY minified JSON: {"merchant":string|null,"total_cents":int}
             No extra keys. No markdown. No text.
+
+            Rules for total_cents:
+            - Use the final "Total" amount the customer paid, in integer cents (e.g., $48.32 → 4832).
+            - If the receipt shows both a Subtotal and a Tax line but no explicit Total, add them: total = subtotal + tax.
+            - If no Total line is visible, sum all individual item prices plus any visible tax.
+            - Prefer the largest "Total" labeled amount over partial totals like "Subtotal" or "Balance".
+            - Ignore card approval codes, reference numbers, POS IDs, and other non-monetary numbers.
+            - If multiple total-like amounts appear, prefer the one labeled "Total", "Grand Total", "Amount Due", or "Balance Due".
+            - The total should include tax but exclude tip unless tip is explicitly included in a "Total" line.
+
+            Rules for merchant:
+            - Extract the store or restaurant name. Use the most prominent business name, not addresses or slogans.
             """)]),
             generationConfig: .init(
-                maxOutputTokens: 128,
-                responseMimeType: "application/json",
-                temperature: 0.1,
-                thinkingConfig: .init(thinkingBudget: 0)
+                maxOutputTokens: 2048,
+                responseMimeType: nil,
+                temperature: 0,
+                thinkingConfig: .init(thinkingBudget: -1)
             )
         )
 
@@ -134,13 +147,18 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GeminiReceiptAnalyzerError.emptyText
         }
-        let repaired = repairJSON(text)
-        guard let data = repaired.data(using: .utf8) else { throw GeminiReceiptAnalyzerError.decodeFailed }
-        do {
-            return try JSONDecoder().decode(Phase1Result.self, from: data)
-        } catch {
-            throw GeminiReceiptAnalyzerError.decodeFailed
+        // Extract JSON object from response — model may include reasoning text around it
+        let jsonString = extractJSON(from: text)
+        let repaired = repairJSON(jsonString)
+        if let data = repaired.data(using: .utf8),
+           let result = try? JSONDecoder().decode(Phase1Result.self, from: data) {
+            return result
         }
+        // Fallback: try to find total_cents and merchant via regex
+        return Phase1Result(
+            merchant: extractMerchantFallback(from: text),
+            total_cents: extractTotalCentsFallback(from: text)
+        )
     }
 
     public func analyzePhase2(transcript: String, knownTotalCents: Int) async throws -> (phase2: Phase2Result, lineItems: [OCRLineItem], rawResponse: String?) {
@@ -387,9 +405,18 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
             guard parts.count >= 3, let kind = ExtractedRow.Kind(tag: parts[0]) else { continue }
 
-            let label = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            var label = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
             let cents = parseOptionalInt(parts[2])
-            guard !label.isEmpty else { continue }
+            if label.isEmpty {
+                // Only keep empty-label rows for discounts and items — these are worth
+                // preserving even without a name. Tax/tip/fee with no label are likely
+                // misclassified rows (e.g., a grocery item tagged as TAX).
+                if kind == .discount || kind == .item {
+                    label = kind.rawValue.capitalized
+                } else {
+                    continue
+                }
+            }
 
             rows.append(.init(kind: kind, label: label, cents: cents, index: rows.count))
         }
@@ -456,9 +483,7 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             case .discount:
                 discountCandidates.append(.init(row: row, previousItemIndex: lastItemIndex))
             case .unknown:
-                if row.cents != nil {
-                    issues.append("Unclassified priced row: \(row.label)")
-                }
+                break
             }
         }
 
@@ -582,8 +607,8 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             return cents != 0
         }
 
-        // If items already sum exactly to knownTotal, the tax/tip/fee rows are likely
-        // misclassified footer lines (total, cash, change) — zero them out.
+        // If items (+ fees) already sum exactly to knownTotal, the remaining tax/tip/discount
+        // rows are likely misclassified footer lines (total, cash, change) — zero them out.
         let itemsSumAfterCorrection = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
         let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
         var finalTaxCents = resolved.taxCents
@@ -591,10 +616,26 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         var finalFeesCents = resolved.feesCents
         var finalDiscountCents = resolved.discountCents
         if overhead != 0 && itemsSumAfterCorrection == knownTotalCents {
+            // Items alone match total — tax/tip/fees/discount are all noise
             finalTaxCents = 0
             finalTipCents = 0
             finalFeesCents = 0
             finalDiscountCents = 0
+        } else if (itemsSumAfterCorrection + finalFeesCents) == knownTotalCents && (resolved.taxCents != 0 || resolved.tipCents != 0 || resolved.discountCents != 0) {
+            // Items + fees match total — tax/tip/discount are noise
+            finalTaxCents = 0
+            finalTipCents = 0
+            finalDiscountCents = 0
+        }
+
+        // Tip flexibility: delivery apps show Total pre-tip, restaurants post-tip.
+        // Test both and pick the one that reconciles better with knownTotal.
+        if finalTipCents > 0 {
+            let totalWithTip = itemsSumAfterCorrection + finalTaxCents + finalTipCents + finalFeesCents - finalDiscountCents
+            let totalWithoutTip = itemsSumAfterCorrection + finalTaxCents + finalFeesCents - finalDiscountCents
+            if abs(totalWithoutTip - knownTotalCents) < abs(totalWithTip - knownTotalCents) {
+                finalTipCents = 0
+            }
         }
 
         let derivedSubtotal = knownTotalCents - finalTaxCents - finalTipCents - finalFeesCents + finalDiscountCents
@@ -610,14 +651,19 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - resolvedTotal)) cents")
         }
 
-        let zeroedOverhead = (overhead != 0 && itemsSumAfterCorrection == knownTotalCents)
-        let finalLineItems: [OCRLineItem] = zeroedOverhead ? [] : cleanedRows.compactMap { row -> OCRLineItem? in
+        let finalLineItems: [OCRLineItem] = cleanedRows.compactMap { row -> OCRLineItem? in
             switch row.kind {
-            case .tax, .tip, .fee:
-                guard let cents = row.cents else { return nil }
+            case .tax:
+                guard finalTaxCents > 0, let cents = row.cents else { return nil }
+                return .init(label: row.label, cents: cents)
+            case .tip:
+                guard finalTipCents > 0, let cents = row.cents else { return nil }
+                return .init(label: row.label, cents: cents)
+            case .fee:
+                guard finalFeesCents > 0, let cents = row.cents else { return nil }
                 return .init(label: row.label, cents: cents)
             case .discount:
-                guard case .billWide? = resolved.discountModes[row.index], let cents = row.cents else { return nil }
+                guard finalDiscountCents > 0, case .billWide? = resolved.discountModes[row.index], let cents = row.cents else { return nil }
                 return .init(label: row.label, cents: cents)
             case .item, .unknown:
                 return nil
@@ -636,6 +682,46 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             ),
             lineItems: finalLineItems
         )
+    }
+
+    private func extractTotalCentsFallback(from text: String) -> Int? {
+        // Look for total_cents or total in the text
+        let patterns = [
+            try? NSRegularExpression(pattern: "\"total_cents\"\\s*:\\s*(\\d+)"),
+            try? NSRegularExpression(pattern: "\\$(\\d+\\.\\d{2})")
+        ]
+        for pattern in patterns.compactMap({ $0 }) {
+            let range = NSRange(text.startIndex..., in: text)
+            if let match = pattern.firstMatch(in: text, range: range),
+               let group = Range(match.range(at: 1), in: text) {
+                let value = String(text[group])
+                if value.contains(".") {
+                    if let dollars = Double(value) { return Int(dollars * 100) }
+                } else {
+                    return Int(value)
+                }
+            }
+        }
+        return nil
+    }
+
+    private func extractMerchantFallback(from text: String) -> String? {
+        let pattern = try? NSRegularExpression(pattern: "\"merchant\"\\s*:\\s*\"([^\"]+)\"")
+        let range = NSRange(text.startIndex..., in: text)
+        if let pattern, let match = pattern.firstMatch(in: text, range: range),
+           let group = Range(match.range(at: 1), in: text) {
+            return String(text[group])
+        }
+        return nil
+    }
+
+    private func extractJSON(from text: String) -> String {
+        // Find the first { ... } block in the text
+        guard let openBrace = text.firstIndex(of: "{"),
+              let closeBrace = text.lastIndex(of: "}") else {
+            return text
+        }
+        return String(text[openBrace...closeBrace])
     }
 
     private func repairJSON(_ text: String) -> String {

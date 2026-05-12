@@ -1,0 +1,68 @@
+{
+  "capturedAt" : "2026-05-08T19:59:12Z",
+  "caseID" : "img_8770",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5150,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 5620,
+    "itemValues" : 1,
+    "lineItemValues" : 0,
+    "merchant" : 0.3333333333333333,
+    "overall" : 0.23,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -470,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "ya Udon",
+      "total_cents" : 5150
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 1675,
+          "label" : "Unknown Item 1",
+          "qty" : 1
+        },
+        {
+          "cents" : 1965,
+          "label" : "Unknown Item 2",
+          "qty" : 1
+        },
+        {
+          "cents" : 860,
+          "label" : "Unknown Item 3",
+          "qty" : 1
+        },
+        {
+          "cents" : 650,
+          "label" : "Unknown Item 4",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 5150
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item 1|1675\nITEM|Unknown Item 2|1965\nITEM|Unknown Item 3|860\nITEM|Unknown Item 4|650\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 13.329591989517212,
+      "phase2Seconds" : 16.651798009872437,
+      "totalWorkflowSeconds" : 30.702656984329224,
+      "transcriptSeconds" : 0.7212589979171753,
+      "transcriptToPhase1Seconds" : 13.329591989517212,
+      "transcriptToPhase2Seconds" : 29.98139798641205,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "16796 TO GO 1\/13\/2024 7:35 PM POS $16.75 T $19.65 T $8.60 T $6.50 T\nya Udon aney Ave CA 95014 -4017 16.75 x 1 19.65 x 1 8.60 x 1 6.50 x 1"
+  },
+  "sourceFilename" : "IMG_8770.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

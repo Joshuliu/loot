@@ -1,0 +1,85 @@
+{
+  "capturedAt" : "2026-05-08T19:25:09Z",
+  "caseID" : "70676191453__fbdef028-8a8b-4ba9-81af-57f1648c72b3",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 1432,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 16699,
+    "itemValues" : 0.15789473684210525,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.1536842105263158,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -15267,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "total_cents" : 68097
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 66665 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 599,
+          "label" : "ARIGATO REUSABLE BAG",
+          "qty" : 1
+        },
+        {
+          "cents" : 126,
+          "label" : "BEEF TONGUE",
+          "qty" : 1
+        },
+        {
+          "cents" : 260,
+          "label" : "JALAPENO CHILI",
+          "qty" : 1
+        },
+        {
+          "label" : "BABY BOK CHOY",
+          "qty" : 1
+        },
+        {
+          "label" : "GREEN ONION",
+          "qty" : 1
+        },
+        {
+          "cents" : 120,
+          "label" : "SALMON SASHIMI",
+          "qty" : 1
+        },
+        {
+          "cents" : 174,
+          "label" : "SALMON SASHIMI",
+          "qty" : 1
+        },
+        {
+          "cents" : 153,
+          "label" : "SALMON SASHIMI",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 68097
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|ARIGATO REUSABLE BAG|599\nITEM|BEEF TONGUE|126\nITEM|JALAPENO CHILI|260\nITEM|BABY BOK CHOY|UNKNOWN\nITEM|GREEN ONION|UNKNOWN\nITEM|SALMON SASHIMI|120\nITEM|SALMON SASHIMI|174\nITEM|SALMON SASHIMI|153\nUNKNOWN|GF LARGE GRADE AA|UNKNOWN\nUNKNOWN|GYOZA PORK ONION WHITE GARLIC SPINACH|UNKNOWN\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 22.1735280752182,
+      "phase2Seconds" : 100.68439495563507,
+      "totalWorkflowSeconds" : 124.80830597877502,
+      "transcriptSeconds" : 1.9503649473190308,
+      "transcriptToPhase1Seconds" : 22.1735280752182,
+      "transcriptToPhase2Seconds" : 122.857941031456,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "19750 Stevens Creek Blvd. Cupertino, CA, 95014 #026-004 5\/25\/2023 19:42:45 Karen $0.10 $5.99 F $14.29 LL $13.51 F $11.44 F $20.58 F $6.29 F $26.60 F $0.10 $1.26 F $2.58 F $1.15 $2.60 l $2.39 $0.99 $14.00 $20.29 $17.84 $4.99 $166.99 $166.99 $166.99 $166.99 $0.01 $6.5 $6.5\n408-200-4850 Inv# : 00404411 Trs# : 405059 ARIGATO REUSABLE BAG 1 @ $5.99 each (2\/$9.00) BEEF TONGUE YAKINIKU US WAGYU FLAP MEAT YAKI US WAGYU TRI TIP YAKINIKU CAB PRIME CHUCK KIRIOTOS Markdown: $2.06 US WAGYU ROUND FLAT SHABU WAGYU RIBEYE SHABU ARIGATO REUSABLE BAG Tare: 0.01 16 1.59 lb @ $0.79\/16 Tare: 0.01 lb 0.43 1b @ $5.99\/16 JALAPENO CHILI Tare: 0.01 1b 0.87 lb @ $2.99\/1b BABY BOK CHOY [SHANGHAI] *GREEN ONION* SALMON SASHIMI Markdown: $1.20 SALMON SASHIMI Markdown: $1,74 SALMON SASHIMI Markdown: $1.53 GF LARGE GRADE AA Net Sales TOTAL SALES SUB TOTAL # ************3578 Balance Item count Temporary markdown SAVING GRAND TOTAL\nGYOZA PORK ONION WHITE GARLIC SPINACH Visa"
+  },
+  "sourceFilename" : "70676191453__FBDEF028-8A8B-4BA9-81AF-57F1648C72B3.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

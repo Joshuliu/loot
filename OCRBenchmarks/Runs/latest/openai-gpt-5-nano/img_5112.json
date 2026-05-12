@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-05-08T19:54:03Z",
+  "caseID" : "img_5112",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 6943,
+    "breakdown" : 1,
+    "expectedTotalCents" : 6943,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 255,
+        "label" : "CA Tax on 30.00"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Target",
+      "total_cents" : 6943
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 2099,
+          "label" : "Ghirardelli",
+          "qty" : 1
+        },
+        {
+          "cents" : 1589,
+          "label" : "Ghirardelli",
+          "qty" : 1
+        },
+        {
+          "cents" : 3000,
+          "label" : "Patio & Outdoor Decor",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 6688,
+      "tax_cents" : 255
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Ghirardelli|2099\nITEM|Ghirardelli|1589\nITEM|Patio & Outdoor Decor|3000\nTAX|CA Tax on 30.00|255\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 65.05768704414368,
+      "phase2Seconds" : 31.04641902446747,
+      "totalWorkflowSeconds" : 97.82712006568909,
+      "transcriptSeconds" : 1.7229989767074585,
+      "transcriptToPhase1Seconds" : 65.05768704414368,
+      "transcriptToPhase2Seconds" : 96.10412108898163,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr La Mesa, California 91942-3015 01\/30\/2026 02:00 PM $20.99 $15.89 $30.00 T = CA TAX 8.50000 on $30.00 $66.88 $2.55 $69.43 *4435 DEBIT TOTAL PAYMENT $69.43 AID: A0000000980840 US DEBIT AUTH CODE: 079603 WHEN YOU RETURN ANY ITEM, YOUR RETURN CREDIT WILL NOT INCLUDE ANY PROMOTIONAL DISCOUNT OR COUPON APPLIED TO THE ORIGINAL ORDER. JOTICE: Some furniture products can expose you to chemicals known to the State of lifornia to cause cancer, birth darects or e harm. Prease check on- armation warning 1n REC#2-6030-0997-0173-8749-7 ------. Help make your Target Run better. ake a mindy but today\nNF NF SUBTOTAL TOTAL ther reproducti product label for\nGROCERY 055070114 GHIRARDELLI 055020991 GHIRARDELLI PATIO & OUTDOOR DECOR 344020038 GLG"
+  },
+  "sourceFilename" : "IMG_5112.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

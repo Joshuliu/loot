@@ -1,0 +1,162 @@
+{
+  "capturedAt" : "2026-05-08T19:45:33Z",
+  "caseID" : "img_5023",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 11028,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 10632,
+    "itemValues" : 0.782608695652174,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.3273913043478261,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 396,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "total_cents" : 10632
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 396 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 299,
+          "label" : "Mary Farms Med A Brown E",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 612,
+          "label" : "Marinated All Natural Pork Belly",
+          "qty" : 1
+        },
+        {
+          "cents" : 548,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1578,
+          "label" : "Spicy Marinated Natural Chicken",
+          "qty" : 1
+        },
+        {
+          "cents" : 1131,
+          "label" : "Marinated Angus Beef BNLS",
+          "qty" : 1
+        },
+        {
+          "cents" : 671,
+          "label" : "Marinated Angus Beef Finger",
+          "qty" : 1
+        },
+        {
+          "cents" : 1299,
+          "label" : "Marinated Natural Chicken Thigh",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Marinated Beef Rib Eye Bulg",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Jimmy Dean Sausage, Egg, &",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "Jimmy Dean Sausage, Egg, &",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "Tang Myun",
+          "qty" : 1
+        },
+        {
+          "cents" : 599,
+          "label" : "Juicy Dumpling with Pork",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "Pulmuone Mini Wontons 600G",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Simply Mango Juice 1.53L",
+          "qty" : 1
+        },
+        {
+          "cents" : 10,
+          "label" : "Bottle Deposit",
+          "qty" : 1
+        },
+        {
+          "cents" : 18,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Gai Bok Choy",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Lettuce 1 lb",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Onion 1 lb",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Carrots 1 lb",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 10632
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Mary Farms Med A Brown E|299\nITEM|Unknown Item|75\nITEM|Unknown Item|99\nITEM|Marinated All Natural Pork Belly|612\nITEM|Unknown Item|548\nITEM|Spicy Marinated Natural Chicken|1578\nITEM|Marinated Angus Beef BNLS|1131\nITEM|Marinated Angus Beef Finger|671\nITEM|Marinated Natural Chicken Thigh|1299\nITEM|Marinated Beef Rib Eye Bulg|899\nITEM|Jimmy Dean Sausage, Egg, &|399\nITEM|Jimmy Dean Sausage, Egg, &|699\nITEM|Tang Myun|199\nITEM|Juicy Dumpling with Pork|599\nITEM|Pulmuone Mini Wontons 600G|999\nITEM|Simply Mango Juice 1.53L|399\nITEM|Bottle Deposit|10\nITEM|Unknown Item|18\nITEM|Unknown Item|99\nITEM|Gai Bok Choy|99\nITEM|Lettuce 1 lb|99\nITEM|Onion 1 lb|99\nITEM|Carrots 1 lb|99\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 11.627673029899597,
+      "phase2Seconds" : 81.81867098808289,
+      "totalWorkflowSeconds" : 95.0195699930191,
+      "transcriptSeconds" : 1.57321298122406,
+      "transcriptToPhase1Seconds" : 11.627673029899597,
+      "transcriptToPhase2Seconds" : 93.44635701179504,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "0071\/19\/2026 19:27:02 Young Mi 00137387 Trs#: 138073 MARY FARMS MED A BROWN E $2.99 F $0.75 F $0.99 F RINATED ALL NATURAL PORK B $6.12 F $5.48 F PICY MARINATED NATURAL CHIC $15.78 F ARINATED ANGUS BEEF BNLS S $11.31 F • MARINATED ANGUS BEEF FINGER MARINATED NATURAL CHICKEN TH $6.71 F $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F $6.99 F TANG MYUN - $1.99 F PMO JUICY DUMPLING W\/ PORK & $5.99 F $9.99 F PULMUONE MINI WONTONS 600 G SIMPLY MANGO JUICE 1.53 L $3.99| $106.22 $0.10 $106.32 $106.3 $106.3 $0.0\n$0.18 F $0.99 F\nkdown: $1.00 3 1b @ $0.99\/1b GHAI BOKCHOY LB ENLEAF LETTUCE 1 1b @ $0.99\/21b _LOW ONION LB RROTS 1LB CHOCOLATE CHIP WAFFLES NONGSHIM MUPAMA Markdown: $2.00 #7985* Markdown: $3.50 +Bottle sales: $0.10 Bottle sales TOTAL SALES **1407\n17 Z 1LB GARLIC PK ul# PK Net Sales SUB TOTAL Visa #*****> Balance"
+  },
+  "sourceFilename" : "IMG_5023.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}
