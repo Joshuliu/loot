@@ -121,16 +121,18 @@ extension ConfirmationView {
 
             // Tap-to-Claim variant toggle. When on, the cl flag ships in the
             // payload and recipients can claim items from the chat bubble.
-            // Transition off→on wipes any existing claims so recipients start
-            // from a clean slate, and locks the active guest to the sender
-            // (no pre-assigning items to other guests).
+            // Transition off→on wipes only OTHER guests' claims — the sender's
+            // own pre-assignments survive so an accidental toggle doesn't
+            // erase their work. The active guest gets locked to the sender.
+            // Toggling off is non-destructive: claims stay put so you can
+            // recover from a mis-tap without losing progress.
             Toggle(isOn: Binding(
                 get: { splitEditorVM.claimMode },
                 set: { newValue in
                     let wasOn = splitEditorVM.claimMode
                     splitEditorVM.claimMode = newValue
                     if newValue && !wasOn {
-                        splitEditorVM.wipeAllItemPartitions(
+                        splitEditorVM.wipeNonSenderItemPartitions(
                             totalCents: totalCents, tipAmount: tipAmount
                         )
                         splitEditorVM.byItemSelectedGuestID = splitEditorVM.senderPersonID

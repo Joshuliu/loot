@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A375572E2FA4104300E15E9F /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = A375572D2FA4104300E15E9F /* Secrets.xcconfig */; };
+		F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = F615A0592F0738EA005E6C5E /* Secrets.xcconfig */; };
 		F62737242F36700200EC3388 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000002 /* FirebaseAuth */; };
 		F62737252F36700200EC3388 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D42F0A00000000003 /* FirebaseFirestore */; };
 		F64F33C72F0674A10065BCB2 /* Loot MessagesExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -39,7 +39,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		A375572D2FA4104300E15E9F /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		F615A0592F0738EA005E6C5E /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		F64F33BD2F06749F0065BCB2 /* Loot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Loot.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F64F33C62F0674A10065BCB2 /* Loot MessagesExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "Loot MessagesExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F64F33CB2F0674A10065BCB2 /* Messages.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Messages.framework; path = System/Library/Frameworks/Messages.framework; sourceTree = SDKROOT; };
@@ -102,7 +102,7 @@
 				F64F33CD2F0674A10065BCB2 /* Loot MessagesExtension */,
 				F64F33CA2F0674A10065BCB2 /* Frameworks */,
 				F64F33BE2F06749F0065BCB2 /* Products */,
-				A375572D2FA4104300E15E9F /* Secrets.xcconfig */,
+				F615A0592F0738EA005E6C5E /* Secrets.xcconfig */,
 			);
 			sourceTree = "<group>";
 		};
@@ -219,7 +219,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				A375572E2FA4104300E15E9F /* Secrets.xcconfig in Resources */,
+				F615A05A2F0738EA005E6C5E /* Secrets.xcconfig in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -253,6 +253,7 @@
 /* Begin XCBuildConfiguration section */
 		F64F33D82F0674A40065BCB2 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F615A0592F0738EA005E6C5E /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
@@ -271,7 +272,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -290,6 +291,7 @@
 		};
 		F64F33D92F0674A40065BCB2 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = F615A0592F0738EA005E6C5E /* Secrets.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "";
 				ASSETCATALOG_COMPILER_APPICON_NAME = "iMessage App Icon";
@@ -308,7 +310,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot.MessagesExtension;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -464,7 +466,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -493,7 +495,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
-				MARKETING_VERSION = 1.3;
+				MARKETING_VERSION = 2.0;
 				PRODUCT_BUNDLE_IDENTIFIER = me.plsloot;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
