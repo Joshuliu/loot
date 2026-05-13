@@ -1,0 +1,100 @@
+{
+  "capturedAt" : "2026-04-25T18:57:42Z",
+  "caseID" : "img_5134",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5365,
+    "breakdown" : 1,
+    "expectedTotalCents" : 5365,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 0,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Ralphs",
+      "total_cents" : 5365
+    },
+    "phase2" : {
+      "issues" : [
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings"
+      ],
+      "items" : [
+        {
+          "cents" : 199,
+          "label" : "Barilla Fettuccine",
+          "qty" : 1
+        },
+        {
+          "cents" : 319,
+          "label" : "Classico Pasta Sauce",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "Cafe Bustelo Espresso",
+          "qty" : 1
+        },
+        {
+          "cents" : 1249,
+          "label" : "Black Rifle Coffee",
+          "qty" : 1
+        },
+        {
+          "cents" : 167,
+          "label" : "Minute Maid Juice",
+          "qty" : 1
+        },
+        {
+          "cents" : 167,
+          "label" : "Minute Maid Punch",
+          "qty" : 1
+        },
+        {
+          "cents" : 166,
+          "label" : "Minute Maid Punch",
+          "qty" : 1
+        },
+        {
+          "cents" : 1000,
+          "label" : "Watermelon Cubes",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Shrimp XL",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 5365
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Barilla Fettuccine|199\nITEM|Classico Pasta Sauce|319\nDISCOUNT|Ralphs Savings|80\nITEM|Cafe Bustelo Espresso|999\nITEM|Black Rifle Coffee|1249\nITEM|Minute Maid Juice|167\nDISCOUNT|Ralphs Savings|132\nITEM|Minute Maid Punch|167\nDISCOUNT|Ralphs Savings|132\nITEM|Minute Maid Punch|166\nDISCOUNT|Ralphs Savings|133\nITEM|Watermelon Cubes|1000\nITEM|Shrimp XL|1099\nDISCOUNT|Ralphs Savings|200\nTAX|Tax|0\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.7536989450454712,
+      "phase2Seconds" : 6.028504014015198,
+      "totalWorkflowSeconds" : 6.782227993011475,
+      "transcriptSeconds" : 1.0967254638671875e-05,
+      "transcriptToPhase1Seconds" : 0.7536989450454712,
+      "transcriptToPhase2Seconds" : 6.782217025756836,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "Ralphs FOR FRESH\nEVERYONE..\n5680 Mission Center Rd.\n(619) 297-2593\nYour cashier was CHEC 553\nBARLLA FETTUCN 1.99 F\nCLASSICO PSTA SCE RC 3.19 F\nSC RALPHS SAVED YOU 0.80\nCAFE BUSTELO ESPRS 9.99 F\nBLACK RIFLE COFFEE 12.49 F\nMINUTEMAID JUICE RC 1.67\nSC RALPHS SAVED YOU 1.32\nMINUTEMAID PUNCH RC 1.67 F\nSC RALPHS SAVED YOU 1.32\nMINUTEMAID PUNCH RC 1.66 F\nSC RALPHS SAVED YOU 1.33\nWATERMELON CUBES 10.00 F\nSHRIMP XL RC 10.99 F\nSC RALPHS SAVED YOU 2.00\nRALPHS rewards CUSTOMER *******7252\nTAX 0.00\n**** BALANCE 53.65\nSan Diego CA 92108\nVISA CREDIT Purchase\n************3578 - H\nREF#: 07966C TOTAL: 53.65\nAID: A0000000031010 TC: 4FBA00D59D618582\n53.65\nVISA 0.00\nTOTAL NUMBER OF ITEMS SOLD = CHANGE $6.7.17\nRALPHS rewards SAVINGS TOTAL COUPONS 77 558 159 999999553 ......"
+  },
+  "sourceFilename" : "IMG_5134.jpeg",
+  "variantID" : "current"
+}

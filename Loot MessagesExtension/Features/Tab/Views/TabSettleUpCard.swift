@@ -19,9 +19,24 @@ struct TabSettleUpCard: View {
     var showViewTabButton: Bool = false
     var onViewTab: (() -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
-    var onSendRequestCard: ((String, String, Int, String?) -> Void)? = nil
+    /// Apple Pay handoff: sends settlement + inserts a how-to card into compose
+    /// with a shared MSSession. (fromName, toName, amountCents, tabColorHex)
+    var onApplePayHandoff: ((String, String, Int, String?) -> Void)? = nil
+    var onSendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)? = nil
     /// Use UIApplication.openURL for Zelle web links when available.
     var openInSafari: ((URL) -> Void)? = nil
+    var pendingPayRequest: PendingPayRequest? = nil
+    var onConsumePendingPayRequest: (() -> Void)? = nil
+    /// Asks the host extension to collapse to compact (used after the Apple
+    /// Pay confirmation so the user can reach the iMessage Apple Cash drawer).
+    var onRequestCollapse: (() -> Void)? = nil
+    /// Stash a payment for the compact-mode Apple Pay reminder. Args:
+    /// (toName, amountCents, tabColorHex).
+    var onApplePayPending: ((String, Int, String?) -> Void)? = nil
+    /// Bumped by the parent (via `LootUIModel.tabReceiptsRefreshNonce`) when a
+    /// remote receipt or settlement lands so this card's `.task(id:)` re-fires
+    /// and reloads balances + simplified transactions.
+    var refreshNonce: Int = 0
 
     private let myId = KeychainHelper.getOrCreateUserId()
     @Environment(\.openURL) private var openURL
@@ -74,14 +89,14 @@ struct TabSettleUpCard: View {
                 if myBal == 0 {
                     HStack(spacing: 6) {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.white)
-                        Text("You're all settled up!")
+                        Text("You're all paid back!")
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white)
                         Spacer()
                     }
                 } else {
                     HStack {
-                        Text(myBal < 0 ? "You owe overall" : "You're owed overall")
+                        Text(myBal < 0 ? "To be sent" : "To be received")
                             .font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.75))
                         Spacer()
@@ -109,6 +124,17 @@ struct TabSettleUpCard: View {
                 methods: creditorMethods[txn.to] ?? [],
                 tabColorHex: colorHex,
                 onSelectMethod: { method in
+                    // Apple Pay: stage the compact-mode reminder, send the
+                    // settlement card, then collapse the extension. The sheet
+                    // dismisses itself; the reminder takes over compact view.
+                    if method.type == .applePay {
+                        onApplePayPending?(toName, txn.amountCents, colorHex)
+                        onApplePayHandoff?(fromName, toName, txn.amountCents, colorHex)
+                        onRequestCollapse?()
+                        Task { await recordSettlement(txn: txn, methodName: method.type.displayName) }
+                        return
+                    }
+
                     // For Zelle: use the payer's own bank URL (opens their banking app)
                     // combined with the payee's stored QR data.
                     let effectiveBankURL: String?
@@ -129,7 +155,9 @@ struct TabSettleUpCard: View {
                     onSendSettlementCard?(fromName, toName, txn.amountCents,
                                          method.type.displayName, colorHex)
                     if let url = deepLink {
-                        openURL(url)
+                        // extensionContext.open is required in iMessage extensions —
+                        // SwiftUI's openURL silently no-ops for non-http schemes here.
+                        if let openInSafari { openInSafari(url) } else { openURL(url) }
                     } else if method.type == .zelle {
                         UIPasteboard.general.string = method.identifier
                     }
@@ -137,7 +165,13 @@ struct TabSettleUpCard: View {
                 }
             )
         }
-        .task(id: tabId) { await load() }
+        .task(id: "\(tabId)-\(refreshNonce)") { await load() }
+        .onAppear {
+            presentPendingRequestIfPossible()
+        }
+        .onChange(of: pendingPayRequest) { _, _ in
+            presentPendingRequestIfPossible()
+        }
     }
 
     // MARK: - Transaction Row
@@ -146,6 +180,8 @@ struct TabSettleUpCard: View {
     private func transactionRow(txn: DebtSimplifier.Transaction) -> some View {
         let fromName = memberName(txn.from)
         let toName = memberName(txn.to)
+        let displayFromName = txn.from == myId ? "You" : fromName
+        let displayToName = txn.to == myId ? "You" : toName
         let fromIdx = memberIndex(txn.from)
         let toIdx = memberIndex(txn.to)
         let iOwe = txn.from == myId
@@ -156,7 +192,7 @@ struct TabSettleUpCard: View {
                     text: BadgeColors.initials(from: fromName, fallback: fromIdx),
                     color: BadgeColors.color(for: fromIdx)
                 )
-                Text(fromName)
+                Text(displayFromName)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
@@ -169,7 +205,7 @@ struct TabSettleUpCard: View {
                     text: BadgeColors.initials(from: toName, fallback: toIdx),
                     color: BadgeColors.color(for: toIdx)
                 )
-                Text(toName)
+                Text(displayToName)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.white)
                     .lineLimit(1)
@@ -197,7 +233,18 @@ struct TabSettleUpCard: View {
             } else if !iOwe {
                 Button {
                     // creditorName = me (toName), debtorName = them (fromName)
-                    onSendRequestCard?(toName, fromName, txn.amountCents, colorHex)
+                    onSendRequestCard?(
+                        toName,
+                        fromName,
+                        txn.amountCents,
+                        colorHex,
+                        RequestCardMetadata(
+                            receiptDocId: nil,
+                            tabId: tabId,
+                            creditorId: txn.to,
+                            debtorId: txn.from
+                        )
+                    )
                 } label: {
                     Label("Request", systemImage: "bell.fill")
                         .font(.system(size: 15, weight: .semibold))
@@ -262,10 +309,37 @@ struct TabSettleUpCard: View {
             memberNames = names
             creditorMethods = methods
             members = freshMembers
+            presentPendingRequestIfPossible(transactions: txns, creditorMethods: methods)
         } catch {
             print("[TabSettleUpCard] load failed: \(error)")
         }
         loading = false
+    }
+
+    private func presentPendingRequestIfPossible(
+        transactions: [DebtSimplifier.Transaction]? = nil,
+        creditorMethods: [String: [PaymentMethod]]? = nil
+    ) {
+        guard paymentSheetTxn == nil,
+              let pending = pendingPayRequest,
+              pending.tabId == tabId,
+              let creditorId = pending.creditorId,
+              let debtorId = pending.debtorId
+        else { return }
+
+        let candidateTransactions = transactions ?? self.transactions
+        let candidateMethods = creditorMethods ?? self.creditorMethods
+        guard let txn = candidateTransactions.first(where: {
+            $0.to == creditorId && $0.from == debtorId && $0.amountCents == pending.amountCents
+        }),
+        let methods = candidateMethods[creditorId],
+        !methods.isEmpty
+        else { return }
+
+        paymentSheetTxn = txn
+        if !methods.isEmpty {
+            onConsumePendingPayRequest?()
+        }
     }
 
     private func recordSettlement(txn: DebtSimplifier.Transaction, methodName: String) async {
@@ -283,103 +357,5 @@ struct TabSettleUpCard: View {
         }
         loading = true
         await load()
-    }
-}
-
-// MARK: - Pay Now Sheet
-
-struct TabPayNowSheet: View {
-    let toName: String
-    let amountCents: Int
-    let methods: [PaymentMethod]
-    var tabColorHex: String? = nil
-    let onSelectMethod: (PaymentMethod) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-
-                // header
-                VStack(spacing: 4) {
-                    Text(ReceiptDisplay.money(amountCents))
-                        .font(.system(size: 42, weight: .bold))
-                        .foregroundStyle(tabColorHex.map { Color(hex: $0) } ?? Color.primary)
-                    Text("to \(toName)")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
-                
-                Text("Selecting a payment method will automatically send a confirmation to this chat.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 16)
-                
-
-                // Payment methods
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(Array(methods.enumerated()), id: \.element.id) { index, method in
-                            Button {
-                                onSelectMethod(method)
-                                dismiss()
-                            } label: {
-                                HStack(spacing: 14) {
-                                    Image(systemName: method.type.iconName)
-                                        .font(.system(size: 22))
-                                        .frame(width: 36)
-                                        .foregroundStyle(.primary)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(method.type.displayName)
-                                            .font(.system(size: 17, weight: .semibold))
-                                            .foregroundStyle(.primary)
-                                        if !method.identifier.isEmpty {
-                                            Text(method.identifier)
-                                                .font(.system(size: 14))
-                                                .foregroundStyle(.secondary)
-                                                .lineLimit(1)
-                                                .truncationMode(.middle)
-                                        }
-                                    }
-
-                                    Spacer()
-
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color(.tertiaryLabel))
-                                }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 16)
-                            }
-                            .buttonStyle(.plain)
-
-                            if index < methods.count - 1 {
-                                Divider().padding(.leading, 70)
-                            }
-                        }
-                    }
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                    .padding(.horizontal, 16)
-                    .padding(.top, 20)
-                    .padding(.bottom, 16)
-                }
-                .frame(maxHeight: .infinity, alignment: .top)
-            }
-            .navigationTitle("Pay \(toName)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
     }
 }

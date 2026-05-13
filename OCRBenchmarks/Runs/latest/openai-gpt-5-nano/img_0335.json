@@ -1,0 +1,72 @@
+{
+  "capturedAt" : "2026-05-08T19:31:57Z",
+  "caseID" : "img_0335",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 1392,
+    "breakdown" : 0.4,
+    "expectedTotalCents" : 8884,
+    "itemValues" : 0.25,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.2275,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -7492,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 30,
+        "label" : "CRV"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Store 919 Dir Carlos Nunez Main: (408) 867-0180 12876 Saratoga\/Sunnyvale Rd SARATOGA CA 95070",
+      "total_cents" : 8884
+    },
+    "phase2" : {
+      "fees_cents" : 30,
+      "issues" : [
+        "Resolved rows differ from known total by 7492 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 329,
+          "label" : "MUNCHIES CHEESE FX",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "SKIPPY PEANUT BUTTER SPREAD",
+          "qty" : 1
+        },
+        {
+          "cents" : 334,
+          "label" : "CHIPS AHOY",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "CAPRI SUN TROP PUNCH",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8854
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|MUNCHIES CHEESE FX|329\nITEM|SKIPPY PEANUT BUTTER SPREAD|399\nITEM|CHIPS AHOY|334\nITEM|CAPRI SUN TROP PUNCH|300\nFEE|CRV|30\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 18.761987924575806,
+      "phase2Seconds" : 127.09180998802185,
+      "totalWorkflowSeconds" : 148.19228506088257,
+      "transcriptSeconds" : 2.3384580612182617,
+      "transcriptToPhase1Seconds" : 18.761987924575806,
+      "transcriptToPhase2Seconds" : 145.8538269996643,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "nowerecycieamiu how2recycle.in PAPER packaging\nsee more\n• can to\nLIKE A BOX\nTHIS MAILER JUST\nRECYCLE\nStore 919 Dir Carlos Nunez Main: (408) 867-0180 12876 Saratoga\/Sunnyvale Rd SARATOGA CA 95070 3.29 MUNCHIES CHEESE FX 3.99 S SKIPPY PNT BTR SPR 3.34 S NBC CKY CHPS AHOY 4.39 1. 05- 19.47 S 12.58 S 3.00 S CAPRI SUN TROP PUN. 3.49 0.49- 6.57 0.30 S CRV SFTDK SNGL NTX 7.47 0.90- 7,98 T 8.98 1.00- 5.37 S 3.58 7.98 S 0.50 S 3.98 5.99 S 0.20 0.72 88.84 88.84 0.00 29 8852\nRegular Price Card Savings 3 QTY KODIAK OAT 2 QTY JUSTINS HO Regular Price Card Savings 3 QTY ICELNDIC W Regular Price Card Savings GROC NONEDIBLE 2 QTY SOLO CLEAR Regular Price Card Savings REFRIG\/FROZEN 3 QTY LIFEWAY OR 2 QTY LIFEWAY OR 2 QTY YAKULT DAI CRV MILK 5 PACK 2 QTY DAISY SOUR 5.58 Regular Price 1.60- • ORGANICS WH MILK MISCELLANEOUS 2 QTY RCYCBLE BA 01\/26\/21 15:08 PRIMARY CARD # ************5122 88.84 TOTAL TRANSACTION AMOUNT: 0.00 00469241 ITEMS SOLD = 52 66\nGROCERY Card Savings CASH BACK AMOUNT: REF: 870832151220 AUTH: AID A0000000980840 TVR 8000048000 TOTAL NUMBER OF 01\/26\/21 15:08 POINTS EARNED TODAY\n919\nTAX **** BALANCE Debit Purchase AL US DEBIT 6800 Debit CHANGE\nMR TSI"
+  },
+  "sourceFilename" : "IMG_0335.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

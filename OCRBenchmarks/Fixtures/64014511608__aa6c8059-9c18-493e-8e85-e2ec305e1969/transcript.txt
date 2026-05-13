@@ -1,0 +1,27 @@
+sweetgreen
+300 W El Camino Real
+Sunnyvale, CA 94087
+Phone (415) 737-9900
+Duplicate Receipt #4
+4/14/2021 6:46:07 PM
+Order Id: AAAZGJ2NAECN
+391 - In Store
+Employee: Arnold A
+1 Kale Caesar $11.95
+Sub Total $11.95
+Sales Tax $1.08
+Order Total $13.03
+Visa $13.03
+Card#: **** ***4582
+Authorization: 164751
+→- Reprint #4 <--
+CARD NAME: CARDHOLDER VISA
+APPROVAL: 164751
+POS REF: 2
+CCT REF: 2
+AID: A0000000031010
+TVR:
+TSI:
+APP LABEL:
+BATCH #: 104001
+ENTRY METHOD: NFC Entry

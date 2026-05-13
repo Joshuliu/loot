@@ -1,0 +1,97 @@
+{
+  "capturedAt" : "2026-05-12T07:40:33Z",
+  "caseID" : "img_5135",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 18829,
+    "breakdown" : 1,
+    "expectedTotalCents" : 18829,
+    "itemValues" : 0.7777777777777778,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.9666666666666668,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1354,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Teppan Khania",
+      "total_cents" : 18829
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 850,
+          "label" : "Strawberry Colada",
+          "qty" : 1
+        },
+        {
+          "cents" : 675,
+          "label" : "Sapporo Light 12oz",
+          "qty" : 1
+        },
+        {
+          "cents" : 5050,
+          "label" : "Rib Eye & Shrimp",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Shrimp Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Glass Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Shrimp Fried Rice Combo",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Glass Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 500,
+          "label" : "Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 400,
+          "label" : "Unknown Item 4",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 17475,
+      "tax_cents" : 1354
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Strawberry Colada|850\nITEM|Sapporo Light 12oz|675\nITEM|Unknown Item 1|0\nITEM|Rib Eye & Shrimp|5050\nITEM|Shrimp Fried Rice|4550\nITEM|Unknown Item 2|0\nITEM|Glass Fried Rice|450\nITEM|Shrimp Fried Rice Combo|4550\nITEM|Unknown Item 3|0\nITEM|Glass Fried Rice|450\nITEM|Fried Rice|500\nITEM|Unknown Item 4|400\nTAX|Tax|1354\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 5.027117013931274,
+      "phase2Seconds" : 43.20600605010986,
+      "totalWorkflowSeconds" : 49.6529700756073,
+      "transcriptSeconds" : 1.4198319911956787,
+      "transcriptToPhase1Seconds" : 5.027117013931274,
+      "transcriptToPhase2Seconds" : 48.233137011528015,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "8.50 6.75 0.00 50.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting! Come back soon!\n. (858) 560-792023 TALLN N 930, 202 t 9:52 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz gyu Rib Eye & Shrimp w York & Colossal Shrimp N York & Colossal Shrimp Fried Rice ggested tip amounts are provided or your convenience.\n1 Glass Fried Rice Med Rare Fried Rice Med Rare ite ototal"
+  },
+  "sourceFilename" : "IMG_5135.jpeg",
+  "variantID" : "current"
+}

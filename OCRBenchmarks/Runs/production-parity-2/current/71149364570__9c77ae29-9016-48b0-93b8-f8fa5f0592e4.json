@@ -1,0 +1,50 @@
+{
+  "capturedAt" : "2026-04-19T02:05:43Z",
+  "caseID" : "71149364570__9c77ae29-9016-48b0-93b8-f8fa5f0592e4",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 0,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 3890,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.08000000000000002,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -3890,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Gemel",
+      "total_cents" : 1
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Total",
+        "Resolved rows differ from known total by 1 cents"
+      ],
+      "items" : [
+
+      ],
+      "subtotal_cents" : 1
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN|Subtotal|\nUNKNOWN|Sales|\nUNKNOWN|Total|1\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.39816606044769287,
+      "phase2Seconds" : 12.198134064674377,
+      "totalWorkflowSeconds" : 15.997941017150879,
+      "transcriptSeconds" : 3.4016369581222534,
+      "transcriptToPhase1Seconds" : 0.39816606044769287,
+      "transcriptToPhase2Seconds" : 12.596304059028625,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "• AR 34 7\/19\/23, 2:85 Server: Cashi Dine In Invoice: 230 Credit Sale Status: Card Type: Card Numbe Card Owner Entry Meti Auth Code APPLAB: AID: TC: 1 Gemel 1 Orec 1 Serv Subtota Sales 1 Total VISA - Servi AMOUN"
+  },
+  "sourceFilename" : "71149364570__9C77AE29-9016-48B0-93B8-F8FA5F0592E4.jpeg",
+  "variantID" : "current"
+}

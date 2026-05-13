@@ -1,0 +1,63 @@
+{
+  "capturedAt" : "2026-05-08T19:21:35Z",
+  "caseID" : "64072025180__dd32f62b-d7f8-4117-a0f5-0da248be7708",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2592,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 2892,
+    "itemValues" : 0.6666666666666666,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.36,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -300,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 242,
+        "label" : "Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "LOS GATOS CAFE",
+      "total_cents" : 2892
+    },
+    "phase2" : {
+      "fees_cents" : 300,
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 750,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Egg Style: Scramble",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 2350,
+      "tax_cents" : 242
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|750\nUNKNOWN|Unknown Item|300\nITEM|Egg Style: Scramble|1600\nITEM|Egg Style: Sunnyside Up|0\nITEM|Toast Options: Sourdough|0\nITEM|Two Eggs Flank Steak|0\nTAX|Sales Tax|242\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 8.25203001499176,
+      "phase2Seconds" : 82.99822700023651,
+      "totalWorkflowSeconds" : 92.41400098800659,
+      "transcriptSeconds" : 1.1637369394302368,
+      "transcriptToPhase1Seconds" : 8.25203001499176,
+      "transcriptToPhase2Seconds" : 91.25026404857635,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "LOS GATOS CAFE 340 N SANTA CRUZ LOS GATOS, CA 95030 4083544647 ORDER: patio saturday S4 $7.50 $3.00 Egg Style: Scramble $0.00 $16.00 Egg Style: Sunnyside Up $0.00 Toast Options: Sourdough $0.00 $26.50 $2.42 $28.92\nDine In Cashier: Sandra 21-Apr-2021 10:18:42A S Flank Steak Santa Clara County9.125% 42BPYJV4DNEZT Order 42BPYJV4DNEZT\nTwo Eggs Flank Steak Subtotal Total"
+  },
+  "sourceFilename" : "64072025180__DD32F62B-D7F8-4117-A0F5-0DA248BE7708.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

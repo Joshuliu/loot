@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-04-25T18:57:35Z",
+  "caseID" : "img_5112",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 6943,
+    "breakdown" : 1,
+    "expectedTotalCents" : 6943,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 255,
+        "label" : "CA TAX"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Grossmont",
+      "total_cents" : 6943
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 2099,
+          "label" : "GHIRARDELLI",
+          "qty" : 1
+        },
+        {
+          "cents" : 1589,
+          "label" : "PATIO & OUTDOOR DECOR",
+          "qty" : 1
+        },
+        {
+          "cents" : 3000,
+          "label" : "GLG T",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 6688,
+      "tax_cents" : 255
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|GHIRARDELLI|2099\nITEM|PATIO & OUTDOOR DECOR|1589\nITEM|GLG T|3000\nTAX|CA TAX|255\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4694279432296753,
+      "phase2Seconds" : 7.23213803768158,
+      "totalWorkflowSeconds" : 7.701587080955505,
+      "transcriptSeconds" : 9.059906005859375e-06,
+      "transcriptToPhase1Seconds" : 0.4694279432296753,
+      "transcriptToPhase2Seconds" : 7.7015780210494995,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr\nLa Mesa, California 91942-3015 01\/30\/2026 02:00 PM\nGROCERY\n055020991 GHIRARDELLI 055070114 GHIRARDELLI NF $20.99\nPATIO & OUTDOOR DECOR NF $15.89\n344020038 GLG T $30.00\nT = CA TAX 8.50000 on $30.00 SUBTOTAL $66.88\n*4435 DEBIT TOTAL PAYMENT TOTAL $2.55\n$69.43\nAID: A0000000980840 $69.43\nAUTH CODE: US DEBIT\nWHEN YOU RETURN ANYITEM, YOUR 079603\nRETORN CREDIT WILL NOT INCLUDE ANY\nAPPLIED TO THE ORIGINAL ORDER PROMOTIONAL DISCOUNT OR COUPON\nCalifornia to cause cancer, birth detects or NOTICE: Some Turniture products can expose you to chemicals known to the State of\nother reproductive harm. Please check on- product label for warning in armation\nREC#2-6030-0997-0173-8749-7\nTake Help make your Target Run better. 2 minute survey about toda"
+  },
+  "sourceFilename" : "IMG_5112.jpeg",
+  "variantID" : "current"
+}

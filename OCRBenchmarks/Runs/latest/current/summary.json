@@ -1,0 +1,13 @@
+{
+  "averageOverallScore" : 0.5997083191550868,
+  "averagePhase1Seconds" : 3.476813608202441,
+  "averagePhase2Seconds" : 30.686225444078445,
+  "averageReconciliationScore" : 0.5,
+  "averageTotalWorkflowSeconds" : 35.78996819257736,
+  "averageTranscriptSeconds" : 1.4509247253681052,
+  "caseCount" : 29,
+  "failedCaseCount" : 1,
+  "passCount" : 13,
+  "scoredCaseCount" : 26,
+  "variantID" : "current"
+}

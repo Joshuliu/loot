@@ -1,0 +1,118 @@
+{
+  "capturedAt" : "2026-05-12T07:28:23Z",
+  "caseID" : "img_9b8dba8a-75c2-4166-8827-c1478e42910c",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2735,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 2735,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.8300000000000002,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Green Supermarket",
+      "total_cents" : 3000
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 265 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 100,
+          "label" : "Apple",
+          "qty" : 1
+        },
+        {
+          "cents" : 150,
+          "label" : "Banana",
+          "qty" : 1
+        },
+        {
+          "cents" : 120,
+          "label" : "Orange",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "Pear",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Grapes",
+          "qty" : 1
+        },
+        {
+          "cents" : 250,
+          "label" : "Strawberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 200,
+          "label" : "Blueberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 180,
+          "label" : "Kiwi",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Watermelon",
+          "qty" : 1
+        },
+        {
+          "cents" : 60,
+          "label" : "Lemon",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Raspberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 150,
+          "label" : "Milk",
+          "qty" : 1
+        },
+        {
+          "cents" : 280,
+          "label" : "Cheese",
+          "qty" : 1
+        },
+        {
+          "cents" : 120,
+          "label" : "Yogurt",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 3000
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Apple|100\nITEM|Banana|150\nITEM|Orange|120\nITEM|Pear|75\nITEM|Grapes|300\nITEM|Strawberry|250\nITEM|Blueberry|200\nITEM|Kiwi|180\nITEM|Watermelon|450\nITEM|Lemon|60\nITEM|Raspberry|300\nITEM|Milk|150\nITEM|Cheese|280\nITEM|Yogurt|120\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 17.567790031433105,
+      "phase2Seconds" : 4.608428001403809,
+      "totalWorkflowSeconds" : 23.2360600233078,
+      "transcriptSeconds" : 1.0598289966583252,
+      "transcriptToPhase1Seconds" : 17.567790031433105,
+      "transcriptToPhase2Seconds" : 22.176231026649475,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Green Supermarket 1.00 1.50 1.20 0.75 3.00 2.50 2.00 1.80 4.50 0.60 3.00 1.50 2.80 1.20 27.35 30.00 2.65\nAPPLE BANANA ORANGE PEAR GRAPES STRAWBERRY BLUEBERRY KIWI WATERMELON LEMON RASPBERRY MILK CHEESE YOGURT OTAL SH HANGE"
+  },
+  "sourceFilename" : "IMG_9B8DBA8A-75C2-4166-8827-C1478E42910C.jpeg",
+  "variantID" : "current"
+}

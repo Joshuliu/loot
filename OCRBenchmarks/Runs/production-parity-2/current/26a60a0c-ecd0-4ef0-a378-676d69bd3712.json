@@ -1,0 +1,53 @@
+{
+  "capturedAt" : "2026-04-19T02:03:25Z",
+  "caseID" : "26a60a0c-ecd0-4ef0-a378-676d69bd3712",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5000,
+    "breakdown" : 1,
+    "expectedTotalCents" : 5000,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "AMAZON",
+      "total_cents" : 5000
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Amount Due"
+      ],
+      "items" : [
+        {
+          "cents" : 5000,
+          "label" : "Amazon 50",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 5000
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Amazon 50|5000\nUNKNOWN|Amount Due|5000\nUNKNOWN||5000\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6793780326843262,
+      "phase2Seconds" : 20.923725962638855,
+      "totalWorkflowSeconds" : 31.393839955329895,
+      "transcriptSeconds" : 9.790732026100159,
+      "transcriptToPhase1Seconds" : 0.6793780326843262,
+      "transcriptToPhase2Seconds" : 21.603107929229736,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "L CbtwmómRJ3U PAXFUL CbtwmómRJ3U PAXFUL CЬIM J3U PAXFUL CbtwmómRJ3U PAXEUL CbtwmómRJ3U XFULCP 10630 PACOI LA CA 913313531 SHREE CANYON B PAXFUL 3188975300 CA EVEN XFUL CbtwmnómRJsu RUSU AAFUL CDIWMIOMRAS AXEULS\nIL CbtwmómRJ3U PAS STORE# 39364 THANKS (FUL CbtwmómRJ3U mRJ3U XFUL CbtwmómRJ3U PAXFUL CbtwmómRJ PAXFUL\nIL Cbtwmómt UAB AMAZON 50 TOT AL CbtwmómRJ3U PAXFUL CbtwmómRJ3U btwmómRJ3U PAXFUL Cbty PAXFUL PAXFUL PAXFUL PAXFULO 50.00 PAXFUL\nAL SH A DUE XFUL CbtwmómRJ3U 50.00 50.00\nnómRJ3U wmómRJ3U 50.00\nROVAL WFUL Rusu D0L 137 PAXFUL Cbtvine RJBU• PAXFUL Cbtwmi PAXFUL CЫI 54307 ALNMIOU PATULCE IRJSU PAXFULCb 9541 CODEiI PATUL OLOTOMRISU PAXFULO -UL CbtwmómRJs\n(L CbtwmómRjeD ROVAL TIME: twmt FUL AXFUL Cbtwméry PAXFUL Cbtwi 03: DnomRJSU PAXFULC d otwmómRJ:\ni ChP 2J31 2 OP11 7RN32:9 PAXFUL CbF SAXFUL CbF PAXFUL CbF PAXFUL CbF Lcbt AXFUL Cbt PAXFUL Cb!"
+  },
+  "sourceFilename" : "26a60a0c-ecd0-4ef0-a378-676d69bd3712.jpg",
+  "variantID" : "current"
+}

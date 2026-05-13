@@ -1,0 +1,61 @@
+{
+  "capturedAt" : "2026-04-19T02:17:45Z",
+  "caseID" : "img_5135",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 9979,
+    "breakdown" : 0.4,
+    "expectedTotalCents" : 18829,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.04000000000000001,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -8850,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 2824,
+        "label" : "Suggested Tip (15%)"
+      },
+      {
+        "cents" : 3389,
+        "label" : "Suggested Tip (18%)"
+      },
+      {
+        "cents" : 3766,
+        "label" : "Suggested Tip (20%)"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Teppan Khania",
+      "total_cents" : 22595
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 12616 cents"
+      ],
+      "items" : [
+
+      ],
+      "subtotal_cents" : 12616,
+      "tip_cents" : 9979
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nUNKNOWN||850\nUNKNOWN||675\nUNKNOWN||0\nUNKNOWN||5450\nUNKNOWN||4550\nUNKNOWN||0\nUNKNOWN||450\nUNKNOWN||4550\nUNKNOWN||0\nUNKNOWN||450\nUNKNOWN||500\nUNKNOWN||17475\nUNKNOWN||1354\nUNKNOWN||18829\nUNKNOWN|Strawberry Colada|\nUNKNOWN|Sapporo Light|\nUNKNOWN|Rib Eye & Shrimp Fried Rice|\nUNKNOWN|Fried Rice|\nUNKNOWN|Fried Rice|\nTIP|Suggested Tip (15%)|2824\nTIP|Suggested Tip (18%)|3389\nTIP|Suggested Tip (20%)|3766\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4258270263671875,
+      "phase2Seconds" : 61.6728709936142,
+      "totalWorkflowSeconds" : 67.0195130109787,
+      "transcriptSeconds" : 4.920809030532837,
+      "transcriptToPhase1Seconds" : 0.4258279800415039,
+      "transcriptToPhase2Seconds" : 62.09870398044586,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "8.50 6.75 0.00 54.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting!\n. (858) 560-792123 н 30, 2026 at 3-52. 0 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz 1 Glass gyu Rib Eye & Shrimp Fried Rice w York & Colossal Shrimp Med Rare Fried Rice N York & Colossal Shrimp Med Rare Fried Rice ite ototal ggested tip amounts are provided or your convenience. Come back soon!"
+  },
+  "sourceFilename" : "IMG_5135.jpeg",
+  "variantID" : "current"
+}

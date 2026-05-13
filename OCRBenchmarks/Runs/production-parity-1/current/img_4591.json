@@ -1,0 +1,112 @@
+{
+  "capturedAt" : "2026-04-19T01:26:50Z",
+  "caseID" : "img_4591",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 17498,
+    "breakdown" : 1,
+    "expectedTotalCents" : 16501,
+    "itemValues" : 0.75,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.4125,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 997,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1509,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Reed's Indoor Range",
+      "total_cents" : 16501
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 997 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 4000,
+          "label" : "2 People 1 Lane",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "Glock 19 9mm",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "Ruger PC Carbine",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "9mm 115gr FMJ",
+          "qty" : 1
+        },
+        {
+          "cents" : 198,
+          "label" : "Misc Item 1",
+          "qty" : 1
+        },
+        {
+          "cents" : 1398,
+          "label" : "Misc Item 2",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "Misc Item 3",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "Safety Glasses",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Black Silhouette Target",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Disposable Ear",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "Ear Plugs",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "Safety Glasses",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 14992,
+      "tax_cents" : 1509
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|2 People 1 Lane|4000\nITEM|Glock 19 9mm|1200\nITEM|Ruger PC Carbine|2000\nITEM|9mm 115gr FMJ|2299\nITEM|Misc Item 1|198\nITEM|Misc Item 2|1398\nITEM|Misc Item 3|398\nITEM|Safety Glasses|1200\nITEM|Black Silhouette Target|2299\nITEM|Disposable Ear|99\nITEM|Ear Plugs|699\nITEM|Safety Glasses|199\nTAX|Tax|1509\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.43301594257354736,
+      "phase2Seconds" : 37.206133008003235,
+      "totalWorkflowSeconds" : 44.56289303302765,
+      "transcriptSeconds" : 6.923739075660706,
+      "transcriptToPhase1Seconds" : 0.43301594257354736,
+      "transcriptToPhase2Seconds" : 37.63915395736694,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Welcome to Reed's Indoor Range Dec 23 25 2 Time 03:38 Ext 40.00 12.00 20.00 22.99 1.98 13.98 3.98 12.00 22.99 149.92 15.09 165.01 165.01\nReed's Indoor Range 1100 Duane Ave. Santa Clara, CA 95054 (408) 970-9870 Ticket#945742 Cus#Y6951877 2 Dr# Price Qty 40.00 12.00 PI19502 20.00 9MM 16IN 19117 22.99 .99 PYDP1000BN DISPOSABLE EAR 6.99 1.99 12.00 22.99\nItem Number 2 PEOPLE 1 LANE <--- LANE GLOCK 19 9MM 4IN SR# BPHE823 915-01337 RUGER PC CARBINE SR# 618-01337 SBBB-SB9A SB9A 9MM 115GRN FMJ PYRX-PYDP1000BN PLUGS 32DB DP1000 PYRX-S4110S S4110S OR XV100 SAFETY GLASSES CLEAR ALCO-B27E B-27E BLACK SILH TARGET BXML023 19502 Total sale **075C Approval **** JOSHUA LIU 15520 BELNAP WAY SARATOGA CA 95070\nUsr JGR 2PPL BPHЕ823 50BX F #4 GLOrV MC\/Visa"
+  },
+  "sourceFilename" : "IMG_4591.jpeg",
+  "variantID" : "current"
+}

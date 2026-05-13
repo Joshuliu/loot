@@ -1,0 +1,76 @@
+{
+  "capturedAt" : "2026-05-08T19:58:41Z",
+  "caseID" : "img_5139",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 14480,
+    "breakdown" : 1,
+    "expectedTotalCents" : 14480,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1286,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Shams Persian",
+      "total_cents" : 14480
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 2299,
+          "label" : "White Rice & Salad",
+          "qty" : 1
+        },
+        {
+          "cents" : 9196,
+          "label" : "Lamb Shank (Mahicheh)",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Must",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Mousier",
+          "qty" : 1
+        },
+        {
+          "label" : "Shams Persian Beer",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 13194,
+      "tax_cents" : 1286
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|White Rice & Salad|2299\nITEM|Lamb Shank (Mahicheh)|9196\nITEM|Must|899\nITEM|Mousier|800\nITEM|Shams Persian Beer|\nUNKNOWN|Subtotal|13194\nTAX|Tax|1286\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 27.11345410346985,
+      "phase2Seconds" : 71.47614598274231,
+      "totalWorkflowSeconds" : 99.81454801559448,
+      "transcriptSeconds" : 1.2249360084533691,
+      "transcriptToPhase1Seconds" : 27.11345410346985,
+      "transcriptToPhase2Seconds" : 98.58961200714111,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Table B1 2\/1\/26 7:07 PM $91.96 $22.99 $8.99 $8.00 $131.94 $12.86 $144.80 Suggested Tip: 18%: (Tip $23.75 Total $168.55) Total $171.19) 22%: (Tip $29.03 Total $173.83) Tip percentages are based on the check\nDISCOVER\nVISA Server: Pasha T Guest Count: 5 White Rice & Salad 1 Lamb Shank (Mahicheh) 1 Must 0 Mousier 1 Shams Persian Beer 20%: (Tip $26.39\nG Pay\n•Pay Check #71 Ordered: 4 Koobideh Subtotal Tax Total"
+  },
+  "sourceFilename" : "IMG_5139.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

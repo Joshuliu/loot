@@ -1,0 +1,61 @@
+{
+  "capturedAt" : "2026-04-25T18:55:58Z",
+  "caseID" : "img_4672",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 318,
+    "breakdown" : 1,
+    "expectedTotalCents" : 318,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0.5,
+    "merchant" : 1,
+    "overall" : 0.9,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 5,
+        "label" : "CRV"
+      },
+      {
+        "cents" : 0,
+        "label" : "TAX"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "SAFEWAY",
+      "total_cents" : 318
+    },
+    "phase2" : {
+      "fees_cents" : 5,
+      "issues" : [
+        "Ignored discount row: Associate Savings"
+      ],
+      "items" : [
+        {
+          "cents" : 313,
+          "label" : "AQUAFINA WATER",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 313
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|AQUAFINA WATER|313\nFEE|CRV|5\nDISCOUNT|Associate Savings|36\nTAX|TAX|0\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4295470714569092,
+      "phase2Seconds" : 4.3322060108184814,
+      "totalWorkflowSeconds" : 4.761772036552429,
+      "transcriptSeconds" : 1.3947486877441406e-05,
+      "transcriptToPhase1Seconds" : 0.4295470714569092,
+      "transcriptToPhase2Seconds" : 4.761758089065552,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "AFEWAYO). 12876 Saratoga\/Sunnyvale Rd Store 919 Dir Abel Garcia Main: (408) 867-0180\nSARATOGA CA 95070\n00091905401972512232220\nYOUR CASHIER TODAY WAS SELF\nGROCERY Price You Pay\n1200000159 AQUAFINA WATER 3.49 3.13 $\n9401 CRV SFTDK SNGL NTX 0.05 0.05 S\nAssoclate Savings -0.36\nTAX 0.00\n**** BALANCE 3.18\nCredit Purchase 12\/23\/25 22:20\nCARD # ************1407\nREF: 632035414070 AUTH: 0000272C\nPAYMENT AMOUNT 3.18\nAL VISA CREDIT\nAID A0000000031010\nTVR 0000000000\nVisa 3.18\nCHANGE 0.00\nYOUR SAVINGS\nociate Savings 0.36\n11 0.36\nal Savings Value 10%\nYOUR POINTS\nPoints Earned Today 3\nPoints Available 224\nTOTAL NUMBER OF ITEMS SOLD = 2\n12\/23\/25 22:20 919 54 197 8854\nThank you for shopping Safeway!\nFor SAFEWAY FOR U questions call\n877-276-9637 or Safeway.com\/foru"
+  },
+  "sourceFilename" : "IMG_4672.jpeg",
+  "variantID" : "current"
+}

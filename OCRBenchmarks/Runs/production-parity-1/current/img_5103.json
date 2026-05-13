@@ -1,0 +1,131 @@
+{
+  "capturedAt" : "2026-04-19T01:29:41Z",
+  "caseID" : "img_5103",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 18942,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 10632,
+    "itemValues" : 0.7222222222222222,
+    "lineItemValues" : 0.3333333333333333,
+    "merchant" : 0.75,
+    "overall" : 0.33499999999999996,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 8310,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      },
+      {
+        "cents" : 18,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "ROSEMARY FARMS MED A",
+      "total_cents" : 10632
+    },
+    "phase2" : {
+      "fees_cents" : 20,
+      "issues" : [
+        "Resolved rows differ from known total by 8310 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 299,
+          "label" : "Rosemary Farms Med A Brown E",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "99\/1b",
+          "qty" : 1
+        },
+        {
+          "cents" : 612,
+          "label" : "Marinated All Natural Pork B",
+          "qty" : 1
+        },
+        {
+          "cents" : 548,
+          "label" : "Spicy Marinated Natural Chic",
+          "qty" : 1
+        },
+        {
+          "cents" : 1578,
+          "label" : "Marinated Angus Beef Bnls S",
+          "qty" : 1
+        },
+        {
+          "cents" : 1131,
+          "label" : "Marinated Angus Beef Finger",
+          "qty" : 1
+        },
+        {
+          "cents" : 671,
+          "label" : "Marinated Natural Chicken Th",
+          "qty" : 1
+        },
+        {
+          "cents" : 1299,
+          "label" : "Marinated Beef Rib Eye Bulg",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Jimmy Dean Sausage, Egg, &am",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "Chocolate Chip Waffles",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "Nongshim Mupama Tang Myun",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "Pmo Juicy Dumpling W\/ Pork &",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Pulmuone Mini Wontons 600 G",
+          "qty" : 1
+        },
+        {
+          "cents" : 9972,
+          "label" : "Simply Mango Juice 1.53 L",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 10594,
+      "tax_cents" : 18
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Rosemary Farms Med A Brown E|299\nITEM|99\/1b|99\nITEM||75\nITEM||99\nITEM|Marinated All Natural Pork B|612\nITEM|Spicy Marinated Natural Chic|548\nITEM|Marinated Angus Beef Bnls S|1578\nITEM|Marinated Angus Beef Finger|1131\nITEM|Marinated Natural Chicken Th|671\nITEM|Marinated Beef Rib Eye Bulg|1299\nITEM||899\nITEM|Jimmy Dean Sausage, Egg, &am|399\nITEM|Chocolate Chip Waffles|699\nITEM|Nongshim Mupama Tang Myun|199\nITEM||599\nITEM|Pmo Juicy Dumpling W\/ Pork &|999\nITEM|Pulmuone Mini Wontons 600 G|399\nITEM|Simply Mango Juice 1.53 L|10622\nFEE|Bottle sales|10\nTAX|Tax|18\nDISCOUNT|Markdown|100\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nFEE|Bottle sales|10\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5111969709396362,
+      "phase2Seconds" : 18.165894985198975,
+      "totalWorkflowSeconds" : 26.24453890323639,
+      "transcriptSeconds" : 7.567387938499451,
+      "transcriptToPhase1Seconds" : 0.5111969709396362,
+      "transcriptToPhase2Seconds" : 18.67715096473694,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "#001-007 1\/19\/2026 19:27:02 Young Mi Inv#:00137387 Trs#: 138073 ROSEMARY FARMS MED A BROWN E $2.99 F # 99\/1b $0.99 F $0.75 F $0.99 F MARINATED ALL NATURAL PORK B $6.12 F SPICY MARINATED NATURAL CHIC $5.48 F MARINATED ANGUS BEEF BNLS S $15.78 F MARINATED ANGUS BEEF FINGER $11.31 F MARINATED NATURAL CHICKEN TH $6.71 F MARINATED BEEF RIB EYE BULG $12.99 F $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F CHOCOLATE CHIP WAFFLES $6.99 F NONGSHIM MUPAMA TANG MYUN - $1.99 F $5.99 F PMO JUICY DUMPLING W\/ PORK & $9.99 F PULMUONE MINI WONTONS 600 G $3.99 F SIMPLY MANGO JUICE 1.53 L $106.22 $0.10 $106.32 $106.32 $106.32\n$0.18 F\nMarkdown: $1.00 0.18 1b G SHANGHAI BUKCHOY LB GREENLEAF LETTUCE * 3:7 1.51 1b @ $0,99\/21b YELLOW ONION LB 03-58 CARROTS 1LB 821LB 91= 9= Markdown: $2.00 GARLIC PK = PK Markdown: $3.50 1# 27 +Bottle sales: $0.10 Net Sales Bottle sales TOTAL SALES SUB TOTAL Vica"
+  },
+  "sourceFilename" : "IMG_5103.jpeg",
+  "variantID" : "current"
+}

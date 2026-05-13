@@ -1,0 +1,102 @@
+{
+  "capturedAt" : "2026-04-25T18:55:53Z",
+  "caseID" : "img_4591",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 17701,
+    "breakdown" : 1,
+    "expectedTotalCents" : 16501,
+    "itemValues" : 0.9,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.435,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 1200,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1509,
+        "label" : "TAX"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Reed's Indoor Range",
+      "total_cents" : 16501
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 1200 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 4000,
+          "label" : "2 PEOPLE LANE",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "LANE 1",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "GLOCK 19 9MM 4IN",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "RUGER PC CARBINE 9MM 16IN",
+          "qty" : 1
+        },
+        {
+          "cents" : 198,
+          "label" : "SB9A 9MM 115GRN FMJ",
+          "qty" : 1
+        },
+        {
+          "cents" : 1398,
+          "label" : "DISPOSABLE EAR PLUGS",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "SAFETY GLASSES CLEAR",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "BLACK SILH TARGET",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "BLACK SILH TARGET",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "GLOCK",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 14992,
+      "tax_cents" : 1509
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|2 PEOPLE LANE|4000\nITEM|LANE 1|1200\nITEM|GLOCK 19 9MM 4IN|2000\nITEM|RUGER PC CARBINE 9MM 16IN|2299\nITEM|SB9A 9MM 115GRN FMJ|198\nITEM|DISPOSABLE EAR PLUGS|1398\nITEM|SAFETY GLASSES CLEAR|398\nITEM|BLACK SILH TARGET|1200\nITEM|BLACK SILH TARGET|1200\nITEM|GLOCK|2299\nTAX|TAX|1509\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5962640047073364,
+      "phase2Seconds" : 26.833122968673706,
+      "totalWorkflowSeconds" : 27.42943298816681,
+      "transcriptSeconds" : 3.409385681152344e-05,
+      "transcriptToPhase1Seconds" : 0.5962640047073364,
+      "transcriptToPhase2Seconds" : 27.429398894309998,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "24; 1HF1=Stop printer\nReed's Indoor Range 1100 Duane Ave.\nSanta Clara, CA 95054 (408) 970-9870\nWelcome to Reed's Indoor Range\nTicket#945742 Cus#Y6951877 Rg# 2 Dr# 2 Time 03:38 Dec 23 25\nUsr JGR\nItem Number Qty Price Ext\n2PPL 1 40.00 40.00\n2 PEOPLE 1 LANE\n<--- LANE 1 12.00 12.00\nBPHЕ823\nGLOCK 19 9MM 4IN\nSR# BPHE823 PI19502\n915-01337 1 20.00 20.00\nRUGER PC CARBINE 9MM 16IN\nSR# 618-01337 19117\nSBBB-SB9A 1 22.99 22,99\nSB9A 9MM 115GRN FMJ\n50BX .99 1.98\nPYRX-PYDP1000BN\nPYDP1000BN DISPOSABLE EAR\nPLUGS 32DB DP1000 2 6.99 13.98\nPYRX-S4110S S4110S OR XV100 SAFETY\nGLASSES CLEAR 2 1.99 3.98\nB-27E BLACK SILH TARGET ALCO-B27E\nF #4 1 12.00 12.00\nB-2TE BLACK SILH TARGET ALCO-B2TE\nF #4 1 12.00 12.00\nBXML023\nGLOCV\n19502\n1 22.99 22.99\n149.92\n15.09\nTotal sale 165.01\n165.01\nMC\/Visa\nApproval **075C\n****\nJOSHUA LIU\nSARATOGA, CA 95070 15520 BELNAP WAY"
+  },
+  "sourceFilename" : "IMG_4591.jpeg",
+  "variantID" : "current"
+}

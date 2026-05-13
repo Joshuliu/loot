@@ -1,0 +1,97 @@
+{
+  "capturedAt" : "2026-05-08T19:29:28Z",
+  "caseID" : "img_0259",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 16329,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 16329,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 0.2,
+    "overall" : 0.9600000000000001,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 2520,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 1209,
+        "label" : "Gratuity"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "La Cañita",
+      "total_cents" : 16329
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 2200,
+          "label" : "Burger",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Calamari",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Asado",
+          "qty" : 1
+        },
+        {
+          "cents" : 2300,
+          "label" : "Cheeseburger",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Buddha",
+          "qty" : 1
+        },
+        {
+          "cents" : 1400,
+          "label" : "IPA",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Can",
+          "qty" : 1
+        },
+        {
+          "cents" : 2600,
+          "label" : "JS",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 12600,
+      "tax_cents" : 2520,
+      "tip_cents" : 1209
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Burger|2200\nITEM|Calamari|800\nITEM|Asado|1700\nITEM|Cheeseburger|2300\nITEM|Buddha|800\nITEM|IPA|1400\nITEM|Can|800\nITEM|JS|2600\nTAX|Tax|2520\nTIP|Gratuity|1209\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 11.426287055015564,
+      "phase2Seconds" : 63.37595200538635,
+      "totalWorkflowSeconds" : 76.07295000553131,
+      "transcriptSeconds" : 1.2707020044326782,
+      "transcriptToPhase1Seconds" : 11.426287055015564,
+      "transcriptToPhase2Seconds" : 74.80224800109863,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Table 62 3\/14\/251:03 PM $22.00 $8.00 $17.00 $23.00 $8.00 $14.00 $8.00 $26.00 $126.00 $25.20 $12.09 $163.29 Book Your Party with us! RATUITY IS ADDED TO EVERY PARTY THANK YOU FOR YOU VISIT!\nLa Cañita 6844 NW 169th St. Miami, FL 33015 Javier M ount: 3 BURGER LLA DAMM LOCAL CALAMARI N ASADO ?? CHEESEBURGER BUDDHA IPA CAN JS Charge (20.00%)\n- 13"
+  },
+  "sourceFilename" : "IMG_0259.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

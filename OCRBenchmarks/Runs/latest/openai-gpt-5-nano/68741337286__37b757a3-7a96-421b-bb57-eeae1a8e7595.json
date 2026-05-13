@@ -1,0 +1,52 @@
+{
+  "capturedAt" : "2026-05-08T19:23:04Z",
+  "caseID" : "68741337286__37b757a3-7a96-421b-bb57-eeae1a8e7595",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 0,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 1942,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.06,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -1942,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "ubway",
+      "total_cents" : 0
+    },
+    "phase2" : {
+      "issues" : [
+        "Missing amount for tax row: Sales Tax 8%"
+      ],
+      "items" : [
+        {
+          "label" : "Meatball Sub 12in",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 0
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Meatball Sub 12in|\nTAX|Sales Tax 8%|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 14.310611009597778,
+      "phase2Seconds" : 73.58723890781403,
+      "totalWorkflowSeconds" : 88.92226588726044,
+      "transcriptSeconds" : 1.0244019031524658,
+      "transcriptToPhase1Seconds" : 14.310611009597778,
+      "transcriptToPhase2Seconds" : 87.89786398410797,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "ubway#64183-0 Phone 3158027726 syracuse, ny, 13206 erved by: 10 10\/14\/2022 12:08:14: Term ID-Trans# 1\/A-134463 Pr Steak & Chse FtPro Reference No: 5YZW001665720483 ************593 Account No: ******* -d. Cantantloce hi\n452 grant blvd Size Item S MI 12\" Meatball Sub ) Total neral Sales Tax (8%) tal (Take Out) edit Card Approval No: 04235D ange Card Issuer: Visa"
+  },
+  "sourceFilename" : "68741337286__37B757A3-7A96-421B-BB57-EEAE1A8E7595.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

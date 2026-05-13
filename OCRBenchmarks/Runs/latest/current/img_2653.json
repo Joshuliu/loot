@@ -1,0 +1,197 @@
+{
+  "capturedAt" : "2026-05-12T07:33:00Z",
+  "caseID" : "img_2653",
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 15660,
+        "label" : "Service Charge"
+      },
+      {
+        "cents" : 8944,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "total_cents" : 100704
+    },
+    "phase2" : {
+      "fees_cents" : 15660,
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 800,
+          "label" : "Social Butterfly",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Social Butterfly",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Social Butterfly",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Social Butterfly",
+          "qty" : 1
+        },
+        {
+          "cents" : 2400,
+          "label" : "Gnocchi",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Social Butterfly",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Social Butterfly",
+          "qty" : 1
+        },
+        {
+          "cents" : 4500,
+          "label" : "3 Arpege Egg",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Escargot",
+          "qty" : 1
+        },
+        {
+          "cents" : 5000,
+          "label" : "2 Tartare",
+          "qty" : 1
+        },
+        {
+          "cents" : 2700,
+          "label" : "Ratatouille",
+          "qty" : 1
+        },
+        {
+          "cents" : 1900,
+          "label" : "Nicoise",
+          "qty" : 1
+        },
+        {
+          "cents" : 2800,
+          "label" : "King Louis",
+          "qty" : 1
+        },
+        {
+          "cents" : 2800,
+          "label" : "King Louis",
+          "qty" : 1
+        },
+        {
+          "cents" : 4800,
+          "label" : "Prime Strip Frites",
+          "qty" : 1
+        },
+        {
+          "cents" : 2800,
+          "label" : "King Louis",
+          "qty" : 1
+        },
+        {
+          "cents" : 2400,
+          "label" : "Gnocchi",
+          "qty" : 1
+        },
+        {
+          "cents" : 4800,
+          "label" : "Prime Strip Frites",
+          "qty" : 1
+        },
+        {
+          "cents" : 2400,
+          "label" : "Gnocchi",
+          "qty" : 1
+        },
+        {
+          "cents" : 2400,
+          "label" : "Gnocchi",
+          "qty" : 1
+        },
+        {
+          "cents" : 3600,
+          "label" : "Beef Bourgogne",
+          "qty" : 1
+        },
+        {
+          "cents" : 4300,
+          "label" : "Duck L'Orange",
+          "qty" : 1
+        },
+        {
+          "cents" : 2700,
+          "label" : "Lobster Tail",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "Carrots",
+          "qty" : 1
+        },
+        {
+          "cents" : 1500,
+          "label" : "Parsnip",
+          "qty" : 1
+        },
+        {
+          "cents" : 1800,
+          "label" : "GRISETTE",
+          "qty" : 1
+        },
+        {
+          "cents" : 200,
+          "label" : "Baguette",
+          "qty" : 1
+        },
+        {
+          "cents" : 4800,
+          "label" : "Prime Strip Frites",
+          "qty" : 1
+        },
+        {
+          "cents" : 1500,
+          "label" : "Baguettes Butter Radishes",
+          "qty" : 1
+        },
+        {
+          "cents" : 2700,
+          "label" : "Ratatouille",
+          "qty" : 1
+        },
+        {
+          "cents" : 3600,
+          "label" : "Ora king Salmon",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 76100,
+      "tax_cents" : 8944
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|Gnocchi|2400\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|3 Arpege Egg|4500\nITEM|Escargot|1700\nITEM|2 Tartare|5000\nITEM|Ratatouille|2700\nITEM|Nicoise|1900\nITEM|King Louis|2800\nITEM|King Louis|2800\nITEM|Prime Strip Frites|4800\nITEM|King Louis|2800\nITEM|Gnocchi|2400\nITEM|Prime Strip Frites|4800\nITEM|Gnocchi|2400\nITEM|Gnocchi|2400\nITEM|Beef Bourgogne|3600\nITEM|Duck L'Orange|4300\nITEM|Lobster Tail|2700\nITEM|Carrots|1200\nITEM|Parsnip|1500\nITEM|GRISETTE|1800\nITEM|Baguette|200\nITEM|Prime Strip Frites|4800\nITEM|Baguettes Butter Radishes|1500\nITEM|Ratatouille|2700\nITEM|Ora king Salmon|3600\nITEM|2 Chocolate Mousse|2200\nDISCOUNT|Manager Comp|2200\nFEE|Service Charge|15660\nTAX|Tax|8944\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.7244499921798706,
+      "phase2Seconds" : 8.808977961540222,
+      "totalWorkflowSeconds" : 12.68997597694397,
+      "transcriptSeconds" : 2.1565420627593994,
+      "transcriptToPhase1Seconds" : 1.7244499921798706,
+      "transcriptToPhase2Seconds" : 10.53343391418457,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n1 Gnocchi $24.00\nSeat 9\nNO ROE\n1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n3 Arpege Egg $45.00\n1 Escargot $17.00\n2 Tartare $50.00\n1 Ratatouille $27.00\n1 Nicoise $19.00\nSeat 7\n1 King Louis $28.00\nMedium Rare\nSeat 1\n1 King Louis $28.00\nMedium Rare\nSeat 2\n1 Prime Strip Frites $48.00\nMedium Rare\nSeat 3\n1 King Louis $28.00\nMedium Rare\nSeat 4\n1 Gnocchi $24.00\nSeat 5\n1 Prime Strip Frites $48.00\nMedium Rare\nSeat 7\n1 Gnocchi $24.00\nSeat 8\n1 Gnocchi $24.00\nSeat 9\n1 Beef Bourgogne $36.00\nSeat 11\n1 Duck L'Orange $43.00\nSeat 12\n1 Lobster Tail $27.00\nSeat 12\nOn Duck\n1 Carrots $12.00\nSeat 9\n1 Parsnip $15.00\nSeat 10\n1 GRISETTE $18.00\n1 Baguette $2.00\n1 Prime Strip Frites $48.00\nMedium Rare\nSeat 1\n1 Baguettes Butter Radishes $15.00\n1 Ratatouille $27.00\nSeat 10\n1 Ora king Salmon $36.00\n2 Chocolate Mousse $22.00\nManager Comp - Item (100%) - $22.00\nPre-discount Subtotal $783.00\nDiscount Total - $22.00\nSubtotal $761.00\n20% Service Charge (20.00%) $156.60\nTax $89.44\nTotal $1,007.04"
+  },
+  "sourceFilename" : "IMG_2653.heic",
+  "variantID" : "current"
+}

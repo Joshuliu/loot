@@ -1,0 +1,87 @@
+{
+  "capturedAt" : "2026-05-12T07:37:37Z",
+  "caseID" : "img_4992",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 1992,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 4832,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0.6,
+    "overall" : 0.06,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -2840,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 104,
+        "label" : "Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Jack In The Bor",
+      "total_cents" : 1157
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 835 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 299,
+          "label" : "Jr. Chicken Sandwich",
+          "qty" : 1
+        },
+        {
+          "cents" : 299,
+          "label" : "Jr. Chicken Sandwich",
+          "qty" : 1
+        },
+        {
+          "cents" : 258,
+          "label" : "Fries",
+          "qty" : 1
+        },
+        {
+          "cents" : 258,
+          "label" : "Diet Coke",
+          "qty" : 1
+        },
+        {
+          "cents" : 258,
+          "label" : "Smash Jack Burger",
+          "qty" : 1
+        },
+        {
+          "cents" : 258,
+          "label" : "Tiny Tacos",
+          "qty" : 1
+        },
+        {
+          "cents" : 258,
+          "label" : "Avocado Lime Dip",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 1053,
+      "tax_cents" : 104
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Jr. Chicken Sandwich|299\nITEM|Jr. Chicken Sandwich|299\nITEM|Fries|258\nITEM|Diet Coke|258\nITEM|Smash Jack Burger|258\nITEM|Tiny Tacos|258\nITEM|Avocado Lime Dip|258\nTAX|Sales Tax|104\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 7.831678032875061,
+      "phase2Seconds" : 79.56537294387817,
+      "totalWorkflowSeconds" : 89.08033299446106,
+      "transcriptSeconds" : 1.6832669973373413,
+      "transcriptToPhase1Seconds" : 7.831678032875061,
+      "transcriptToPhase2Seconds" : 87.39706492424011,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "0301% $14.57 $8.59 $5.98 810.59 $4.50 844.23 $4.09 840.32 848.32\nOr ive nru Jack In The Bor 1043 STO 9 Hastiton Ave Castell, CA 95008 SMS BTRY SHASH K DE, LE FRENCH FRIES FOUNTAIN DRIN DIET COKE SMASHED JACK NO PICKLES JR. CHICKEN SANDWICH (2 • 2.99) BAC DEL SMASH JACK 13 CLASSIC TINY TACOS AVOCADO LIME DIP CUP Subtotal CA Sales Tax - 9.25% Total Visa Tendered\nItes"
+  },
+  "sourceFilename" : "IMG_4992.jpeg",
+  "variantID" : "current"
+}

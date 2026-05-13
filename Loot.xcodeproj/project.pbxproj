@@ -263,7 +263,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Loot MessagesExtension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Loot;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Loot uses the camera to scan receipts and extract items and totals.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
@@ -301,7 +300,6 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Loot MessagesExtension/Info.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Loot;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Loot uses the camera to scan receipts and extract items and totals.";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_WKRunsIndependentlyOfCompanionApp = NO;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.6;

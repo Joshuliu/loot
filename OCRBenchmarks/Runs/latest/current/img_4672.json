@@ -1,0 +1,57 @@
+{
+  "capturedAt" : "2026-05-12T07:35:30Z",
+  "caseID" : "img_4672",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 318,
+    "breakdown" : 1,
+    "expectedTotalCents" : 318,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.875,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 5,
+        "label" : "CRV"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Safeway",
+      "total_cents" : 318
+    },
+    "phase2" : {
+      "fees_cents" : 5,
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 313,
+          "label" : "Aquafina Water",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 313
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Aquafina Water|313\nFEE|CRV|5\nITEM|S|0\nDISCOUNT|Discount|0\nTAX|Tax|36\nDISCOUNT|Associate Savings|-38\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.5553240776062012,
+      "phase2Seconds" : 39.07367205619812,
+      "totalWorkflowSeconds" : 41.870975971221924,
+      "transcriptSeconds" : 1.241965889930725,
+      "transcriptToPhase1Seconds" : 1.5553240776062012,
+      "transcriptToPhase2Seconds" : 40.6290100812912,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "You Pay 3.13 S 0.05 S 0.00 3.18 REF: 632035414070 AUTH: 0000272C 3.18 0.00 0.36 0.36 10% TOTAL NUMBER OF ITEMS SOLD = 8854 12\/23\/25 22:20 919 54 197 Thank you for shopping Safeway! For SAFEWAY FOR U questions call 877-276-9637 or Safeway.com\/foru\nPrice 3.49 0.05 Assoclate Savings -0.38 12\/23\/25 22:20 CARD # ************1407 AID A0000000031010 TVR 0000000000 YOUR SAVINGS ociate Savings al Savings Value Points Earned Today 3 Points Available 224\n3.18\nAQUAFINA WATER CRV SFTDK SNGL NTX TAX **** BALANCE Credit Purchase PAYMENT AMOUNT AL VISA CREDIT Visa CHANGE YOUR POINTS\n0159"
+  },
+  "sourceFilename" : "IMG_4672.jpeg",
+  "variantID" : "current"
+}

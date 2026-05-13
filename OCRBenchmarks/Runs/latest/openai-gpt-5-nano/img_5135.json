@@ -1,0 +1,91 @@
+{
+  "capturedAt" : "2026-05-08T19:57:01Z",
+  "caseID" : "img_5135",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 18429,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 18829,
+    "itemValues" : 0.7777777777777778,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.2466666666666667,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -400,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1354,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "total_cents" : 22595
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 4166 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 850,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 675,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 5050,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 4550,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 500,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 21241,
+      "tax_cents" : 1354
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|850\nITEM|Unknown Item|675\nITEM|Unknown Item|5050\nITEM|Unknown Item|4550\nITEM|Unknown Item|450\nITEM|Unknown Item|4550\nITEM|Unknown Item|450\nITEM|Unknown Item|500\nTAX|Tax|1354\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 22.15752899646759,
+      "phase2Seconds" : 62.76934099197388,
+      "totalWorkflowSeconds" : 86.36625099182129,
+      "transcriptSeconds" : 1.4393759965896606,
+      "transcriptToPhase1Seconds" : 22.15752899646759,
+      "transcriptToPhase2Seconds" : 84.92687499523163,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "8.50 6.75 0.00 50.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting! Come back soon!\n. (858) 560-792023 TALLN N 930, 202 t 9:52 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz gyu Rib Eye & Shrimp w York & Colossal Shrimp N York & Colossal Shrimp Fried Rice ggested tip amounts are provided or your convenience.\n1 Glass Fried Rice Med Rare Fried Rice Med Rare ite ototal"
+  },
+  "sourceFilename" : "IMG_5135.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

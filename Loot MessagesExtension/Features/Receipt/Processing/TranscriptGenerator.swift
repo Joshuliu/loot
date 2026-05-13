@@ -7,6 +7,7 @@
 
 import Foundation
 import UIKit
+import CoreImage
 @preconcurrency import Vision
 
 /// A standalone, memory-lean tool that accepts a UIImage and returns
@@ -217,15 +218,38 @@ enum TranscriptGenerator {
         let text: String
         let highestY: CGFloat   // max boundingBox.maxY across all observations in line
         let lowestY: CGFloat    // min boundingBox.minY across all observations in line
+        let slope: CGFloat
+        let intercept: CGFloat
+        let maxAboveCenter: CGFloat
+        let maxBelowCenter: CGFloat
+
+        func topY(at x: CGFloat) -> CGFloat {
+            slope * x + intercept + maxAboveCenter
+        }
+
+        func bottomY(at x: CGFloat) -> CGFloat {
+            slope * x + intercept - maxBelowCenter
+        }
+    }
+
+    private struct ChunkBoundary {
+        let leftY: CGFloat
+        let rightY: CGFloat
+    }
+
+    private struct ChunkSpec {
+        let top: ChunkBoundary
+        let bottom: ChunkBoundary
     }
 
     /// Groups recognized text observations into reading-order lines.
     ///
     /// Algorithm:
     /// 1. Sort observations top-to-bottom (descending midY), left-to-right.
-    /// 2. For each unvisited observation ("anchor"), collect all unvisited
-    ///    observations whose vertical overlap with the anchor is ≥ 60% of
-    ///    the anchor's height — these belong to the same line.
+    /// 2. For each unvisited observation ("anchor"), collect unvisited
+    ///    observations that either vertically overlap or lie close to the
+    ///    fitted baseline of the current line. This tolerates slight residual
+    ///    tilt better than purely horizontal grouping.
     /// 3. Sort line members left-to-right and join their top candidates
     ///    with spaces.
     /// 4. Record each line's highest and lowest Y for chunk split decisions.
@@ -249,27 +273,46 @@ enum TranscriptGenerator {
             var lineObservations: [VNRecognizedTextObservation] = [anchor]
             usedIndices.insert(anchorIndex)
 
-            // Merge observations on the same visual line.
-            for candidateIndex in sortedObservations.indices
-                where candidateIndex > anchorIndex && !usedIndices.contains(candidateIndex) {
-                let candidate = sortedObservations[candidateIndex]
-                if verticalOverlapRatio(of: anchor.boundingBox, with: candidate.boundingBox) >= 0.6 {
-                    lineObservations.append(candidate)
-                    usedIndices.insert(candidateIndex)
+            var didGrow = true
+            while didGrow {
+                didGrow = false
+                let fit = fitLine(to: lineObservations)
+                let meanHeight = lineObservations.map(\.boundingBox.height).reduce(0, +) / CGFloat(lineObservations.count)
+
+                for candidateIndex in sortedObservations.indices where !usedIndices.contains(candidateIndex) {
+                    let candidate = sortedObservations[candidateIndex]
+                    if shouldJoinLine(candidate: candidate, anchor: anchor, fit: fit, meanHeight: meanHeight) {
+                        lineObservations.append(candidate)
+                        usedIndices.insert(candidateIndex)
+                        didGrow = true
+                    }
                 }
             }
 
             // Left-to-right reading order within the line.
             let ordered = lineObservations.sorted { $0.boundingBox.minX < $1.boundingBox.minX }
+            let finalFit = fitLine(to: ordered)
             let texts = ordered
                 .compactMap { $0.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }
 
             if !texts.isEmpty {
+                var maxAboveCenter: CGFloat = 0
+                var maxBelowCenter: CGFloat = 0
+                for observation in ordered {
+                    let centerY = finalFit.slope * observation.boundingBox.midX + finalFit.intercept
+                    maxAboveCenter = max(maxAboveCenter, observation.boundingBox.maxY - centerY)
+                    maxBelowCenter = max(maxBelowCenter, centerY - observation.boundingBox.minY)
+                }
+
                 lines.append(TranscriptLine(
                     text: texts.joined(separator: " "),
                     highestY: ordered.map(\.boundingBox.maxY).max() ?? 0,
-                    lowestY: ordered.map(\.boundingBox.minY).min() ?? 0
+                    lowestY: ordered.map(\.boundingBox.minY).min() ?? 0,
+                    slope: finalFit.slope,
+                    intercept: finalFit.intercept,
+                    maxAboveCenter: maxAboveCenter,
+                    maxBelowCenter: maxBelowCenter
                 ))
             }
         }
@@ -279,54 +322,69 @@ enum TranscriptGenerator {
 
     // MARK: - Chunking
 
-    /// Computes normalized crop rects that split the image at every 20th
-    /// line with one-line overlap on each side.
-    ///
-    /// - Current chunk extends down to line 21's lower Y bound.
-    /// - Next chunk starts at line 20's upper Y bound.
-    /// - Transcript trimming later removes the duplicated boundary lines.
-    private static func chunkBounds(from lines: [TranscriptLine], margin: CGFloat = 0.000) -> [CGRect] {
+    /// Computes normalized crop rects that split the image around every ~20th
+    /// line, preferring larger vertical gaps near the target index and keeping
+    /// exactly two shared boundary lines between neighboring chunks.
+    private static func chunkBounds(from lines: [TranscriptLine]) -> [ChunkSpec] {
         guard !lines.isEmpty else { return [] }
 
-        let splitLineIndices = stride(from: 19, to: lines.count, by: 20)
-        var chunkRects: [CGRect] = []
-        var chunkTopY: CGFloat = 1.0
+        var chunkSpecs: [ChunkSpec] = []
+        var chunkTopBoundary = ChunkBoundary(leftY: 1.0, rightY: 1.0)
+        var previousSplitIndex = -1
+        var targetIndex = 19
 
-        for splitIndex in splitLineIndices {
-            let extendedIndex = min(splitIndex + 1, lines.count - 1)
-            let chunkBottomY = max(0, min(1, lines[extendedIndex].lowestY - margin))
-            let clampedTopY = max(0, min(1, chunkTopY))
+        while targetIndex < lines.count - 1 {
+            let searchStart = max(previousSplitIndex + 1, targetIndex - 3)
+            let searchEnd = min(lines.count - 2, targetIndex + 3)
 
-            if clampedTopY > chunkBottomY {
-                let rect = CGRect(x: 0, y: chunkBottomY, width: 1, height: clampedTopY - chunkBottomY)
-                if rect.height > 0.0001 {
-                    chunkRects.append(rect)
+            var bestSplitIndex = targetIndex
+            var bestGap: CGFloat = -.greatestFiniteMagnitude
+            for candidateIndex in searchStart...searchEnd {
+                let gap = lines[candidateIndex].lowestY - lines[candidateIndex + 1].highestY
+                if gap > bestGap {
+                    bestGap = gap
+                    bestSplitIndex = candidateIndex
                 }
             }
 
-            chunkTopY = max(0, min(1, lines[splitIndex].highestY + margin))
+            // Chunk N should include the same last two lines as chunk N+1's first
+            // two lines. That means the current chunk extends through the lower
+            // boundary of the second shared line, while the next chunk starts at
+            // the upper boundary of the first shared line.
+            let bottomBoundary = boundaryFromBottom(of: lines[bestSplitIndex + 1])
+            let maxTopY = max(chunkTopBoundary.leftY, chunkTopBoundary.rightY)
+            let minBottomY = min(bottomBoundary.leftY, bottomBoundary.rightY)
+
+            if maxTopY > minBottomY {
+                chunkSpecs.append(.init(top: clamp(boundary: chunkTopBoundary), bottom: clamp(boundary: bottomBoundary)))
+            }
+
+            chunkTopBoundary = boundaryFromTop(of: lines[bestSplitIndex])
+            previousSplitIndex = bestSplitIndex
+            targetIndex = bestSplitIndex + 20
         }
 
         // Final chunk from last split to the bottom of the image.
-        if chunkTopY > 0 {
-            let finalRect = CGRect(x: 0, y: 0, width: 1, height: chunkTopY)
-            if finalRect.height > 0.0001 {
-                chunkRects.append(finalRect)
-            }
+        let bottomBoundary = ChunkBoundary(leftY: 0, rightY: 0)
+        let maxTopY = max(chunkTopBoundary.leftY, chunkTopBoundary.rightY)
+        if maxTopY > 0.0001 {
+            chunkSpecs.append(.init(top: clamp(boundary: chunkTopBoundary), bottom: bottomBoundary))
         }
 
-        return chunkRects
+        return chunkSpecs
     }
 
-    /// Crops, OCRs, and transcribes each chunk concurrently, then trims
-    /// overlap lines so the joined result has no duplicates.
+    /// Crops, OCRs, and transcribes each chunk concurrently, then trims the
+    /// shared two-line overlap asymmetrically:
+    /// - earlier chunk drops the lower shared line
+    /// - later chunk drops the higher shared line
+    /// This preserves both shared rows exactly once in the final transcript.
     ///
     /// Returns an ordered array of per-chunk transcript strings (text only,
     /// no images — keeping memory footprint low).
     private static func analyzeChunks(in image: UIImage, from lines: [TranscriptLine]) async -> [String] {
-        let fullImageBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
         let splitBounds = chunkBounds(from: lines)
-        let chunkBoundsToUse = splitBounds.isEmpty ? [fullImageBounds] : splitBounds
+        let chunkBoundsToUse = splitBounds.isEmpty ? [ChunkSpec(top: ChunkBoundary(leftY: 1, rightY: 1), bottom: ChunkBoundary(leftY: 0, rightY: 0))] : splitBounds
         let totalChunks = chunkBoundsToUse.count
         let isSingleChunk = splitBounds.isEmpty
 
@@ -336,7 +394,7 @@ enum TranscriptGenerator {
         let analyzed = await withTaskGroup(of: (Int, String, UIImage?).self) { group in
             for (index, bounds) in chunkBoundsToUse.enumerated() {
                 group.addTask {
-                    guard let chunkImage = cropHorizontalChunk(image: image, bounds: bounds) else {
+                    guard let chunkImage = cropAngledChunk(image: image, spec: bounds) else {
                         return (index, "", nil)
                     }
                     let prepared = prepareChunkForOCR(chunkImage)
@@ -357,11 +415,15 @@ enum TranscriptGenerator {
                     if isSingleChunk {
                         trimmed = fullTranscript
                     } else {
-                        var lines = fullTranscript.components(separatedBy: "\n")
+                        var lines = fullTranscript.components(separatedBy: "\n").filter { !$0.isEmpty }
                         let isFirst = index == 0
                         let isLast = index == totalChunks - 1
-                        if !isFirst && !lines.isEmpty { lines.removeFirst() }
-                        if !isLast && !lines.isEmpty { lines.removeLast() }
+                        if !isLast {
+                            lines = Array(lines.dropLast(min(1, lines.count)))
+                        }
+                        if !isFirst {
+                            lines = Array(lines.dropFirst(min(1, lines.count)))
+                        }
                         trimmed = lines.joined(separator: "\n")
                     }
 
@@ -381,36 +443,42 @@ enum TranscriptGenerator {
 
     // MARK: - Image cropping
 
-    /// Crops a full-width horizontal band from the image using normalized
-    /// Vision coordinates. The image is rasterized upright first so crop
-    /// math ignores UIImage orientation metadata.
-    private static func cropHorizontalChunk(image: UIImage, bounds: CGRect) -> UIImage? {
-        let clamped = bounds.clamped01()
-        guard clamped.height > 0 else { return nil }
-
+    /// Crops a quadrilateral chunk from the image using slanted top and bottom
+    /// boundaries in normalized Vision coordinates, then rectifies it into an
+    /// upright rectangle for OCR.
+    private static func cropAngledChunk(image: UIImage, spec: ChunkSpec) -> UIImage? {
         guard let cgImage = image.cgImage else { return nil }
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
 
-        // Vision y=0 is bottom, UIKit y=0 is top → flip.
-        let pixelRect = CGRect(
-            x: 0,
-            y: (1.0 - clamped.maxY) * CGFloat(cgImage.height),
-            width: CGFloat(cgImage.width),
-            height: clamped.height * CGFloat(cgImage.height)
-        ).integral
+        let clampedTop = clamp(boundary: spec.top)
+        let clampedBottom = clamp(boundary: spec.bottom)
+        let minHeight = min(clampedTop.leftY, clampedTop.rightY) - max(clampedBottom.leftY, clampedBottom.rightY)
+        guard minHeight > 0.0001 else { return nil }
 
-        let imageRect = CGRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
-        let safe = pixelRect.intersection(imageRect)
-        guard safe.width > 0, safe.height > 0,
-              let cropped = cgImage.cropping(to: safe) else { return nil }
+        let topLeft = CIVector(x: 0, y: clampedTop.leftY * height)
+        let topRight = CIVector(x: width, y: clampedTop.rightY * height)
+        let bottomLeft = CIVector(x: 0, y: clampedBottom.leftY * height)
+        let bottomRight = CIVector(x: width, y: clampedBottom.rightY * height)
 
-        return UIImage(cgImage: cropped, scale: image.scale, orientation: .up)
+        let ciImage = CIImage(cgImage: cgImage)
+        let corrected = ciImage.applyingFilter("CIPerspectiveCorrection", parameters: [
+            "inputTopLeft": topLeft,
+            "inputTopRight": topRight,
+            "inputBottomLeft": bottomLeft,
+            "inputBottomRight": bottomRight
+        ])
+
+        let ctx = CIContext(options: [.useSoftwareRenderer: false])
+        guard let outputCG = ctx.createCGImage(corrected, from: corrected.extent) else { return nil }
+        return UIImage(cgImage: outputCG, scale: image.scale, orientation: .up)
     }
 
     // MARK: - Chunk preparation
 
-    /// Upscales a chunk 2x and applies strong sharpening before OCR.
-    /// Larger pixels give VisionKit more signal per character; sharpening
-    /// enhances edges without the destructive side-effects of binarization.
+    /// Upscales a chunk before OCR. The rectified chunk crop is already
+    /// geometrically normalized, so we avoid additional sharpening here to
+    /// reduce OCR regressions on otherwise clear text.
     private static func prepareChunkForOCR(_ image: UIImage) -> UIImage {
         let scale: CGFloat = 1.5
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
@@ -419,18 +487,7 @@ enum TranscriptGenerator {
         image.draw(in: CGRect(origin: .zero, size: newSize))
         let upscaled = UIGraphicsGetImageFromCurrentImageContext() ?? image
         UIGraphicsEndImageContext()
-
-        guard let ci = CIImage(image: upscaled) else { return upscaled }
-
-        let unsharp = CIFilter.unsharpMask()
-        unsharp.inputImage = ci
-        unsharp.radius = 3.0
-        unsharp.intensity = 1.5
-
-        guard let output = unsharp.outputImage else { return upscaled }
-        let ctx = CIContext(options: [.useSoftwareRenderer: false])
-        guard let cg = ctx.createCGImage(output, from: output.extent) else { return upscaled }
-        return UIImage(cgImage: cg, scale: 1.0, orientation: .up)
+        return upscaled
     }
 
     // MARK: - OCR
@@ -520,6 +577,66 @@ enum TranscriptGenerator {
         let intersectionArea = intersection.width * intersection.height
         let unionArea = a.width * a.height + b.width * b.height - intersectionArea
         return unionArea > 0 ? intersectionArea / unionArea : 0
+    }
+
+    private static func fitLine(to observations: [VNRecognizedTextObservation]) -> (slope: CGFloat, intercept: CGFloat) {
+        guard observations.count >= 2 else {
+            let midY = observations.first?.boundingBox.midY ?? 0
+            return (0, midY)
+        }
+
+        let points = observations.map { CGPoint(x: $0.boundingBox.midX, y: $0.boundingBox.midY) }
+        let meanX = points.map(\.x).reduce(0, +) / CGFloat(points.count)
+        let meanY = points.map(\.y).reduce(0, +) / CGFloat(points.count)
+
+        let numerator = points.reduce(CGFloat.zero) { partial, point in
+            partial + ((point.x - meanX) * (point.y - meanY))
+        }
+        let denominator = points.reduce(CGFloat.zero) { partial, point in
+            partial + pow(point.x - meanX, 2)
+        }
+
+        let slope: CGFloat = denominator > 0.000001 ? (numerator / denominator) : 0
+        let intercept = meanY - slope * meanX
+        return (slope, intercept)
+    }
+
+    private static func boundaryFromTop(of line: TranscriptLine) -> ChunkBoundary {
+        ChunkBoundary(leftY: line.topY(at: 0), rightY: line.topY(at: 1))
+    }
+
+    private static func boundaryFromBottom(of line: TranscriptLine) -> ChunkBoundary {
+        ChunkBoundary(leftY: line.bottomY(at: 0), rightY: line.bottomY(at: 1))
+    }
+
+    private static func clamp(boundary: ChunkBoundary) -> ChunkBoundary {
+        ChunkBoundary(
+            leftY: min(max(boundary.leftY, 0), 1),
+            rightY: min(max(boundary.rightY, 0), 1)
+        )
+    }
+
+    private static func shouldJoinLine(
+        candidate: VNRecognizedTextObservation,
+        anchor: VNRecognizedTextObservation,
+        fit: (slope: CGFloat, intercept: CGFloat),
+        meanHeight: CGFloat
+    ) -> Bool {
+        let candidateBox = candidate.boundingBox
+        let anchorBox = anchor.boundingBox
+
+        if verticalOverlapRatio(of: anchorBox, with: candidateBox) >= 0.45 {
+            return true
+        }
+
+        let predictedMidY = fit.slope * candidateBox.midX + fit.intercept
+        let baselineDistance = abs(candidateBox.midY - predictedMidY)
+        let distanceThreshold = max(meanHeight, candidateBox.height) * 0.65
+
+        let anchorDistance = abs(candidateBox.midY - anchorBox.midY)
+        let verticalWindow = max(max(meanHeight, candidateBox.height), anchorBox.height) * 1.4
+
+        return baselineDistance <= distanceThreshold && anchorDistance <= verticalWindow
     }
 
     // MARK: - Helpers

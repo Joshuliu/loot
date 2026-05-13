@@ -88,6 +88,7 @@ struct PaymentMethodView: View {
             Text("Let others know how to pay you! Guests using the same payment methods can pay you in your preferred methods.")
                 .font(.system(size: 16))
                 .foregroundStyle(.secondary)
+                .minimumScaleFactor(0.78)
 
             // Draggable methods list — intentionally outside ScrollView
             // so the ScrollView's pan gesture can't interfere with the drag gesture.
@@ -195,6 +196,13 @@ struct PaymentMethodView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .toolbar {
+            // phonePad has no Return key — give every focused field a way out.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedIdentifierMethodId = nil }
+            }
+        }
         .onAppear {
             methods = savedPaymentMethods()
             // Canonicalize persisted Venmo identifiers so existing values render consistently.
@@ -410,7 +418,18 @@ struct PaymentMethodView: View {
 
         Task {
             let userId = KeychainHelper.getOrCreateUserId()
-            try? await TabService.shared.updatePaymentMethods(userId: userId, methods: methods)
+            // Await the Firestore write before dismissing. If the user
+            // closes and quickly re-opens the extension, MessagesViewController
+            // .didBecomeActive's refreshPaymentMethodsFromFirestore would
+            // race ahead of an in-flight fire-and-forget save and overwrite
+            // the local UserDefaults with the pre-save remote state — losing
+            // the user's just-tapped change. Awaiting here keeps save and
+            // sync in order.
+            do {
+                try await TabService.shared.updatePaymentMethods(userId: userId, methods: methods)
+            } catch {
+                print("[PaymentMethodView] Failed to save to Firestore: \(error)")
+            }
             await MainActor.run {
                 isSaving = false
                 onSaved()

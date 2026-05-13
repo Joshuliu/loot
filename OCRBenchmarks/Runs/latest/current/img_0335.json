@@ -1,0 +1,176 @@
+{
+  "capturedAt" : "2026-05-12T07:31:00Z",
+  "caseID" : "img_0335",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 8987,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 8884,
+    "itemValues" : 0.8235294117647058,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.33352941176470585,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 103,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "total_cents" : 8884
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 103 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 329,
+          "label" : "Munchies Cheese FX",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Skippy Pnt Btr Spr",
+          "qty" : 1
+        },
+        {
+          "cents" : 334,
+          "label" : "NBC Cky Chps Ahoy",
+          "qty" : 1
+        },
+        {
+          "cents" : 334,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1947,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1258,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Capri Sun Trop Pun",
+          "qty" : 1
+        },
+        {
+          "cents" : 657,
+          "label" : "CRV SFTDK SNGL NTX",
+          "qty" : 1
+        },
+        {
+          "cents" : 798,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 537,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 358,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 798,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 50,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 20,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 72,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Kodiak Oat",
+          "qty" : 1
+        },
+        {
+          "label" : "Justins Ho",
+          "qty" : 1
+        },
+        {
+          "label" : "Icelndic W",
+          "qty" : 1
+        },
+        {
+          "label" : "Groc Nonedible",
+          "qty" : 1
+        },
+        {
+          "label" : "Solo Clear",
+          "qty" : 1
+        },
+        {
+          "label" : "Lifeway Or",
+          "qty" : 1
+        },
+        {
+          "label" : "Lifeway Or",
+          "qty" : 1
+        },
+        {
+          "label" : "Yakult Dai",
+          "qty" : 1
+        },
+        {
+          "label" : "CRV Milk 5 Pack",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "Daisy Sour",
+          "qty" : 1
+        },
+        {
+          "label" : "Organics Wh Milk",
+          "qty" : 1
+        },
+        {
+          "label" : "Rcycble Ba",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8884
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Munchies Cheese FX|329\nITEM|Skippy Pnt Btr Spr|399\nITEM|NBC Cky Chps Ahoy|334\nITEM|Unknown Item|439\nDISCOUNT||105\nITEM|Unknown Item|1947\nITEM|Unknown Item|1258\nITEM|Capri Sun Trop Pun|300\nITEM|CRV SFTDK SNGL NTX|747\nDISCOUNT||90\nTAX||798\nITEM|Unknown Item|898\nDISCOUNT||100\nITEM|Unknown Item|537\nITEM|Unknown Item|358\nITEM|Unknown Item|798\nITEM|Unknown Item|50\nITEM|Unknown Item|398\nITEM|Unknown Item|20\nITEM|Unknown Item|72\nITEM|Kodiak Oat|\nITEM|Justins Ho|\nITEM|Icelndic W|\nITEM|Groc Nonedible|\nITEM|Solo Clear|\nITEM|Lifeway Or|\nITEM|Lifeway Or|\nITEM|Yakult Dai|\nITEM|CRV Milk 5 Pack|\nITEM|Daisy Sour|558\nDISCOUNT||160\nITEM|Organics Wh Milk|\nITEM|Rcycble Ba|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 4.949190020561218,
+      "phase2Seconds" : 45.98188102245331,
+      "totalWorkflowSeconds" : 53.10729002952576,
+      "transcriptSeconds" : 2.176205039024353,
+      "transcriptToPhase1Seconds" : 4.949190020561218,
+      "transcriptToPhase2Seconds" : 50.931084990501404,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "nowerecycieamiu how2recycle.in PAPER packaging\nsee more\n• can to\nLIKE A BOX\nTHIS MAILER JUST\nRECYCLE\nStore 919 Dir Carlos Nunez Main: (408) 867-0180 12876 Saratoga\/Sunnyvale Rd SARATOGA CA 95070 3.29 MUNCHIES CHEESE FX 3.99 S SKIPPY PNT BTR SPR 3.34 S NBC CKY CHPS AHOY 4.39 1. 05- 19.47 S 12.58 S 3.00 S CAPRI SUN TROP PUN. 3.49 0.49- 6.57 0.30 S CRV SFTDK SNGL NTX 7.47 0.90- 7,98 T 8.98 1.00- 5.37 S 3.58 7.98 S 0.50 S 3.98 5.99 S 0.20 0.72 88.84 88.84 0.00 29 8852\nRegular Price Card Savings 3 QTY KODIAK OAT 2 QTY JUSTINS HO Regular Price Card Savings 3 QTY ICELNDIC W Regular Price Card Savings GROC NONEDIBLE 2 QTY SOLO CLEAR Regular Price Card Savings REFRIG\/FROZEN 3 QTY LIFEWAY OR 2 QTY LIFEWAY OR 2 QTY YAKULT DAI CRV MILK 5 PACK 2 QTY DAISY SOUR 5.58 Regular Price 1.60- • ORGANICS WH MILK MISCELLANEOUS 2 QTY RCYCBLE BA 01\/26\/21 15:08 PRIMARY CARD # ************5122 88.84 TOTAL TRANSACTION AMOUNT: 0.00 00469241 ITEMS SOLD = 52 66\nGROCERY Card Savings CASH BACK AMOUNT: REF: 870832151220 AUTH: AID A0000000980840 TVR 8000048000 TOTAL NUMBER OF 01\/26\/21 15:08 POINTS EARNED TODAY\n919\nTAX **** BALANCE Debit Purchase AL US DEBIT 6800 Debit CHANGE\nMR TSI"
+  },
+  "sourceFilename" : "IMG_0335.jpeg",
+  "variantID" : "current"
+}

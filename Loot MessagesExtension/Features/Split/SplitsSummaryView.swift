@@ -10,13 +10,35 @@ import SwiftUI
 import UIKit
 
 struct SplitsSummaryView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
+    @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
+    let bus: MessageBus
     @State private var split: SplitPayload
-    let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
+    /// Receipt items with partition wire fields. Mutable so the Tap-to-Claim
+    /// recipient flow can update per-item rs/sh/cu in place, then persist
+    /// both `split` and `items` in one round trip via
+    /// `messageReceiptVM.persist(split:items:...)`.
+    @State private var items: [ReceiptItemPayload]
+    let onEditSplit: (() -> Void)?
+    let onEditReceipt: (() -> Void)?
+    let onRemoveFromTab: (() -> Void)?
+    let onClose: (() -> Void)?
+    let onRequestCollapse: (() -> Void)?
 
-    private var isTabReceipt: Bool { uiModel.openedMessagePayload?.tid != nil }
+    private var canEdit: Bool {
+        guard let payload = messageReceiptVM.openedMessagePayload else { return false }
+        let myUid = KeychainHelper.getOrCreateUserId()
+        return payload.canEdit(myUid: myUid, userTabs: tabContextVM.userTabs)
+    }
+
+    private var isTabReceipt: Bool { messageReceiptVM.openedMessagePayload?.tid != nil }
 
     @State private var selectedIndex: Int? = nil
+    /// Item ID currently presenting the Tap-to-Claim split picker (recipient
+    /// side), or nil if hidden.
+    @State private var claimPickerItemId: String? = nil
 
     private enum MyBillState { case choosing, joined, notInBill }
     @State private var billState: MyBillState = .choosing
@@ -39,13 +61,297 @@ struct SplitsSummaryView: View {
         let methods: [PaymentMethod]
     }
     @State private var paySheetInfo: PaySheetInfo? = nil
+    @State private var selectedSection: DetailSection = .splits
+    @State private var showCapture: Bool = false
+    @State private var headerScrollOffset: CGFloat = 0
+    @State private var initializedClaimStateBillId: String? = nil
 
     @Environment(\.openURL) private var openURL
 
-    init(uiModel: LootUIModel, split: SplitPayload, items: [ReceiptItemPayload]) {
-        self.uiModel = uiModel
+    private enum DetailSection {
+        case splits
+        case receipt
+    }
+
+    private let expandedHeaderHeight: CGFloat = 130
+    private let collapsedHeaderHeight: CGFloat = 76
+    private let headerCollapseRange: CGFloat = 60
+
+    init(
+        coordinator: AppCoordinator,
+        receiptDraftVM: ReceiptDraftViewModel,
+        messageReceiptVM: MessageReceiptViewModel,
+        tabContextVM: TabContextViewModel,
+        bus: MessageBus,
+        split: SplitPayload,
+        items: [ReceiptItemPayload],
+        onEditSplit: (() -> Void)? = nil,
+        onEditReceipt: (() -> Void)? = nil,
+        onRemoveFromTab: (() -> Void)? = nil,
+        onClose: (() -> Void)? = nil,
+        onRequestCollapse: (() -> Void)? = nil
+    ) {
+        self.coordinator = coordinator
+        self.receiptDraftVM = receiptDraftVM
+        self.messageReceiptVM = messageReceiptVM
+        self.tabContextVM = tabContextVM
+        self.bus = bus
         self._split = State(initialValue: split)
-        self.items = items
+        self._items = State(initialValue: items)
+        self.onEditSplit = onEditSplit
+        self.onEditReceipt = onEditReceipt
+        self.onRemoveFromTab = onRemoveFromTab
+        self.onClose = onClose
+        self.onRequestCollapse = onRequestCollapse
+    }
+
+    private var receipt: ReceiptDisplay? {
+        receiptDraftVM.currentReceipt
+    }
+
+    private var captureImage: UIImage? {
+        receiptDraftVM.scanImageCropped ?? receiptDraftVM.scanImageOriginal
+    }
+
+    private var currentBillId: String? {
+        messageReceiptVM.openedMessageDocId ?? messageReceiptVM.openedMessagePayload?.r.id
+    }
+
+    private var hasIgnoredListForBill: Bool {
+        messageReceiptVM.hasIgnoredUUIDsList(for: currentBillId)
+    }
+
+    private var hasClaimableSlots: Bool {
+        includedIndices.contains { split.g.indices.contains($0) && split.g[$0].uid == nil }
+    }
+
+    private func addCurrentUserToIgnored() {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        messageReceiptVM.addIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    private func removeCurrentUserFromIgnoredIfPresent() {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        messageReceiptVM.removeIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    private func isCurrentUserIgnored() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        return messageReceiptVM.isIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    private func unclaimCurrentUserIfNeeded() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        guard let gi = split.g.firstIndex(where: { $0.uid == myUid }) else { return false }
+        // Leaving a bill clears BOTH uid and the stored slot name. The
+        // display layer falls through to "Guest \(gi + 1)" automatically
+        // (see displayName(for:) above) so the slot reads as a clean
+        // unclaimed slot for whoever views the bill next. This is
+        // distinct from leaving a TAB (which preserves slot identity in
+        // historical bills); only opt-out-of-this-bill resets the slot.
+        split.g[gi].uid = nil
+        split.g[gi].n = ""
+        return true
+    }
+
+    private var headerTitle: String {
+        receipt?.title ?? messageReceiptVM.openedMessagePayload?.r.t ?? "Receipt"
+    }
+
+    private var headerDateText: String {
+        receipt?.dateText ?? "—"
+    }
+
+    private var associatedTab: LootTab? {
+        if let receiptTab = tabContextVM.receiptTab {
+            return receiptTab
+        }
+        if let payloadTab = messageReceiptVM.openedMessagePayload?.tab {
+            return LootTab.minimal(id: payloadTab.id, name: payloadTab.n, colorHex: payloadTab.c)
+        }
+        if isTabReceipt {
+            return tabContextVM.activeTab
+        }
+        return nil
+    }
+
+    private var headerBackgroundColor: Color {
+        if isTabReceipt, let colorHex = associatedTab?.colorHex {
+            return Color(hex: colorHex)
+        }
+        return Color(.systemBackground)
+    }
+
+    private var headerPrimaryStyle: Color {
+        isTabReceipt ? .white : .primary
+    }
+
+    private var headerSecondaryStyle: Color {
+        isTabReceipt ? .white.opacity(0.8) : .secondary
+    }
+
+    private func openAssociatedTab() {
+        if let target = associatedTab {
+            // Prefer the live activeTab when it points at the same tab id —
+            // the Firestore listener keeps it populated with full members and
+            // balances, whereas `associatedTab` may have fallen back to a
+            // payload-derived `LootTab.minimal` stub (empty members) that
+            // would briefly render "no members + UUID-as-name" until the
+            // listener races back. The property-level guard in LootUIModel
+            // also catches this, but skipping the write here is cleaner.
+            if let active = tabContextVM.activeTab, active.id == target.id {
+                // Same tab — no-op, preserve the live state.
+            } else {
+                tabContextVM.activeTab = target
+            }
+        }
+        onClose?()
+    }
+
+    private var headerNavButtonTitle: String {
+        if isTabReceipt && tabMembershipState == .member {
+            return "View Tab"
+        }
+        return "Back"
+    }
+
+    private var headerNavButtonIcon: String {
+        if isTabReceipt && tabMembershipState == .member {
+            return "rectangle.stack.fill"
+        }
+        return "arrow.left"
+    }
+
+    private func handleHeaderNavButtonTap() {
+        if isTabReceipt && tabMembershipState == .member {
+            openAssociatedTab()
+        } else {
+            onRequestCollapse?()
+            onClose?()
+        }
+    }
+
+    private var headerCollapseProgress: CGFloat {
+        min(max(headerScrollOffset / headerCollapseRange, 0), 1)
+    }
+
+    private var currentHeaderHeight: CGFloat {
+        expandedHeaderHeight - ((expandedHeaderHeight - collapsedHeaderHeight) * headerCollapseProgress)
+    }
+
+    private func lerp(_ from: CGFloat, _ to: CGFloat, progress: CGFloat) -> CGFloat {
+        from + ((to - from) * progress)
+    }
+
+    @ViewBuilder
+    private var headerDateLabel: some View {
+        Text(headerDateText)
+            .font(.system(size: 15))
+            .foregroundStyle(headerSecondaryStyle)
+            .opacity(max(0, 1 - Double(headerCollapseProgress * 1.8)))
+            .offset(y: -headerCollapseProgress * 8)
+    }
+
+    @ViewBuilder
+    private var headerTitleBlock: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(headerTitle)
+                .font(.system(size: lerp(28, 21, progress: headerCollapseProgress), weight: .bold))
+                .foregroundStyle(headerPrimaryStyle)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+
+            headerDateLabel
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+    }
+
+    private var headerNavLabelWidth: CGFloat {
+        lerp(72, 0, progress: headerCollapseProgress)
+    }
+
+    private var headerNavMinWidth: CGFloat {
+        lerp(108, 44, progress: headerCollapseProgress)
+    }
+
+    private var headerNavTitleOpacity: Double {
+        max(0, 1 - Double(headerCollapseProgress * 2.2))
+    }
+
+    @ViewBuilder
+    private var headerNavButton: some View {
+        Button {
+            handleHeaderNavButtonTap()
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: headerNavButtonIcon)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(headerNavButtonTitle)
+                    .font(.system(size: 15, weight: .semibold))
+                    .lineLimit(1)
+                    .opacity(headerNavTitleOpacity)
+                    .frame(width: headerNavLabelWidth, alignment: .leading)
+                    .clipped()
+            }
+            .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
+            .padding(.horizontal, 12)
+            .frame(height: 36)
+            .frame(minWidth: headerNavMinWidth)
+            .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var headerSectionToggleButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                selectedSection = selectedSection == .splits ? .receipt : .splits
+            }
+        } label: {
+            Image(systemName: selectedSection == .splits ? "doc.text" : "chart.pie.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(isTabReceipt ? headerBackgroundColor : .blue)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(isTabReceipt ? Color.white : Color(.tertiarySystemFill))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var headerActions: some View {
+        HStack(spacing: 8) {
+            headerNavButton
+            headerSectionToggleButton
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+    }
+
+    private func presentPendingRequestIfPossible() {
+        guard paySheetInfo == nil,
+              let pending = messageReceiptVM.pendingPayRequest,
+              let docId = messageReceiptVM.openedMessageDocId,
+              pending.receiptDocId == docId,
+              let debtorId = pending.debtorId,
+              let creditorId = pending.creditorId,
+              let debtorIndex = split.g.firstIndex(where: { $0.uid == debtorId }),
+              split.g.indices.contains(split.pi),
+              split.g[split.pi].uid == creditorId,
+              let methods = payerPaymentMethods, !methods.isEmpty
+        else { return }
+
+        paySheetInfo = PaySheetInfo(
+            toName: displayName(for: split.pi),
+            fromName: displayName(for: debtorIndex),
+            amountCents: pending.amountCents,
+            guestIndex: debtorIndex,
+            methods: methods
+        )
+        messageReceiptVM.pendingPayRequest = nil
     }
 
     private var includedIndices: [Int] {
@@ -84,6 +390,26 @@ struct SplitsSummaryView: View {
         return max(0, split.o[idx])
     }
 
+    /// Fetches Firestore displayNames for any uid in the current split that
+    /// hasn't been resolved yet. Idempotent — runs once on .task and again
+    /// whenever the payload changes (e.g. a Firestore refresh adds a
+    /// joiner's uid that wasn't in the original inline payload).
+    @MainActor
+    private func fetchMissingDisplayNames() async {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let candidates = Set(split.g.compactMap(\.uid))
+            .filter { $0 != myUid && !$0.isEmpty && uidDisplayNames[$0] == nil }
+        for uid in candidates {
+            do {
+                if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
+                    uidDisplayNames[uid] = name
+                }
+            } catch {
+                print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
+            }
+        }
+    }
+
     // MARK: - Paid status
 
     private func isPaid(guestIndex: Int) -> Bool {
@@ -100,7 +426,7 @@ struct SplitsSummaryView: View {
             split.pd!.append(false)
         }
         split.pd![guestIndex].toggle()
-        persistSplit()
+        persistSplit(action: .paidToggled(paid: split.pd![guestIndex]))
     }
 
     /// Returns true if the current user can toggle paid for this guest's transaction.
@@ -230,7 +556,18 @@ struct SplitsSummaryView: View {
                 .buttonStyle(.plain)
             } else if canRequest {
                 Button {
-                    uiModel.sendRequestCard?(to, from, amount, nil)
+                    bus.sendRequestCard(
+                        creditorName: to,
+                        debtorName: from,
+                        amountCents: amount,
+                        tabColorHex: nil,
+                        metadata: RequestCardMetadata(
+                            receiptDocId: messageReceiptVM.openedMessageDocId,
+                            tabId: nil,
+                            creditorId: split.g[split.pi].uid,
+                            debtorId: split.g[guestIndex].uid
+                        )
+                    )
                 } label: {
                     Label("Request", systemImage: "bell.fill")
                         .font(.system(size: 15, weight: .semibold))
@@ -340,13 +677,25 @@ struct SplitsSummaryView: View {
 
     // MARK: - Slot claim / unclaim
 
-    private func claimSlot(at guestIndex: Int) {
+    private func claimSlot(at guestIndex: Int, broadcast: Bool = true) {
         let myUid = KeychainHelper.getOrCreateUserId()
         split.g[guestIndex].uid = myUid
-        // Don't overwrite .n — that's the bill creator's manually-entered name.
-        // Display name is resolved from uid via displayName(for:).
+
+        // Per spec: g[i].n is the SENDER-set stored name and is never
+        // overwritten by joiners. Display falls through to g.n only when
+        // uid is unset; with uid set, the recipient's view looks up the
+        // user's display name via the Firestore users/{uid} doc.
+        // To shrink the lookup race for cross-sender viewers, ensure our
+        // user doc carries our current display name before the broadcast
+        // has propagated.
+        let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !myName.isEmpty {
+            Task { try? await TabService.shared.createOrUpdateUser(userId: myUid, displayName: myName) }
+        }
+
+        removeCurrentUserFromIgnoredIfPresent()
         billState = .joined
-        persistSplit()
+        persistSplit(broadcast: broadcast, action: .claimed)
 
         // Select the newly claimed slot on the donut
         if let idx = myIncludedIndex {
@@ -354,71 +703,211 @@ struct SplitsSummaryView: View {
         }
     }
 
-    private func unclaimSlot() {
-        let myUid = KeychainHelper.getOrCreateUserId()
-        if let gi = split.g.firstIndex(where: { $0.uid == myUid }) {
-            split.g[gi].uid = nil
+    /// Auto-claim a slot on first view of the bill. Skips the chat bubble
+    /// broadcast: iOS won't auto-send an MSConversation.send call this far
+    /// from a user tap (the message lands in the input field draft instead).
+    /// The next *manual* interaction will broadcast the latest state with a
+    /// real user-tap context, which iOS will auto-send normally.
+    private func autoClaimSlotAfterViewLoad(at guestIndex: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            guard split.g.indices.contains(guestIndex), split.g[guestIndex].uid == nil else { return }
+            claimSlot(at: guestIndex, broadcast: false)
         }
-        persistSplit()
     }
 
-    private func persistSplit() {
-        guard var payload = uiModel.openedMessagePayload,
-              let docId = uiModel.openedMessageDocId else { return }
+    private func optOutOfBill() {
+        _ = unclaimCurrentUserIfNeeded()
+        addCurrentUserToIgnored()
+        selectedIndex = nil
+        billState = .notInBill
+        persistSplit(action: .optedOut)
+    }
 
-        payload.s = split
-        uiModel.openedMessagePayload = payload
+    private func reconcileClaimState(shouldAutoJoin: Bool = false) {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let alreadyClaimed = split.g.contains { $0.uid == myUid }
 
-        Task {
-            do {
-                try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
-                print("[SplitsSummaryView] Split persisted to \(docId)")
-            } catch {
-                print("[SplitsSummaryView] Failed to persist split: \(error)")
+        if hasIgnoredListForBill {
+            if isCurrentUserIgnored() {
+                if alreadyClaimed {
+                    _ = unclaimCurrentUserIfNeeded()
+                    persistSplit(action: .optedOut)
+                }
+                billState = .notInBill
+                selectedIndex = nil
+            } else if alreadyClaimed {
+                billState = .joined
+                if let myIdx = myIncludedIndex {
+                    selectedIndex = myIdx
+                }
+            } else if hasClaimableSlots {
+                attemptAutoJoinOrChoose(shouldAutoJoin: shouldAutoJoin)
+            } else {
+                billState = .notInBill
+                selectedIndex = nil
+            }
+        } else {
+            // Legacy behavior (messages without ignoredUUIDs list)
+            if alreadyClaimed {
+                billState = .joined
+                if let myIdx = myIncludedIndex {
+                    selectedIndex = myIdx
+                }
+            } else {
+                attemptAutoJoinOrChoose(shouldAutoJoin: shouldAutoJoin)
             }
         }
     }
 
-    var body: some View {
-        Group {
-            if isTabReceipt && tabMembershipState == .notMember {
-                VStack(spacing: 16) {
-                    Spacer()
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.secondary)
-                    VStack(spacing: 6) {
-                        Text("You are not a part of this tab.")
-                            .font(.system(size: 16, weight: .semibold))
-                        Text("Request an invite to join.")
-                            .font(.system(size: 14))
-                            .foregroundStyle(.secondary)
-                    }
-                    .multilineTextAlignment(.center)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding()
-            } else if isTabReceipt && tabMembershipState == .loading {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    /// On first view of a bill, auto-claim a slot for the current user when
+    /// it's unambiguous (equal-split, or a single free slot). Otherwise leave
+    /// the user in the choosing state. Skipped when reconciling from a live
+    /// Firestore update so a remote change doesn't trigger an auto-claim.
+    private func attemptAutoJoinOrChoose(shouldAutoJoin: Bool) {
+        guard shouldAutoJoin else {
+            billState = .choosing
+            return
+        }
+        if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+            autoClaimSlotAfterViewLoad(at: i)
+        } else if split.m != .equally {
+            let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
+            if freeSlots.count == 1 {
+                autoClaimSlotAfterViewLoad(at: freeSlots[0])
             } else {
-                let included = includedIndices
-                let count = included.count
-                // nil = no arc selected (show total); non-nil = index into `included`
-                let selectedGuestIndex: Int? = selectedIndex
-                    .map { max(0, min($0, max(0, count - 1))) }
-                    .flatMap { count > 0 ? included[$0] : nil }
+                billState = .choosing
+            }
+        } else {
+            billState = .choosing
+        }
+    }
 
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
+    private func persistSplit(broadcast: Bool = true, action: BillUpdateAction = .edited) {
+        messageReceiptVM.persist(split: split, broadcast: broadcast, action: action, via: bus)
+    }
 
-                // Donut chart — tapping an arc selects it; tapping anywhere else deselects.
-                // The ZStack's DragGesture takes child-priority over this onTapGesture.
+    @ViewBuilder
+    private var sharedHeader: some View {
+        ZStack {
+            headerTitleBlock
+            headerActions
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(height: currentHeaderHeight)
+        .background(headerBackgroundColor)
+    }
+
+    private var scrollHeaderSpacer: some View {
+        Color.clear
+            .frame(height: currentHeaderHeight)
+            .background(
                 GeometryReader { geo in
+                    Color.clear
+                        .preference(
+                            key: SplitsSummaryScrollOffsetKey.self,
+                            value: max(0, -geo.frame(in: .named("summaryScroll")).minY)
+                        )
+                }
+            )
+    }
+
+    @ViewBuilder
+    private var receiptDetailsSection: some View {
+        if let receipt {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(spacing: 0) {
+                        if receiptDraftVM.itemsLoadingState.isLoading {
+                            VStack(spacing: 12) {
+                                ProgressView()
+                                    .scaleEffect(0.9)
+                                Text("Loading items...")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else if receipt.items.isEmpty {
+                            VStack(spacing: 8) {
+                                Image(systemName: "list.bullet.rectangle")
+                                    .font(.system(size: 28))
+                                    .foregroundColor(.secondary)
+                                Text("No items")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                        } else {
+                            ForEach(receipt.items) { item in
+                                itemRow(displayItem: item)
+                                if item.id != receipt.items.last?.id {
+                                    Divider().padding(.leading, 14)
+                                }
+                            }
+                        }
+                    }
+                    .background(Color(.secondarySystemBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 16)
+
+                    TotalsBox(receipt: receipt)
+                        .padding(.horizontal, 16)
+
+                    VStack(spacing: 10) {
+                        if canEdit {
+                            Button {
+                                onEditReceipt?()
+                            } label: {
+                                Label("Edit Receipt", systemImage: "pencil")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        if captureImage != nil {
+                            Button {
+                                showCapture = true
+                            } label: {
+                                Label("View Receipt Capture", systemImage: "doc.viewfinder")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 90)
+            }
+        } else {
+            ProgressView("Loading…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private var splitDetailsSection: some View {
+        let included = includedIndices
+        let count = included.count
+        let selectedGuestIndex: Int? = selectedIndex
+            .map { max(0, min($0, max(0, count - 1))) }
+            .flatMap { count > 0 ? included[$0] : nil }
+
+        VStack(alignment: .leading, spacing: 16) {
+            GeometryReader { geo in
                     let size = min(geo.size.width, 230)
                     let lineW: CGFloat = 30
                     let dimmer = Color(white: 0.55)
+                    let seamNudgeDegrees = 1.0
 
                     ZStack {
                         Circle()
@@ -426,7 +915,6 @@ struct SplitsSummaryView: View {
                                     style: .init(lineWidth: lineW, lineCap: .round))
                             .frame(width: size, height: size)
 
-                        // Reversed so last arc renders on top at the 12 o'clock seam
                         ForEach((0..<count).reversed(), id: \.self) { i in
                             if safeTotal > 0 {
                                 let gi = included[i]
@@ -444,20 +932,36 @@ struct SplitsSummaryView: View {
                             }
                         }
 
-                        // Dot at 12 o'clock — last guest's color sits on top of the seam
                         if count > 0, safeTotal > 0 {
                             let lastI = count - 1
                             let lastGi = included[lastI]
                             Circle()
                                 .fill(colorForSlot(lastGi))
                                 .frame(width: lineW, height: lineW)
-                                .offset(y: -size / 2)
+                                .offset(
+                                    x: cos(Angle.degrees(-90 - seamNudgeDegrees).radians) * (size / 2),
+                                    y: sin(Angle.degrees(-90 - seamNudgeDegrees).radians) * (size / 2)
+                                )
                                 .colorMultiply(selectedIndex == nil || selectedIndex == lastI ? .white : dimmer)
+                        }
+
+                        if let selectedIndex, count > 0, safeTotal > 0, selectedIndex < count {
+                            let gi = included[selectedIndex]
+                            let start = Double(sumBeforeIncludedSlot(selectedIndex)) / Double(safeTotal)
+                            let startAngle = Angle.degrees(start * 360 - 90 + seamNudgeDegrees)
+                            let radius = size / 2
+                            Circle()
+                                .fill(colorForSlot(gi))
+                                .frame(width: lineW, height: lineW)
+                                .offset(
+                                    x: cos(startAngle.radians) * radius,
+                                    y: sin(startAngle.radians) * radius
+                                )
                         }
 
                         VStack(spacing: 6) {
                             if let gi = selectedGuestIndex {
-                                Text("\(displayName(for: gi)) owes")
+                                Text(displayName(for: gi))
                                     .font(.system(size: 14, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -493,7 +997,6 @@ struct SplitsSummaryView: View {
                             return
                         }
 
-                        // Convert to [0, 1) fraction from 12 o'clock, clockwise
                         var angle = atan2(dy, dx) / (2 * .pi) + 0.25
                         if angle < 0 { angle += 1 }
                         if angle >= 1 { angle -= 1 }
@@ -507,246 +1010,290 @@ struct SplitsSummaryView: View {
                             }
                         }
                     })
-                }
-                .frame(height: 240)
+            }
+            .frame(height: 240)
 
-                // MARK: "You" section
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("You")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
+            splitPeopleSection(included: included, count: count)
 
-                    switch billState {
-                    case .joined:
-                        if let myIdx = myIncludedIndex {
-                            let myGi = included[myIdx]
-
-                            // Your card — no transaction arrows for tab receipts
-                            Button {
-                                selectedIndex = myIdx
-                            } label: {
-                                guestRow(
-                                    includedIdx: myIdx,
-                                    guestIdx: myGi,
-                                    showTransactions: !isTabReceipt,
-                                    included: included
-                                )
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(Color(.secondarySystemBackground))
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-
-                            if isTabReceipt {
-                                let displayTab = uiModel.receiptTab ?? uiModel.activeTab
-                                TabSettleUpCard(
-                                    tabId: uiModel.openedMessagePayload?.tid ?? "",
-                                    colorHex: displayTab?.colorHex,
-                                    tabName: displayTab?.name,
-                                    showViewTabButton: true,
-                                    onViewTab: {
-                                        // Make sure activeTab matches this receipt's tab before navigating.
-                                        if let rt = uiModel.receiptTab {
-                                            uiModel.activeTab = rt
-                                        }
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                            uiModel.currentScreen = .tabview
-                                        }
-                                    },
-                                    onSendSettlementCard: uiModel.sendSettlementCard,
-                                    onSendRequestCard: uiModel.sendRequestCard,
-                                    openInSafari: uiModel.openInSafari
-                                )
-                            } else {
-                                // Leave button — hidden if the current user is the payer
-                                let myUid = KeychainHelper.getOrCreateUserId()
-                                let iAmPayer = split.g[split.pi].uid == myUid
-                                if !iAmPayer {
-                                    Button {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                            unclaimSlot()
-                                            billState = .choosing
-                                        }
-                                    } label: {
-                                        HStack(spacing: 6) {
-                                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                                .font(.system(size: 12, weight: .semibold))
-                                            Text("Leave this bill")
-                                                .font(.system(size: 13, weight: .medium))
-                                        }
-                                        .foregroundStyle(.red)
-                                        .frame(maxWidth: .infinity)
-                                        .padding(.vertical, 10)
-                                        .background(Color.red.opacity(0.08))
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-
-                    case .choosing:
-                        // Prompt to pick a guest
-                        VStack(spacing: 10) {
-                            VStack(spacing: 4) {
-                                Text("Which one are you?")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("Tap a guest below to claim your spot")
-                                    .font(.system(size: 13))
-                                    .foregroundStyle(.secondary)
-                            }
-
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    billState = .notInBill
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "xmark.circle")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("I'm not in this bill")
-                                        .font(.system(size: 13, weight: .medium))
-                                }
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color(.tertiarySystemFill))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(14)
-                        .background(Color.blue.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-
-                    case .notInBill:
-                        // Not in bill — option to rejoin
-                        VStack(spacing: 10) {
-                            Text("You're not in this bill")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(.secondary)
-
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    billState = .choosing
-                                }
-                            } label: {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "person.badge.plus")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("I'm in this bill")
-                                        .font(.system(size: 13, weight: .medium))
-                                }
-                                .foregroundStyle(.blue)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(Color.blue.opacity(0.08))
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+            if canEdit {
+                HStack(spacing: 10) {
+                    Button {
+                        onEditSplit?()
+                    } label: {
+                        Text("Edit Splits")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.blue)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
-                }
-                .padding(.top, 15)
+                    .buttonStyle(.plain)
 
-                // MARK: Others list
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(billState == .joined ? "Others" : "Guests")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
-
-                    VStack(spacing: 10) {
-                        ForEach(0..<count, id: \.self) { i in
-                            // Skip "me" if joined — already shown above
-                            if billState != .joined || i != myIncludedIndex {
-                                let gi = included[i]
-                                let isUnclaimed = split.g[gi].uid == nil
-
-                                Button {
-                                    if billState == .choosing && isUnclaimed {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                            claimSlot(at: gi)
-                                        }
-                                    }
-                                    selectedIndex = i
-                                } label: {
-                                    guestRow(
-                                        includedIdx: i,
-                                        guestIdx: gi,
-                                        showTransactions: false,
-                                        included: included
-                                    )
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
-                                    .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                                    .overlay(
-                                        billState == .choosing && isUnclaimed
-                                            ? RoundedRectangle(cornerRadius: 14)
-                                                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                                                .foregroundStyle(Color.blue.opacity(0.5))
-                                            : nil
-                                    )
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
+                    if isTabReceipt {
+                        Button {
+                            onRemoveFromTab?()
+                        } label: {
+                            Text("Remove From Tab")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.red.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
+                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.top, 8)
-
-                Spacer().frame(height: 60)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 20)
-            .contentShape(Rectangle())
-            .onTapGesture { selectedIndex = nil }
+
+            Spacer().frame(height: 60)
         }
-        } // else
-        } // Group
-        .onAppear {
-            let myUid = KeychainHelper.getOrCreateUserId()
-            let alreadyClaimed = split.g.contains { $0.uid == myUid }
+        .padding(.horizontal, 16)
+        .padding(.top, 16)
+        .contentShape(Rectangle())
+        .onTapGesture { selectedIndex = nil }
+    }
 
-            if alreadyClaimed {
-                billState = .joined
+    @ViewBuilder
+    private func splitPeopleSection(included: [Int], count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch billState {
+            case .joined:
                 if let myIdx = myIncludedIndex {
-                    selectedIndex = myIdx
-                }
-            } else {
-                // Not yet claimed — try auto-claim
-                if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-                    claimSlot(at: i)
-                } else if split.m != .equally {
-                    let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-                    if freeSlots.count == 1 {
-                        claimSlot(at: freeSlots[0])
-                    } else {
-                        billState = .choosing
+                    let myGi = included[myIdx]
+
+                    Button {
+                        selectedIndex = myIdx
+                    } label: {
+                        guestRow(
+                            includedIdx: myIdx,
+                            guestIdx: myGi,
+                            showTransactions: !isTabReceipt,
+                            included: included
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(Color(.secondarySystemBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .contentShape(Rectangle())
                     }
-                } else {
-                    billState = .choosing
+                    .buttonStyle(.plain)
+
+                    if !isTabReceipt {
+                        let myUid = KeychainHelper.getOrCreateUserId()
+                        let iAmPayer = split.g[split.pi].uid == myUid
+                        if !iAmPayer {
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    optOutOfBill()
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                                        .font(.system(size: 12, weight: .semibold))
+                                    Text("Leave this bill")
+                                        .font(.system(size: 13, weight: .medium))
+                                }
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.red.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
+            case .choosing:
+                VStack(spacing: 10) {
+                    VStack(spacing: 4) {
+                        Text("Which one are you?")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Tap a guest below to claim your spot")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            optOutOfBill()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "xmark.circle")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("I'm not in this bill")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color(.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(14)
+                .background(Color.blue.opacity(0.06))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            case .notInBill:
+                VStack(spacing: 10) {
+                    Text("You're not in this bill")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            if hasClaimableSlots {
+                                billState = .choosing
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 12, weight: .semibold))
+                            Text("I'm in this bill")
+                                .font(.system(size: 13, weight: .medium))
+                        }
+                        .foregroundStyle(hasClaimableSlots ? .blue : .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background((hasClaimableSlots ? Color.blue.opacity(0.08) : Color(.tertiarySystemFill)))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!hasClaimableSlots)
+                    .padding(.horizontal, 8)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color(.secondarySystemBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+        }
+        .padding(.top, 15)
+
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(spacing: 10) {
+                ForEach(0..<count, id: \.self) { i in
+                    if billState != .joined || i != myIncludedIndex {
+                        let gi = included[i]
+                        let isUnclaimed = split.g[gi].uid == nil
+
+                        Button {
+                            if billState == .choosing && isUnclaimed {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    claimSlot(at: gi)
+                                }
+                            }
+                            selectedIndex = i
+                        } label: {
+                            guestRow(
+                                includedIdx: i,
+                                guestIdx: gi,
+                                showTransactions: false,
+                                included: included
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .overlay(
+                                billState == .choosing && isUnclaimed
+                                    ? RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                                        .foregroundStyle(Color.blue.opacity(0.5))
+                                    : nil
+                            )
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
+        }
+        .padding(.top, 8)
+    }
+
+    var body: some View {
+        Group {
+            if isTabReceipt && tabMembershipState == .notMember {
+                VStack(spacing: 16) {
+                    Spacer()
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    VStack(spacing: 6) {
+                        Text("You are not a part of this tab.")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Request an invite to join.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.secondary)
+                    }
+                    .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding()
+            } else if isTabReceipt && tabMembershipState == .loading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ZStack(alignment: .top) {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            scrollHeaderSpacer
+
+                            if isTabReceipt {
+                                Color.clear.frame(height: 16)
+                            }
+
+                            if selectedSection == .splits {
+                                splitDetailsSection
+                            } else {
+                                receiptDetailsSection
+                            }
+                        }
+                    }
+                    .coordinateSpace(name: "summaryScroll")
+
+                    sharedHeader
+                }
+                .onPreferenceChange(SplitsSummaryScrollOffsetKey.self) { headerScrollOffset = $0 }
+            }
+        }
+        .onAppear {
+            let initBillId = currentBillId ?? "__legacy__"
+            guard initializedClaimStateBillId != initBillId else { return }
+            initializedClaimStateBillId = initBillId
+            reconcileClaimState(shouldAutoJoin: true)
+        }
+        .onChange(of: messageReceiptVM.openedMessagePayload?.s) { _, latestSplit in
+            guard let latestSplit, latestSplit != split else { return }
+            split = latestSplit
+            reconcileClaimState()
+        }
+        .onChange(of: messageReceiptVM.openedMessagePayload?.r.i) { _, latestItems in
+            // Real-time sync for the Tap-to-Claim recipient flow: when another
+            // viewer claims an item via the Firestore listener, refresh the
+            // local @State `items` so the partition widget rerenders. Equality
+            // guard avoids re-firing on our own writes (the listener bounces
+            // them back through openedMessagePayload).
+            guard let latestItems, latestItems != items else { return }
+            items = latestItems
         }
         .task {
             let myUid = KeychainHelper.getOrCreateUserId()
 
             // Check tab membership — non-members see a locked view
-            if isTabReceipt, let tabId = uiModel.openedMessagePayload?.tid {
-                if uiModel.userTabs.contains(where: { $0.id == tabId }) {
+            if isTabReceipt, let tabId = messageReceiptVM.openedMessagePayload?.tid {
+                if tabContextVM.userTabs.contains(where: { $0.id == tabId }) {
                     tabMembershipState = .member
                 } else {
                     let tab = try? await TabService.shared.fetchTab(id: tabId)
@@ -756,17 +1303,7 @@ struct SplitsSummaryView: View {
                 tabMembershipState = .member
             }
 
-            // Fetch display names for all uids in the guest list (except self)
-            let otherUids = Set(split.g.compactMap(\.uid)).filter { $0 != myUid && !$0.isEmpty }
-            for uid in otherUids {
-                do {
-                    if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
-                        uidDisplayNames[uid] = name
-                    }
-                } catch {
-                    print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
-                }
-            }
+            await fetchMissingDisplayNames()
 
             // Fetch payer's payment methods (only if I'm not the payer, and not a tab receipt)
             if !isTabReceipt, let payerUid = split.g[split.pi].uid, payerUid != myUid {
@@ -774,15 +1311,86 @@ struct SplitsSummaryView: View {
             }
 
         }
+        .onChange(of: messageReceiptVM.openedMessagePayload?.s) { _, newSplit in
+            if let newSplit {
+                split = newSplit
+                // The fresh payload may have introduced new uids
+                // (e.g. a joiner who auto-claimed a slot after we first
+                // appeared). Trigger a non-blocking fetch so their
+                // displayName populates uidDisplayNames and badges stop
+                // showing "Guest N".
+                Task { await fetchMissingDisplayNames() }
+            }
+        }
+        .onChange(of: payerPaymentMethods) { _, _ in
+            presentPendingRequestIfPossible()
+        }
         .sheet(item: $paySheetInfo) { info in
-            let note = uiModel.openedMessagePayload?.r.t ?? "Loot"
-            let sendSettlement = uiModel.sendSettlementCard
+            let note = messageReceiptVM.openedMessagePayload?.r.t ?? "Loot"
             TabPayNowSheet(
                 toName: info.toName,
                 amountCents: info.amountCents,
                 methods: info.methods,
                 tabColorHex: nil,
                 onSelectMethod: { method in
+                    // ORDERING RULE: togglePaid (which broadcasts the bill
+                    // update via persistSplit → bus.sendBillUpdate) MUST fire
+                    // FIRST, before any other conversation.send or extension
+                    // dismissal. The broadcast retracts+replaces the original
+                    // bubble with the paid-marked card, and only auto-sends
+                    // when isConversationAutoSendReady is true at the moment
+                    // iOS processes the call. Subsequent operations
+                    // (sendSettlementCard's conversation.send, sendApplePayHandoff,
+                    // openInSafari) all degrade auto-send eligibility — even
+                    // when called synchronously in the same tap closure, iOS
+                    // appears to invalidate the user-tap context after the
+                    // first conversation.send, so a bill update fired second
+                    // gets demoted from `conversation.send` to "insert into
+                    // draft" and the user has to manually send (which then
+                    // appends a new bubble instead of retracting).
+                    //
+                    // SETTLEMENT CARD POLICY: only sent for tab-attached
+                    // receipts. For a non-tabbed receipt, the bill-update
+                    // broadcast above already retracts+replaces the bubble
+                    // with paid styling — that IS the "sent" signal. A
+                    // separate "sent a payment" card would be redundant
+                    // chat clutter. For tab-attached receipts the
+                    // settlement card represents the user's payment
+                    // against the tab balance and is kept.
+                    //
+                    // Apple Pay: stage the compact-mode reminder, broadcast
+                    // the bill update, optionally send the handoff card
+                    // (tab receipts only), navigate back to tabview (the
+                    // receipt viewer would otherwise hide the compact
+                    // reminder behind it), then collapse the extension.
+                    if method.type == .applePay {
+                        let tabColor = associatedTab?.colorHex
+                        messageReceiptVM.pendingApplePayInfo = PendingApplePayInfo(
+                            toName: info.toName,
+                            amountCents: info.amountCents,
+                            tabColorHex: tabColor
+                        )
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            togglePaid(guestIndex: info.guestIndex)
+                        }
+                        if isTabReceipt {
+                            bus.sendApplePayHandoff(fromName: info.fromName, toName: info.toName,
+                                                    amountCents: info.amountCents, tabColorHex: tabColor)
+                        }
+                        // Preserve the tab association so LootTabView can color
+                        // its compact strip with the same tab as the receipt.
+                        // Skip the write if activeTab already points at this
+                        // tab — `associatedTab` may be a payload-derived
+                        // minimal stub that would downgrade rich live state.
+                        if let target = associatedTab,
+                           tabContextVM.activeTab?.id != target.id {
+                            tabContextVM.activeTab = target
+                        }
+                        onClose?()
+                        onRequestCollapse?()
+                        return
+                    }
+
                     let effectiveBankURL: String?
                     if method.type == .zelle {
                         effectiveBankURL = savedPaymentMethods()
@@ -798,19 +1406,431 @@ struct SplitsSummaryView: View {
                         payeeName: info.toName,
                         zelleData: method.zelleData
                     )
-                    sendSettlement?(info.fromName, info.toName,
-                                    info.amountCents, method.type.displayName, nil)
-                    if let url = deepLink {
-                        openURL(url)
-                    } else if method.type == .zelle {
-                        UIPasteboard.general.string = method.identifier
-                    }
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         togglePaid(guestIndex: info.guestIndex)
+                    }
+                    if isTabReceipt {
+                        bus.sendSettlementCard(fromName: info.fromName, toName: info.toName,
+                                               amountCents: info.amountCents,
+                                               methodName: method.type.displayName,
+                                               tabColorHex: nil)
+                    }
+                    if let url = deepLink {
+                        bus.openInSafari(url)
+                    } else if method.type == .zelle {
+                        UIPasteboard.general.string = method.identifier
                     }
                 }
             )
         }
+        .sheet(isPresented: $showCapture) {
+            CapturePreviewView(image: captureImage) {
+                showCapture = false
+            }
+        }
+        .onAppear {
+            presentPendingRequestIfPossible()
+        }
+        .confirmationDialog(
+            "Split into how many?",
+            isPresented: Binding(
+                get: { claimPickerItemId != nil },
+                set: { presented in if !presented { claimPickerItemId = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: claimPickerItemId
+        ) { itemId in
+            let inlineMax = max(2, min(9, split.g.count))
+            ForEach(2...max(inlineMax, 2), id: \.self) { n in
+                Button("Split \(n) ways") {
+                    handleSplitPickerSelection(itemId: itemId, denominator: n)
+                    claimPickerItemId = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { claimPickerItemId = nil }
+        }
+    }
+
+    // MARK: - Item row (tap-to-claim aware)
+
+    @ViewBuilder
+    private func itemRow(displayItem item: ReceiptDisplay.Item) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            // Left side is a Button when tap-to-claim is active, so the row
+            // tap can fire claim/unclaim independently from the right widget's
+            // inner Buttons (sibling layout — no nested-Button hit-test race).
+            if isClaimModeForMe {
+                Button {
+                    handleItemRowTap(itemId: item.id)
+                } label: {
+                    HStack {
+                        itemLabelBlock(item: item)
+                        Spacer(minLength: 8)
+                    }
+                    .padding(.leading, 14)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                HStack {
+                    itemLabelBlock(item: item)
+                    Spacer(minLength: 8)
+                }
+                .padding(.leading, 14)
+                .padding(.vertical, 12)
+            }
+
+            claimOrAssigneeWidget(for: item)
+                .padding(.trailing, 14)
+                .padding(.vertical, 12)
+        }
+    }
+
+    @ViewBuilder
+    private func itemLabelBlock(item: ReceiptDisplay.Item) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(item.label)
+                .font(.system(size: 16, weight: .semibold))
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+            Text(ReceiptDisplay.money(item.priceCents))
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Picks between the existing read-only assignee badges and the new
+    /// interactive tap-to-claim widget based on whether claim mode is active
+    /// and the local user can edit this bill.
+    @ViewBuilder
+    private func claimOrAssigneeWidget(for item: ReceiptDisplay.Item) -> some View {
+        if isClaimModeForMe, let wireItem = items.first(where: { $0.id == item.id }) {
+            claimWidget(displayItem: item, wireItem: wireItem)
+        } else {
+            HStack(spacing: 6) {
+                // Resolve slot index from canonical assigneeIDs, then use the
+                // local displayName helper so the badge text reflects the
+                // Firestore-cached name for joined members and `myDisplayName`
+                // for the local user.
+                let assigneeSlots: [Int] = item.assigneeIDs.compactMap { pid in
+                    split.g.slotIndex(for: pid)
+                }
+                ForEach(Array(assigneeSlots.enumerated()), id: \.offset) { _, slot in
+                    ColoredCircleBadge(
+                        text: BadgeColors.initials(from: displayName(for: slot), fallback: slot),
+                        color: BadgeColors.color(for: slot)
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Tap-to-Claim widget (recipient side)
+
+    /// True when `split.cl == true` and the local user has permission to edit
+    /// the bill (canEdit). Disables the widget for read-only viewers.
+    private var isClaimModeForMe: Bool {
+        (split.cl == true) && canEdit
+    }
+
+    /// Wire-canonical PersonID list, one per slot — uid for identified
+    /// guests, `"slot-N"` for anonymous ones. Used to translate between
+    /// item partitions (PersonID-keyed) and the wire format.
+    private var canonicalSlotPIDs: [PersonID] {
+        split.g.indices.map { split.g.personID(forSlot: $0) }
+    }
+
+    /// PersonID for the current user, derived from their Keychain uid.
+    private var myCanonicalPID: PersonID {
+        PersonID(rawValue: KeychainHelper.getOrCreateUserId())
+    }
+
+    @ViewBuilder
+    private func claimWidget(displayItem: ReceiptDisplay.Item, wireItem: ReceiptItemPayload) -> some View {
+        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+
+        switch partition {
+        case .unclaimed:
+            Button {
+                claimPickerItemId = wireItem.id
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "rectangle.split.3x1")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Split")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.15))
+                .foregroundStyle(Color.blue)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+        case .shares(let denom, let slots):
+            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
+                claimerBadge(for: pid)
+            } else {
+                HStack(spacing: 4) {
+                    ForEach(0..<denom, id: \.self) { i in
+                        let claimer = slots.indices.contains(i) ? slots[i] : nil
+                        Button {
+                            handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                        } label: {
+                            if let pid = claimer {
+                                claimerBadge(for: pid)
+                            } else {
+                                hollowClaimCircle()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+        case .custom(let claims):
+            HStack(spacing: 4) {
+                ForEach(claims, id: \.personID) { c in
+                    claimerBadge(for: c.personID)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func claimerBadge(for pid: PersonID) -> some View {
+        let slotIdx = split.g.slotIndex(for: pid) ?? 0
+        ColoredCircleBadge(
+            text: BadgeColors.initials(from: displayName(for: slotIdx), fallback: slotIdx),
+            color: BadgeColors.color(for: slotIdx)
+        )
+    }
+
+    @ViewBuilder
+    private func hollowClaimCircle() -> some View {
+        Circle()
+            .fill(Color.gray.opacity(0.12))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+            )
+            .overlay(
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.secondary.opacity(0.7))
+                    .symbolEffect(.pulse, options: .repeating)
+            )
+            .contentShape(Circle())
+    }
+
+    // MARK: - Tap-to-Claim handlers (recipient side)
+
+    /// Row-tap handler for recipient claim flow. Mirrors compose's
+    /// `handleItemRowTap` rules but with the active guest forced to the
+    /// local user. Auto-claims a slot if the user isn't bound yet.
+    private func handleItemRowTap(itemId: String) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let myPID = myCanonicalPID
+
+        let newPartition: ItemPartition = {
+            switch partition {
+            case .unclaimed:
+                return .shares(denominator: 1, slots: [myPID])
+            case .shares(let denom, var slots) where denom == 1:
+                if slots.first == myPID { return .unclaimed }
+                return partition
+            case .shares(let denom, var slots):
+                if let myIdx = slots.firstIndex(of: myPID) {
+                    slots[myIdx] = nil
+                    if slots.allSatisfy({ $0 == nil }) { return .unclaimed }
+                    return .shares(denominator: denom, slots: slots)
+                } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
+                    slots[emptyIdx] = myPID
+                    return .shares(denominator: denom, slots: slots)
+                }
+                return partition
+            case .custom:
+                return partition
+            }
+        }()
+
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    private func handleCircleTap(itemId: String, shareIndex: Int) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        guard case .shares(let denom, var slots) = partition,
+              slots.indices.contains(shareIndex) else { return }
+
+        let myPID = myCanonicalPID
+        if slots[shareIndex] != nil {
+            // Permissive deselect — recipient can clear any slot.
+            slots[shareIndex] = nil
+        } else {
+            // Claim, sender-locked: only the local user can claim, no
+            // auto-rotate to other guests.
+            if slots.contains(myPID) { return }
+            slots[shareIndex] = myPID
+        }
+
+        let newPartition: ItemPartition = slots.allSatisfy({ $0 == nil })
+            ? .unclaimed
+            : .shares(denominator: denom, slots: slots)
+
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    private func handleSplitPickerSelection(itemId: String, denominator: Int) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        let myPID = myCanonicalPID
+        var slots: [PersonID?] = Array(repeating: nil, count: denominator)
+        slots[0] = myPID
+        let newPartition: ItemPartition = .shares(denominator: denominator, slots: slots)
+
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    /// Write the new partition into `items[itemIndex]` as wire fields, recompute
+    /// `split.o`, and persist both via `messageReceiptVM.persist(split:items:...)`.
+    /// State-before-broadcast: the persist call updates `openedMessagePayload`
+    /// before firing the bus, so the iMessage bubble retracts in place.
+    private func applyPartitionUpdate(itemIndex: Int, newPartition: ItemPartition) {
+        let wire = newPartition.wireFields(guests: split.g)
+        items[itemIndex].rs = wire.rs
+        items[itemIndex].sh = wire.sh
+        items[itemIndex].cu = wire.cu
+
+        // Recompute owed amounts from the freshly-updated items.
+        let slotPIDs = canonicalSlotPIDs
+        let mathItems = items.map { it -> (label: String, priceCents: Int, partition: ItemPartition) in
+            (label: it.l,
+             priceCents: it.p,
+             partition: it.itemPartition(slotPersonIDs: slotPIDs))
+        }
+        split.o = SplitMath.computeOwedCents(
+            mode: split.m,
+            guests: split.g,
+            payerIndex: split.pi,
+            totalCents: split.tot,
+            perGuestActive: nil,
+            items: mathItems,
+            feesCents: split.f ?? 0,
+            discountCents: split.d ?? 0,
+            taxCents: split.tx ?? 0,
+            tipCents: split.tip ?? 0,
+            claimMode: split.cl ?? false
+        )
+
+        messageReceiptVM.persist(
+            split: split, items: items,
+            broadcast: true, action: .edited, via: bus
+        )
+    }
+
+    /// Binds the local user to a slot if they aren't yet. Returns true on
+    /// success. Mirrors the existing `claimSlot(at:)` logic: sets uid on the
+    /// first slot without a uid, never overwrites the slot's stored name
+    /// (per `feedback_slot_name_design.md`).
+    @discardableResult
+    private func ensureMySlotBound() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        if split.g.contains(where: { $0.uid == myUid }) { return true }
+        guard let emptyIdx = split.g.firstIndex(where: { $0.uid == nil }) else {
+            return false
+        }
+        split.g[emptyIdx].uid = myUid
+        billState = .joined
+
+        // Make sure the user's display name is cached so cross-sender viewers
+        // see it before the bubble propagates.
+        let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !myName.isEmpty {
+            Task { try? await TabService.shared.createOrUpdateUser(userId: myUid, displayName: myName) }
+        }
+        removeCurrentUserFromIgnoredIfPresent()
+        return true
     }
 }
 
+// MARK: - Totals box
+
+private func isTipLabel(_ label: String) -> Bool {
+    let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return normalized.contains("tip") || normalized.contains("gratuity")
+}
+
+struct TotalsBox: View {
+    let receipt: ReceiptDisplay
+
+    var body: some View {
+        VStack(spacing: 10) {
+            if receipt.shouldShowOnlyTotal {
+                TotalsRow(label: "Total", value: receipt.totalCents)
+            } else {
+                TotalsRow(label: "Subtotal", value: receipt.subtotalCents)
+
+                if receipt.lineItems.isEmpty {
+                    if receipt.feesCents != 0 {
+                        TotalsRow(label: "Fees", value: receipt.feesCents)
+                    }
+                    if receipt.discountCents != 0 {
+                        TotalsRow(label: "Discount", value: -receipt.discountCents)
+                    }
+                    if receipt.taxCents != 0 {
+                        TotalsRow(label: "Tax", value: receipt.taxCents)
+                    }
+                } else {
+                    ForEach(receipt.lineItems.filter { !isTipLabel($0.label) }) { line in
+                        TotalsRow(label: line.label, value: line.cents)
+                    }
+                }
+
+                if receipt.tipCents != 0 {
+                    TotalsRow(label: "Tip", value: receipt.tipCents)
+                }
+
+                Divider()
+
+                TotalsRow(label: "Total", value: receipt.totalCents, bold: true)
+            }
+        }
+        .padding(14)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct TotalsRow: View {
+    let label: String
+    let value: Int
+    var bold: Bool = false
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 15, weight: bold ? .semibold : .regular))
+            Spacer()
+            Text(ReceiptDisplay.money(value))
+                .font(.system(size: 15, weight: bold ? .semibold : .regular))
+        }
+    }
+}
+
+private struct SplitsSummaryScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}

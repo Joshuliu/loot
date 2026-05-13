@@ -1,0 +1,97 @@
+{
+  "capturedAt" : "2026-04-25T18:54:05Z",
+  "caseID" : "img_0259",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 16329,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 16329,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.9800000000000001,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 2520,
+        "label" : "Service Charge"
+      },
+      {
+        "cents" : 1209,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "La Canitta Caribbeur Fiair",
+      "total_cents" : 16329
+    },
+    "phase2" : {
+      "fees_cents" : 2520,
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 2200,
+          "label" : "Vegan Burger",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Estrella Damm",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Fried Local Calamari",
+          "qty" : 1
+        },
+        {
+          "cents" : 2300,
+          "label" : "Lechon Asado",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Hatuey",
+          "qty" : 1
+        },
+        {
+          "cents" : 1400,
+          "label" : "Kids Cheeseburger",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Funky Buddha IPA Can",
+          "qty" : 1
+        },
+        {
+          "cents" : 2600,
+          "label" : "Octopus",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 12600,
+      "tax_cents" : 1209
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Vegan Burger|2200\nITEM|Estrella Damm|800\nITEM|Fried Local Calamari|1700\nITEM|Lechon Asado|2300\nITEM|Hatuey|800\nITEM|Kids Cheeseburger|1400\nITEM|Funky Buddha IPA Can|800\nITEM|Octopus|2600\nFEE|Service Charge|2520\nTAX|Tax|1209\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.8981690406799316,
+      "phase2Seconds" : 3.7453389167785645,
+      "totalWorkflowSeconds" : 4.643525958061218,
+      "transcriptSeconds" : 5.0067901611328125e-06,
+      "transcriptToPhase1Seconds" : 0.8981690406799316,
+      "transcriptToPhase2Seconds" : 4.643520951271057,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "La Canitta Caribbeur Fiair\nLa Cañita\n6844 NW 169th St.\nMiami, FL 33015\nServer: Javier M\nCheck #13 Table 62\nGuest. Count: 3\nOrdered: 3\/14\/25 1:03 PM\n1 VEGAN BURGER $22.00\n1 ESTRELLA DAMM $8.00\n1 FRIED LOCAL CALAMARI $17.00\n1 LECHON ASADO $23.00\n1 HATUEY ?? $8.00\n1 KIDS CHEESEBURGER $14.00\n1 FUNKY BUDDHA IPA CAN $8.00\n1 OCTOPUS $26.00\nSubtotal $126.00\nService Charge (20.00%) $25.20\nTax $12.09\nTotal $163.29\nBook Your Party with us!\n20% GRATUITY IS ADDED TO EVERY PARTY\nTHANK YOU FOR YOU VISIT!"
+  },
+  "sourceFilename" : "IMG_0259.jpeg",
+  "variantID" : "current"
+}

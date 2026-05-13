@@ -1,0 +1,13 @@
+{
+  "averageOverallScore" : 0.5071106062069377,
+  "averagePhase1Seconds" : 13.632909655570984,
+  "averagePhase2Seconds" : 74.04600804016508,
+  "averageReconciliationScore" : 0.37037037037037035,
+  "averageTotalWorkflowSeconds" : 89.23899203333362,
+  "averageTranscriptSeconds" : 1.5600634032282337,
+  "caseCount" : 29,
+  "failedCaseCount" : 0,
+  "passCount" : 10,
+  "scoredCaseCount" : 27,
+  "variantID" : "openai-gpt-5-nano"
+}

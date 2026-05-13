@@ -1,0 +1,87 @@
+{
+  "capturedAt" : "2026-04-19T01:31:16Z",
+  "caseID" : "img_5135",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 11333,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 18829,
+    "itemValues" : 0,
+    "lineItemValues" : 0.25,
+    "merchant" : 0,
+    "overall" : 0.0725,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -7496,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1354,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 2824,
+        "label" : "Tip 15%"
+      },
+      {
+        "cents" : 3389,
+        "label" : "Tip 18%"
+      },
+      {
+        "cents" : 3766,
+        "label" : "Tip 20%"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Teppan Khania",
+      "total_cents" : 22595
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Subtotal",
+        "Unclassified priced row: Total",
+        "Resolved rows differ from known total by 11262 cents"
+      ],
+      "items" : [
+        {
+          "label" : "Strawberry Colada",
+          "qty" : 1
+        },
+        {
+          "label" : "Sapporo Light 12oz",
+          "qty" : 1
+        },
+        {
+          "label" : "Rib Eye & Shrimp",
+          "qty" : 1
+        },
+        {
+          "label" : "Fried Rice w York & Colossal Shrimp",
+          "qty" : 1
+        },
+        {
+          "label" : "Fried Rice N York & Colossal Shrimp",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 11262,
+      "tax_cents" : 1354,
+      "tip_cents" : 9979
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Strawberry Colada|\nITEM|Sapporo Light 12oz|\nITEM|Rib Eye & Shrimp|\nITEM|Fried Rice w York & Colossal Shrimp|\nITEM|Fried Rice N York & Colossal Shrimp|\nUNKNOWN|Subtotal|17475\nTAX|Tax|1354\nUNKNOWN|Total|18829\nTIP|Tip 15%|2824\nTIP|Tip 18%|3389\nTIP|Tip 20%|3766\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.44277000427246094,
+      "phase2Seconds" : 18.421702027320862,
+      "totalWorkflowSeconds" : 24.19285500049591,
+      "transcriptSeconds" : 5.328377962112427,
+      "transcriptToPhase1Seconds" : 0.44277000427246094,
+      "transcriptToPhase2Seconds" : 18.864477038383484,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "8.50 6.75 0.00 54.50 45.50 0.00 4.50 45.50 0.00 4.50 5.00 174.75 13.54 188.29 15%: $28.24: $216.53 18%: $33.89: $222.18 20%: $37.66: $225.95 Receipt Code: 0116585820417 Thank you for visiting!\n. (858) 560-792123 н 30, 2026 at 3-52. 0 Order #11015:1 Teppan Khania no Strawberry Colada Sapporo Light 12oz 1 Glass gyu Rib Eye & Shrimp Fried Rice w York & Colossal Shrimp Med Rare Fried Rice N York & Colossal Shrimp Med Rare Fried Rice ite ototal ggested tip amounts are provided or your convenience. Come back soon!"
+  },
+  "sourceFilename" : "IMG_5135.jpeg",
+  "variantID" : "current"
+}
