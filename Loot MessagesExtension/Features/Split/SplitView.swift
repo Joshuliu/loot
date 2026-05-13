@@ -92,9 +92,12 @@ extension ConfirmationView {
             splitPanelToolbar()
             Spacer()
             HStack {
-                Text("Select a guest, then tap an item to assign/unassign them.")
+                Text(splitEditorVM.claimMode
+                     ? "Recipients claim their own items in chat."
+                     : "Tap items to assign. Unassigned items split evenly between guests.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 Spacer()
 
@@ -115,6 +118,41 @@ extension ConfirmationView {
                 .disabled(isLoadingItems)
                 .opacity(isLoadingItems ? 0.5 : 1)
             }
+
+            // Tap-to-Claim variant toggle. When on, the cl flag ships in the
+            // payload and recipients can claim items from the chat bubble.
+            // Transition off→on wipes only OTHER guests' claims — the sender's
+            // own pre-assignments survive so an accidental toggle doesn't
+            // erase their work. The active guest gets locked to the sender.
+            // Toggling off is non-destructive: claims stay put so you can
+            // recover from a mis-tap without losing progress.
+            Toggle(isOn: Binding(
+                get: { splitEditorVM.claimMode },
+                set: { newValue in
+                    let wasOn = splitEditorVM.claimMode
+                    splitEditorVM.claimMode = newValue
+                    if newValue && !wasOn {
+                        splitEditorVM.wipeNonSenderItemPartitions(
+                            totalCents: totalCents, tipAmount: tipAmount
+                        )
+                        splitEditorVM.byItemSelectedGuestID = splitEditorVM.senderPersonID
+                    }
+                    splitEditorVM.syncByItemsToSplitDraft(
+                        totalCents: totalCents, tipAmount: tipAmount
+                    )
+                }
+            )) {
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.tap")
+                        .font(.system(size: 13))
+                    Text("Let recipients claim")
+                        .font(.system(size: 14, weight: .medium))
+                }
+            }
+            .tint(.blue)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
+
             Spacer()
             VStack(alignment: .leading, spacing: 10) {
                 Text("Receipt items")
@@ -162,34 +200,35 @@ extension ConfirmationView {
                                 if item.isComplete {
                                     let isLast = idx == splitEditorVM.byItemItems.filter({ $0.isComplete }).count - 1
 
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(item.label)
-                                                .font(.system(size: 16, weight: .semibold))
-                                                .lineLimit(1)
-                                            Text(ReceiptDisplay.money(item.priceCents))
-                                                .font(.system(size: 13))
-                                                .foregroundStyle(.secondary)
-                                        }
-
-                                        Spacer()
-
-                                        HStack(spacing: 6) {
-                                            ForEach(item.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }, id: \.self) { gid in
-                                                let fallbackIndex = splitEditorVM.guests.firstIndex(where: { $0.id == gid }) ?? 0
-                                                let name = splitEditorVM.guests.first(where: { $0.id == gid }).map { splitEditorVM.displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex) } ?? "Guest"
-                                                ColoredCircleBadge(
-                                                    text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                                    color: splitEditorVM.colorForGuestId(gid)
-                                                )
+                                    HStack(spacing: 0) {
+                                        // Left side is its own Button so the row's
+                                        // 1-way claim/unclaim fires independently
+                                        // from the right widget's Buttons (sibling
+                                        // layout — no nested-Button hit-test race).
+                                        Button {
+                                            handleItemRowTap(item: item)
+                                        } label: {
+                                            HStack {
+                                                VStack(alignment: .leading, spacing: 2) {
+                                                    Text(item.label)
+                                                        .font(.system(size: 16, weight: .semibold))
+                                                        .lineLimit(1)
+                                                        .foregroundStyle(.primary)
+                                                    Text(ReceiptDisplay.money(item.priceCents))
+                                                        .font(.system(size: 13))
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                                Spacer(minLength: 8)
                                             }
+                                            .padding(.leading, 14)
+                                            .padding(.vertical, 12)
+                                            .contentShape(Rectangle())
                                         }
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 12)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        splitEditorVM.toggleAssignment(itemId: item.id, totalCents: totalCents, tipAmount: tipAmount)
+                                        .buttonStyle(.plain)
+
+                                        partitionRightWidget(for: item)
+                                            .padding(.trailing, 14)
+                                            .padding(.vertical, 12)
                                     }
 
                                     if !isLast {
@@ -209,6 +248,30 @@ extension ConfirmationView {
             splitModePicker()
                 .padding(.top, 7)
                 .padding(.horizontal, 30)
+        }
+        .confirmationDialog(
+            "Split into how many?",
+            isPresented: Binding(
+                get: { splitPickerItemId != nil },
+                set: { presented in if !presented { splitPickerItemId = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: splitPickerItemId
+        ) { itemId in
+            // 1-way / single full claim is reachable via row-tap; picker is
+            // multi-way only. Capped at min(9, group size); Phase 9 may add
+            // a "More…" custom number entry later.
+            let inlineMax = max(2, min(9, splitEditorVM.activeCount))
+            ForEach(2...max(inlineMax, 2), id: \.self) { n in
+                Button("Split \(n) ways") {
+                    splitEditorVM.setItemDenominator(
+                        itemId: itemId, denominator: n,
+                        totalCents: totalCents, tipAmount: tipAmount
+                    )
+                    splitPickerItemId = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { splitPickerItemId = nil }
         }
     }
 
@@ -239,6 +302,30 @@ extension ConfirmationView {
                 onSelectMode(splitEditorVM.mode)
                 onGuestsChanged(splitEditorVM.guests, splitEditorVM.includedIDs, splitEditorVM.payerID)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                // If we're saving non-claim byItems with items the user
+                // didn't explicitly assign to anyone, surface the
+                // "remaining items split evenly" rule via a transient toast
+                // — the bill card will distribute those cents across guests,
+                // which can otherwise look like a math error to a user who
+                // expected unclaimed = $0 owed.
+                if splitEditorVM.mode == .byItems && !splitEditorVM.claimMode {
+                    let hasUnclaimed = splitEditorVM.byItemItems.contains { item in
+                        guard item.isComplete else { return false }
+                        return item.partition.claimedCents(priceCents: item.priceCents) < item.priceCents
+                    }
+                    if hasUnclaimed {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            showSplitEvenlyBanner = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showSplitEvenlyBanner = false
+                            }
+                        }
+                    }
+                }
+
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                     splitEditorVM.confirmed = true
                 }
@@ -396,4 +483,155 @@ extension ConfirmationView {
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: 22, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 22))
         }
     }
+
+    // MARK: - Partition-aware right-side widget
+
+    /// Right-side widget for a single by-items row. Renders one of three
+    /// shapes depending on the item's partition state:
+    ///  - `.unclaimed` → "Split" pill button (taps open the denominator picker)
+    ///  - `.shares(1, [pid])` → single avatar (full claim)
+    ///  - `.shares(N>1, [...])` → row of N circles (filled with claimer avatars,
+    ///    hollow for unclaimed slots)
+    ///  - `.custom([...])` → stacked avatars (Phase 9 polish: $X / $Y indicator)
+    @ViewBuilder
+    func partitionRightWidget(for item: LineItemForm) -> some View {
+        switch item.partition {
+        case .unclaimed:
+            Button {
+                splitPickerItemId = item.id
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "rectangle.split.3x1")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Split")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.15))
+                .foregroundStyle(Color.blue)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+        case .shares(let denom, let slots):
+            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
+                guestBadge(for: pid)
+            } else {
+                HStack(spacing: 4) {
+                    ForEach(0..<denom, id: \.self) { i in
+                        let claimer = slots.indices.contains(i) ? slots[i] : nil
+                        Button {
+                            splitEditorVM.togglePartitionShare(
+                                itemId: item.id,
+                                shareIndex: i,
+                                totalCents: totalCents,
+                                tipAmount: tipAmount
+                            )
+                        } label: {
+                            if let pid = claimer {
+                                guestBadge(for: pid)
+                            } else {
+                                hollowCircleBadge()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+        case .custom(let claims):
+            HStack(spacing: 4) {
+                ForEach(claims, id: \.personID) { c in
+                    guestBadge(for: c.personID)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func guestBadge(for pid: PersonID) -> some View {
+        let fallbackIndex = splitEditorVM.guests.firstIndex(where: { $0.id == pid }) ?? 0
+        let name = splitEditorVM.guests.first(where: { $0.id == pid }).map {
+            splitEditorVM.displayName(for: $0, fallbackIndexInAllGuests: fallbackIndex)
+        } ?? "Guest"
+        ColoredCircleBadge(
+            text: BadgeColors.initials(from: name, fallback: fallbackIndex),
+            color: splitEditorVM.colorForGuestId(pid)
+        )
+    }
+
+    /// Row-tap handler. Default model: row tap is the "natural next action"
+    /// for each partition state — claim/unclaim 1-way for the simple cases,
+    /// or fill the next empty slot for multi-way (so users don't have to
+    /// hunt for the hollow circles).
+    ///
+    ///   - `.unclaimed` → claim active full → `shares(1, [active])`
+    ///   - `.shares(1, [active])` → unclaim → `.unclaimed`
+    ///   - `.shares(1, [other])` → no-op (switch active to them to deselect)
+    ///   - `.shares(N>1, slots)`:
+    ///       - if there's an empty slot, fill it (auto-rotate via
+    ///         `togglePartitionShare`) — preserves denom
+    ///       - otherwise no-op
+    ///   - `.custom` → no-op (Phase 9)
+    func handleItemRowTap(item: LineItemForm) {
+        let activeID = splitEditorVM.byItemSelectedGuestID
+        guard splitEditorVM.activeGuests.contains(where: { $0.id == activeID }) else { return }
+
+        switch item.partition {
+        case .unclaimed:
+            splitEditorVM.setItemDenominator(
+                itemId: item.id, denominator: 1,
+                totalCents: totalCents, tipAmount: tipAmount
+            )
+        case .shares(let denom, let slots) where denom == 1:
+            if slots.first == activeID {
+                splitEditorVM.clearItemPartition(
+                    itemId: item.id,
+                    totalCents: totalCents, tipAmount: tipAmount
+                )
+            }
+        case .shares(_, let slots):
+            // Row tap = toggle the active guest's slot:
+            //   - active has a slot → unclaim it (so tapping row with only
+            //     one person left deselects them and the Split button
+            //     returns once all slots are empty)
+            //   - active doesn't have a slot → fill an empty one (claim)
+            // To fill other slots in a multi-way item without switching
+            // active, tap the `+` circle directly — auto-fills the next
+            // un-placed guest.
+            if let myIdx = slots.firstIndex(of: activeID) {
+                splitEditorVM.togglePartitionShare(
+                    itemId: item.id, shareIndex: myIdx,
+                    totalCents: totalCents, tipAmount: tipAmount
+                )
+            } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
+                splitEditorVM.togglePartitionShare(
+                    itemId: item.id, shareIndex: emptyIdx,
+                    totalCents: totalCents, tipAmount: tipAmount
+                )
+            }
+        case .custom:
+            break
+        }
+    }
+
+    @ViewBuilder
+    private func hollowCircleBadge() -> some View {
+        Circle()
+            .fill(Color.gray.opacity(0.12))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+            )
+            .overlay(
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.secondary.opacity(0.7))
+                    .symbolEffect(.pulse, options: .repeating)
+            )
+            .contentShape(Circle())
+    }
+
 }

@@ -34,23 +34,38 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
         let id: String
         let label: String
         let priceCents: Int
-        /// Canonical assignment data — PersonID list. By-items consumers
-        /// (SplitsSummaryView, ReceiptPayload.from) read this directly.
-        let assigneeIDs: [PersonID]
+        /// Per-item claim partition. Drives by-items math (SplitMath reads
+        /// `partition` directly) and the wire format (ReceiptPayload.from
+        /// emits sh/cu/rs from it).
+        let partition: ItemPartition
 
-        init(id: String, label: String, priceCents: Int,
-             assigneeIDs: [PersonID] = []) {
+        /// Backward-compat read accessor — deduplicated PersonIDs that have
+        /// any claim. Sites that rendered avatar lists from the flat
+        /// `assigneeIDs` continue to work without modification.
+        var assigneeIDs: [PersonID] { partition.claimerPersonIDs }
+
+        init(id: String, label: String, priceCents: Int, partition: ItemPartition = .unclaimed) {
             self.id = id
             self.label = label
             self.priceCents = priceCents
-            self.assigneeIDs = assigneeIDs
+            self.partition = partition
         }
 
-        // Custom Codable: assigneeIDs defaults to [] when missing.
-        // Pre-Phase-2.7 SessionPersistence data with `responsible` keys is
-        // tolerated — that key is silently dropped during decode.
+        /// Convenience for legacy call sites. Builds `.shares` with one slot
+        /// per assignee (or `.unclaimed` when empty).
+        init(id: String, label: String, priceCents: Int, assigneeIDs: [PersonID]) {
+            self.init(
+                id: id, label: label, priceCents: priceCents,
+                partition: .legacyAssignedGuests(assigneeIDs)
+            )
+        }
+
+        // Custom Codable: prefer the new `partition` field, fall back to
+        // the legacy `assigneeIDs` flat list. Pre-Phase-2.7 SessionPersistence
+        // data with `responsible` keys is tolerated — that key is silently
+        // dropped during decode.
         private enum CodingKeys: String, CodingKey {
-            case id, label, priceCents, assigneeIDs
+            case id, label, priceCents, partition, assigneeIDs
         }
 
         init(from decoder: Decoder) throws {
@@ -58,7 +73,13 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
             self.id = try c.decode(String.self, forKey: .id)
             self.label = try c.decode(String.self, forKey: .label)
             self.priceCents = try c.decode(Int.self, forKey: .priceCents)
-            self.assigneeIDs = try c.decodeIfPresent([PersonID].self, forKey: .assigneeIDs) ?? []
+            if let p = try? c.decode(ItemPartition.self, forKey: .partition) {
+                self.partition = p
+            } else if let legacy = try? c.decode([PersonID].self, forKey: .assigneeIDs) {
+                self.partition = .legacyAssignedGuests(legacy)
+            } else {
+                self.partition = .unclaimed
+            }
         }
 
         func encode(to encoder: Encoder) throws {
@@ -66,8 +87,8 @@ struct ReceiptDisplay: Identifiable, Codable, Equatable {
             try c.encode(id, forKey: .id)
             try c.encode(label, forKey: .label)
             try c.encode(priceCents, forKey: .priceCents)
-            if !assigneeIDs.isEmpty {
-                try c.encode(assigneeIDs, forKey: .assigneeIDs)
+            if partition != .unclaimed {
+                try c.encode(partition, forKey: .partition)
             }
         }
     }

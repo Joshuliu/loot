@@ -276,7 +276,76 @@ struct ReceiptItem: Codable {
     var label: String
     var priceCents: Int
     var quantity: Int
+    /// Legacy: deduplicated list of memberIds with any claim on this item.
+    /// New writers populate this from `partition.claimerMemberIds` for
+    /// readers on builds before Phase 4 ships.
     var assignedMemberIds: [String]
+    /// Per-item claim partition, parallels `ItemPartition` but keys on
+    /// `TabMember.memberId` (string) instead of `PersonID`. nil/absent =
+    /// no rich partition recorded; readers fall back to `assignedMemberIds`.
+    var partition: ReceiptItemPartition?
+
+    init(label: String, priceCents: Int, quantity: Int,
+         assignedMemberIds: [String], partition: ReceiptItemPartition? = nil) {
+        self.label = label
+        self.priceCents = priceCents
+        self.quantity = quantity
+        self.assignedMemberIds = assignedMemberIds
+        self.partition = partition
+    }
+}
+
+/// Firestore-side mirror of `Domain/ItemPartition` keyed on `TabMember.memberId`.
+/// Mutually exclusive variants — once an item enters shares or custom mode, it
+/// stays there.
+enum ReceiptItemPartition: Codable, Equatable {
+    case shares(denominator: Int, slots: [String?])
+    case custom(claims: [ReceiptItemCustomClaim])
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, denominator, slots, claims
+    }
+
+    private enum Kind: String, Codable {
+        case shares, custom
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try c.decode(Kind.self, forKey: .kind)
+        switch kind {
+        case .shares:
+            let denom = try c.decode(Int.self, forKey: .denominator)
+            let slots = try c.decode([String?].self, forKey: .slots)
+            self = .shares(denominator: denom, slots: slots)
+        case .custom:
+            let claims = try c.decode([ReceiptItemCustomClaim].self, forKey: .claims)
+            self = .custom(claims: claims)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .shares(let denom, let slots):
+            try c.encode(Kind.shares, forKey: .kind)
+            try c.encode(denom, forKey: .denominator)
+            try c.encode(slots, forKey: .slots)
+        case .custom(let claims):
+            try c.encode(Kind.custom, forKey: .kind)
+            try c.encode(claims, forKey: .claims)
+        }
+    }
+}
+
+struct ReceiptItemCustomClaim: Codable, Equatable {
+    var memberId: String
+    var cents: Int
+
+    init(memberId: String, cents: Int) {
+        self.memberId = memberId
+        self.cents = cents
+    }
 }
 
 // MARK: - Settlement

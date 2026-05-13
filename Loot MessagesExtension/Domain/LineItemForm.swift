@@ -19,13 +19,24 @@ import Foundation
 struct LineItemForm: Identifiable, Equatable, Hashable {
     var line: LineItem
     var priceText: String
-    /// Working set of assigned PersonIDs during by-items editing. Stored
-    /// (not computed) so SwiftUI @State + array-subscript + Set.insert
-    /// mutations propagate cleanly. Synced to `line.assigneeIDs` at
-    /// construction and on `committed()`.
-    var assignedGuestIds: Set<PersonID>
+    /// Per-item claim partition (shares/custom/unclaimed). Replaces the legacy
+    /// flat `assignedGuestIds: Set<PersonID>` storage. The Set-based accessor
+    /// below preserves the old API for call sites that haven't migrated to
+    /// partition-aware mutations.
+    var partition: ItemPartition
 
     var id: UUID { line.id }
+
+    /// Backward-compat Set view onto `partition.claimerPersonIDs`. Setter
+    /// rewrites the partition as `.shares(N, ids)` — legacy callers don't
+    /// distinguish shares from custom, so this is the safe default.
+    var assignedGuestIds: Set<PersonID> {
+        get { Set(partition.claimerPersonIDs) }
+        set {
+            let sorted = Array(newValue).sorted { $0.rawValue < $1.rawValue }
+            partition = .legacyAssignedGuests(sorted)
+        }
+    }
 
     /// Passthrough to `line.label` so call sites don't need to traverse `.line`.
     var label: String {
@@ -36,7 +47,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(line: LineItem, priceText: String) {
         self.line = line
         self.priceText = priceText
-        self.assignedGuestIds = Set(line.assigneeIDs)
+        self.partition = .legacyAssignedGuests(line.assigneeIDs)
     }
 
     /// Convenience for editor flows that work with an id + label + raw text.
@@ -45,14 +56,23 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(id: UUID = UUID(), label: String, priceText: String) {
         self.line = LineItem(id: id, label: label, priceCents: 0)
         self.priceText = priceText
-        self.assignedGuestIds = []
+        self.partition = .unclaimed
     }
 
     /// Convenience for split-by-items flows that supply assigned-guest PersonIDs.
     init(id: UUID = UUID(), label: String, priceText: String, assignedGuestIds: Set<PersonID>) {
         self.line = LineItem(id: id, label: label, priceCents: 0)
         self.priceText = priceText
-        self.assignedGuestIds = assignedGuestIds
+        let sorted = Array(assignedGuestIds).sorted { $0.rawValue < $1.rawValue }
+        self.partition = .legacyAssignedGuests(sorted)
+    }
+
+    /// Convenience for shares/custom partition flows. Use this when the
+    /// caller already knows the desired denominator and slot ownership.
+    init(id: UUID = UUID(), label: String, priceText: String, partition: ItemPartition) {
+        self.line = LineItem(id: id, label: label, priceCents: 0)
+        self.priceText = priceText
+        self.partition = partition
     }
 
     /// Construct a form from a canonical LineItem, formatting priceCents into
@@ -60,7 +80,7 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     init(from line: LineItem) {
         self.line = line
         self.priceText = Money(cents: line.priceCents).inputString
-        self.assignedGuestIds = Set(line.assigneeIDs)
+        self.partition = .legacyAssignedGuests(line.assigneeIDs)
     }
 
     /// Construct a blank form with a fresh ID.
@@ -85,15 +105,15 @@ struct LineItemForm: Identifiable, Equatable, Hashable {
     }
 
     /// Returns a finalized LineItem with `priceCents` resolved from `priceText`,
-    /// label trimmed, and `assigneeIDs` synced from the working
-    /// `assignedGuestIds` set. Use this when persisting form state.
+    /// label trimmed, and `assigneeIDs` synced from the partition's deduplicated
+    /// claimer list. Use this when persisting form state.
     func committed() -> LineItem {
         LineItem(
             id: line.id,
             label: line.label.trimmingCharacters(in: .whitespacesAndNewlines),
             priceCents: priceCents,
             quantity: line.quantity,
-            assigneeIDs: Array(assignedGuestIds)
+            assigneeIDs: partition.claimerPersonIDs
         )
     }
 }

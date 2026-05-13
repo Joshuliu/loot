@@ -110,7 +110,104 @@ struct ReceiptItemPayload: Codable, Equatable {
     var id: String
     var l: String     // label
     var p: Int        // priceCents
-    var rs: [Int]     // responsibleSlots (only for by-items)
+
+    /// Legacy: list of slot indices assigned to this item (all share evenly).
+    /// New senders still write this for old-reader fallback. New readers
+    /// prefer `cu` > `sh` > `rs` and ignore `rs` if either is set.
+    var rs: [Int]
+
+    /// Shares partition. `sh.count == denominator`. Each entry is a slot index
+    /// or `nil` for unclaimed. Multiple entries with the same index = that
+    /// slot owns N shares of this item. Mutually exclusive with `cu`.
+    var sh: [Int?]?
+
+    /// Custom claims. Each entry is (slot, cents). Sum <= priceCents. Mutually
+    /// exclusive with `sh`. When set, the item is in custom mode and others
+    /// can only claim by adding more custom entries.
+    var cu: [CustomClaimWire]?
+
+    init(id: String, l: String, p: Int, rs: [Int], sh: [Int?]? = nil, cu: [CustomClaimWire]? = nil) {
+        self.id = id
+        self.l = l
+        self.p = p
+        self.rs = rs
+        self.sh = sh
+        self.cu = cu
+    }
+}
+
+struct CustomClaimWire: Codable, Equatable {
+    var s: Int  // slot index
+    var c: Int  // cents
+
+    init(s: Int, c: Int) { self.s = s; self.c = c }
+}
+
+// MARK: - Wire ↔ ItemPartition
+
+extension ReceiptItemPayload {
+    /// Decodes the wire fields (cu / sh / rs) into an ItemPartition using the
+    /// provided slot→PersonID map. Preference: cu > sh > rs (legacy fallback).
+    /// `slotPersonIDs[i]` should match whatever PersonID the receiving structure
+    /// uses for slot `i` — wire-form ("slot-N") for ReceiptDisplay, draft-internal
+    /// (random UUID) for SplitDraft.
+    func itemPartition(slotPersonIDs: [PersonID]) -> ItemPartition {
+        if let cu, !cu.isEmpty {
+            let claims = cu.compactMap { wire -> CustomClaim? in
+                guard slotPersonIDs.indices.contains(wire.s) else { return nil }
+                return CustomClaim(personID: slotPersonIDs[wire.s], cents: wire.c)
+            }
+            return claims.isEmpty ? .unclaimed : .custom(claims)
+        }
+        if let sh, !sh.isEmpty {
+            let slots: [PersonID?] = sh.map { slot in
+                guard let s = slot, slotPersonIDs.indices.contains(s) else { return nil }
+                return slotPersonIDs[s]
+            }
+            return .shares(denominator: sh.count, slots: slots)
+        }
+        if rs.isEmpty { return .unclaimed }
+        let pids = rs.compactMap { slotPersonIDs.indices.contains($0) ? slotPersonIDs[$0] : nil }
+        return .legacyAssignedGuests(pids)
+    }
+}
+
+extension ItemPartition {
+    /// Encodes this partition to wire fields. Always populates `rs` as a
+    /// best-effort fallback for old readers; new fields (`sh` for shares,
+    /// `cu` for custom) are populated only for the matching variant.
+    /// Ghost claims (PersonIDs not in the guest slot list) are dropped.
+    func wireFields(guests: [SplitPayload.Guest]) -> (rs: [Int], sh: [Int?]?, cu: [CustomClaimWire]?) {
+        switch self {
+        case .unclaimed:
+            return (rs: [], sh: nil, cu: nil)
+
+        case .shares(_, let slots):
+            // sh preserves the full denominator (including nil/unclaimed slots)
+            // so new readers can reconstruct the partition exactly.
+            let slotIndices: [Int?] = slots.map { pid in
+                pid.flatMap { guests.slotIndex(for: $0) }
+            }
+            // rs is the flat list of claimed slot indices in slot order. Old
+            // readers count each occurrence as one share — e.g., shares([A,A,B])
+            // → rs=[0,0,1] → old reader correctly assigns 2/3 to A, 1/3 to B.
+            // For partial claims (some nil slots), old readers see only the
+            // claimed slots and split evenly among them — degraded but coherent.
+            let rs = slotIndices.compactMap { $0 }
+            return (rs: rs, sh: slotIndices, cu: nil)
+
+        case .custom(let claims):
+            let cuEntries = claims.compactMap { c -> CustomClaimWire? in
+                guard let s = guests.slotIndex(for: c.personID) else { return nil }
+                return CustomClaimWire(s: s, c: c.cents)
+            }
+            // rs: deduplicated list of slots that have any custom claim. Old
+            // readers split the item evenly among them — wrong amounts but at
+            // least visible attribution.
+            let rs = Array(Set(cuEntries.map(\.s))).sorted()
+            return (rs: rs, sh: nil, cu: cuEntries.isEmpty ? nil : cuEntries)
+        }
+    }
 }
 
 /// Individual fee/discount/tax line item stored in the payload to preserve order and identity.
@@ -149,7 +246,12 @@ struct SplitPayload: Codable, Equatable {
     var d: Int?   // discountCents
     var tot: Int  // totalCents
 
-    init(m: Mode, g: [Guest], pi: Int, o: [Int], pd: [Bool]? = nil, f: Int? = nil, tx: Int? = nil, tip: Int? = nil, d: Int? = nil, tot: Int) {
+    /// Tap-to-Claim mode: recipients claim their own items in chat. Only
+    /// meaningful when `m == .byItems`. nil/absent = normal byItems compose-time
+    /// assignment. Old readers ignore this and render as normal byItems.
+    var cl: Bool?
+
+    init(m: Mode, g: [Guest], pi: Int, o: [Int], pd: [Bool]? = nil, f: Int? = nil, tx: Int? = nil, tip: Int? = nil, d: Int? = nil, tot: Int, cl: Bool? = nil) {
         self.m = m
         self.g = g
         self.pi = pi
@@ -160,10 +262,11 @@ struct SplitPayload: Codable, Equatable {
         self.tip = tip
         self.d = d
         self.tot = tot
+        self.cl = cl
     }
 
     enum CodingKeys: String, CodingKey {
-        case m, g, pi, o, pd, f, tx, tip, d, tot
+        case m, g, pi, o, pd, f, tx, tip, d, tot, cl
     }
 
     init(from decoder: Decoder) throws {
@@ -179,6 +282,7 @@ struct SplitPayload: Codable, Equatable {
         tx = try container.decodeIfPresent(Int.self, forKey: .tx)
         tip = try container.decodeIfPresent(Int.self, forKey: .tip)
         tot = try container.decode(Int.self, forKey: .tot)
+        cl = try container.decodeIfPresent(Bool.self, forKey: .cl)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -193,6 +297,7 @@ struct SplitPayload: Codable, Equatable {
         try container.encodeIfPresent(tip, forKey: .tip)
         try container.encodeIfPresent(d, forKey: .d)
         try container.encode(tot, forKey: .tot)
+        try container.encodeIfPresent(cl, forKey: .cl)
     }
 }
 
@@ -231,12 +336,13 @@ extension SplitPayload {
             }
         }()
 
-        let items = receiptItems.map { item in
-            SplitDraft.Item(
+        let items = receiptItems.map { item -> SplitDraft.Item in
+            let partition = item.itemPartition(slotPersonIDs: slotPersonIDs)
+            return SplitDraft.Item(
                 id: UUID(),
                 label: item.l,
                 priceCents: item.p,
-                assignedGuestIds: item.rs.compactMap { slotPersonIDs.indices.contains($0) ? slotPersonIDs[$0] : nil }
+                partition: partition
             )
         }
 
@@ -268,7 +374,8 @@ extension SplitPayload {
             feesCents: f ?? 0,
             discountCents: d ?? 0,
             taxCents: tx ?? 0,
-            tipCents: tip ?? 0
+            tipCents: tip ?? 0,
+            claimMode: cl ?? false
         )
         return (draft, slotPersonIDs)
     }
@@ -453,24 +560,16 @@ extension LootMessagePayload {
         let receiptData = r
         let splitData = s
 
-        let items: [ReceiptDisplay.Item] = receiptData.i.map { it in
-            // Map wire slot indices to canonical PersonIDs. Use the guest's
-            // Keychain uid when available; fall back to a synthesized
-            // "slot-N" raw value so the slotIndex(for:) helper can reverse
-            // it for wire-format encoding.
-            let assigneeIDs: [PersonID] = it.rs.map { slot in
-                if splitData.g.indices.contains(slot),
-                   let uid = splitData.g[slot].uid, !uid.isEmpty {
-                    return PersonID(rawValue: uid)
-                }
-                return PersonID(rawValue: "slot-\(slot)")
-            }
+        // Canonical wire-form PersonIDs for each slot: the guest's Keychain uid
+        // when known, or "slot-N" so slotIndex(for:) can reverse it for encoding.
+        let canonicalSlotPIDs: [PersonID] = splitData.g.indices.map { splitData.g.personID(forSlot: $0) }
 
-            return ReceiptDisplay.Item(
+        let items: [ReceiptDisplay.Item] = receiptData.i.map { it in
+            ReceiptDisplay.Item(
                 id: it.id,
                 label: it.l,
                 priceCents: it.p,
-                assigneeIDs: assigneeIDs
+                partition: it.itemPartition(slotPersonIDs: canonicalSlotPIDs)
             )
         }
 
@@ -517,6 +616,20 @@ extension Array where Element == SplitPayload.Guest {
             return n
         }
         return nil
+    }
+
+    /// Inverse of `slotIndex(for:)`: returns a stable PersonID for the guest at
+    /// `slotIndex`. Uses the guest's `uid` when present, otherwise synthesizes
+    /// `PersonID("slot-N")`. Matches the convention in `payload.toReceiptDisplay()`
+    /// so partition lookups round-trip cleanly across the wire format.
+    func personID(forSlot slotIndex: Int) -> PersonID {
+        guard indices.contains(slotIndex) else {
+            return PersonID(rawValue: "slot-\(slotIndex)")
+        }
+        if let uid = self[slotIndex].uid, !uid.isEmpty {
+            return PersonID(rawValue: uid)
+        }
+        return PersonID(rawValue: "slot-\(slotIndex)")
     }
 
     /// Returns a display name for the given PersonID, falling back to "Guest N"
@@ -574,13 +687,24 @@ extension SplitPayload {
         let tax = draft?.taxCents ?? 0
         let tip = draft?.tipCents ?? 0
 
-        let itemsForMath: [(label: String, priceCents: Int, assignedSlots: [Int])] = {
+        let itemsForMath: [(label: String, priceCents: Int, partition: ItemPartition)] = {
             guard let d = draft, d.mode == .byItems else { return [] }
-            let slotIndexByPersonID: [PersonID: Int] = Dictionary(uniqueKeysWithValues:
-                d.guests.enumerated().map { ($0.element.id, $0.offset) })
+            // Remap the draft's internal PersonIDs (random UUIDs for anonymous
+            // slots) to the wire-canonical form (uid or "slot-N") that SplitMath
+            // resolves via `guests.personID(forSlot:)`. Without this, anonymous
+            // slot claims fail to match and their cents are mis-attributed to
+            // the payer — visible as "split 1 way" in the summary.
+            let remap: [PersonID: PersonID] = Dictionary(uniqueKeysWithValues:
+                d.guests.enumerated().map { (idx, p) in
+                    let canonical = (p.userId?.isEmpty == false)
+                        ? PersonID(rawValue: p.userId!)
+                        : PersonID(rawValue: "slot-\(idx)")
+                    return (p.id, canonical)
+                })
             return d.items.map { it in
-                let slots = it.assignedGuestIds.compactMap { slotIndexByPersonID[$0] }.sorted()
-                return (label: it.label, priceCents: it.priceCents, assignedSlots: slots)
+                (label: it.label,
+                 priceCents: it.priceCents,
+                 partition: it.partition.remappingPersonIDs(remap))
             }
         }()
 
@@ -594,8 +718,11 @@ extension SplitPayload {
             feesCents: fees,
             discountCents: discount,
             taxCents: tax,
-            tipCents: tip
+            tipCents: tip,
+            claimMode: (draft?.claimMode == true) && mode == .byItems
         )
+
+        let cl: Bool? = (draft?.claimMode == true && mode == .byItems) ? true : nil
 
         return SplitPayload(
             m: mode,
@@ -606,7 +733,8 @@ extension SplitPayload {
             tx: tax == 0 ? nil : tax,
             tip: tip == 0 ? nil : tip,
             d: discount == 0 ? nil : discount,
-            tot: totalCents
+            tot: totalCents,
+            cl: cl
         )
     }
 }
@@ -617,21 +745,16 @@ extension ReceiptPayload {
     static func from(receipt: ReceiptDisplay, split: SplitPayload) -> ReceiptPayload {
         let isByItems = (split.m == .byItems)
 
-        let items: [ReceiptItemPayload] = {
-            return receipt.items.map { it in
-                let slots: [Int] = isByItems
-                    ? it.assigneeIDs
-                        .compactMap { split.g.slotIndex(for: $0) }
-                        .sorted()
-                    : []
-                return ReceiptItemPayload(
-                    id: it.id,
-                    l: it.label,
-                    p: it.priceCents,
-                    rs: slots
-                )
+        let items: [ReceiptItemPayload] = receipt.items.map { it in
+            guard isByItems else {
+                return ReceiptItemPayload(id: it.id, l: it.label, p: it.priceCents, rs: [])
             }
-        }()
+            let wire = it.partition.wireFields(guests: split.g)
+            return ReceiptItemPayload(
+                id: it.id, l: it.label, p: it.priceCents,
+                rs: wire.rs, sh: wire.sh, cu: wire.cu
+            )
+        }
 
         let lineItems: [ReceiptLineItemPayload]? = receipt.lineItems.isEmpty ? nil :
             receipt.lineItems.map { ReceiptLineItemPayload(id: $0.id, l: $0.label, c: $0.cents) }

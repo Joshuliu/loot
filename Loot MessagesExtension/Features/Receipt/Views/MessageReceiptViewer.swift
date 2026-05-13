@@ -104,15 +104,17 @@ struct MessageReceiptViewer: View {
         currentPayload.r = ReceiptPayload.from(receipt: updatedReceipt, split: currentPayload.s)
 
         // Preserve existing byItems assignments — EditReceiptView always saves
-        // items with empty assigneeIDs, so ReceiptPayload.from emits no rs
-        // slots. Re-apply the original slot assignments for items that
-        // already existed in the wire payload.
+        // items with empty partitions, so ReceiptPayload.from emits no rs/sh/cu
+        // slots. Re-apply the original slot assignments (rs + sh + cu) for
+        // items that already existed in the wire payload.
         if currentPayload.s.m == .byItems {
-            let oldRsByItemId = Dictionary(uniqueKeysWithValues: oldItems.map { ($0.id, $0.rs) })
+            let oldByItemId = Dictionary(uniqueKeysWithValues: oldItems.map { ($0.id, $0) })
             currentPayload.r.i = currentPayload.r.i.map { item in
                 var updated = item
-                if let existingRs = oldRsByItemId[item.id] {
-                    updated.rs = existingRs
+                if let existing = oldByItemId[item.id] {
+                    updated.rs = existing.rs
+                    updated.sh = existing.sh
+                    updated.cu = existing.cu
                 }
                 return updated
             }
@@ -171,13 +173,17 @@ struct MessageReceiptViewer: View {
             let newIds = Set(currentPayload.r.i.map { $0.id })
             let hasNewItems = !newIds.subtracting(oldIds).isEmpty
 
-            // Recalculate owed from item assignments
-            let items = currentPayload.r.i.map { item in
-                (label: item.l, priceCents: item.p, assignedSlots: item.rs)
+            // Recalculate owed from item assignments. Decode partition from
+            // sh/cu/rs (with rs as the legacy fallback).
+            let guests = currentPayload.s.g
+            let canonicalSlotPIDs: [PersonID] = guests.indices.map { guests.personID(forSlot: $0) }
+            let items = currentPayload.r.i.map { item -> (label: String, priceCents: Int, partition: ItemPartition) in
+                (label: item.l, priceCents: item.p,
+                 partition: item.itemPartition(slotPersonIDs: canonicalSlotPIDs))
             }
             currentPayload.s.o = SplitMath.computeOwedCents(
                 mode: .byItems,
-                guests: currentPayload.s.g,
+                guests: guests,
                 payerIndex: currentPayload.s.pi,
                 totalCents: updatedReceipt.totalCents,
                 perGuestActive: nil,
@@ -185,7 +191,8 @@ struct MessageReceiptViewer: View {
                 feesCents: updatedReceipt.feesCents,
                 discountCents: updatedReceipt.discountCents,
                 taxCents: updatedReceipt.taxCents,
-                tipCents: updatedReceipt.tipCents
+                tipCents: updatedReceipt.tipCents,
+                claimMode: currentPayload.s.cl ?? false
             )
             messageReceiptVM.openedMessagePayload = currentPayload
 

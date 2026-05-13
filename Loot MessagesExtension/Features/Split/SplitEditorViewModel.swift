@@ -20,6 +20,10 @@ final class SplitEditorViewModel: ObservableObject {
     // MARK: - Split panel state
     @Published var mode: SplitDraft.Mode = .equally
     @Published var lastMode: SplitDraft.Mode = .equally
+    /// Tap-to-Claim variant of `byItems`: recipients can claim items themselves
+    /// in chat. Only meaningful when `mode == .byItems`. Round-trips through
+    /// `SplitDraft.claimMode` → `SplitPayload.cl`.
+    @Published var claimMode: Bool = false
     @Published var guests: [Person] = []
     @Published var includedIDs: Set<PersonID> = []
     @Published var payerID: PersonID = PersonID(rawValue: "")
@@ -102,13 +106,51 @@ final class SplitEditorViewModel: ObservableObject {
     }
 
     func byItemsGuestCents(for guestId: PersonID) -> Int {
-        byItemsGuestSubtotalCents(
-            guestID: guestId,
-            guestOrder: guests.map(\.id),
-            items: byItemItems.map { item in
-                (priceCents: item.priceCents, assignedGuestIDs: Array(item.assignedGuestIds))
+        // Per-guest running total for the byItems guest list. The math splits
+        // by claim mode:
+        //
+        //  • Claim mode (cl=true): explicit claims + this guest's proportional
+        //    share of tax/tip/fees, where the proportion is claimed/subtotal
+        //    (NOT claimed/totalClaimed). Claiming half the bill = half the
+        //    tax, regardless of whether anyone else has claimed yet.
+        //    Unclaimed cents stay unattributed — others show $0.
+        //
+        //  • Non-claim mode (cl=false): previews the bill-card amount,
+        //    including this guest's share of unclaimed cents (even-split at
+        //    send time). Computed in Doubles with a single rounding at the
+        //    end so per-tap toggles don't accumulate the rounding-cascade
+        //    drift that previously made amounts shift by 3¢ on each select.
+        let claimed = byItemItems.reduce(0) { acc, item in
+            acc + item.partition.centsClaimed(by: guestId, priceCents: item.priceCents)
+        }
+
+        let fees = stringToCents(feesString)
+        let tax = stringToCents(taxString)
+        let tip = stringToCents(tipString)
+        let discount = receiptDraftVM.currentReceipt?.discountCents ?? 0
+        let extras = max(0, fees + tax + tip - discount)
+        let subtotal = byItemItems.reduce(0) { $0 + $1.priceCents }
+
+        if claimMode {
+            guard subtotal > 0, claimed > 0, extras > 0 else { return claimed }
+            let extrasShare = Int((Double(extras) * Double(claimed) / Double(subtotal)).rounded())
+            return claimed + extrasShare
+        } else {
+            let totalClaimedAcrossGuests = activeGuests.reduce(0) { acc, g in
+                let gid = g.id
+                return acc + byItemItems.reduce(0) { sub, item in
+                    sub + item.partition.centsClaimed(by: gid, priceCents: item.priceCents)
+                }
             }
-        )
+            let unclaimedTotal = max(0, subtotal - totalClaimedAcrossGuests)
+            let count = max(1, activeCount)
+            let unclaimedShareDouble = Double(unclaimedTotal) / Double(count)
+            let effectiveClaimDouble = Double(claimed) + unclaimedShareDouble
+            let extrasShareDouble = subtotal > 0
+                ? Double(extras) * effectiveClaimDouble / Double(subtotal)
+                : 0
+            return Int((effectiveClaimDouble + extrasShareDouble).rounded())
+        }
     }
 
     func ensureGuestArrays() {
@@ -311,6 +353,159 @@ final class SplitEditorViewModel: ObservableObject {
         syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
     }
 
+    /// Clears `itemId`'s partition back to `.unclaimed` so the Split button
+    /// reappears in the right-side widget. Used by the row tap when an item
+    /// is a single full claim (`shares(1, [active])`) and the active guest
+    /// taps to release it.
+    func clearItemPartition(itemId: UUID, totalCents: Int, tipAmount: String) {
+        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
+        byItemItems[idx].partition = .unclaimed
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Resets every item's partition to `.unclaimed`. Used by the orphan-ref
+    /// scrub when removing a guest. The Tap-to-Claim toggle uses the gentler
+    /// `wipeNonSenderItemPartitions` instead so the sender's own pre-claims
+    /// aren't lost on an accidental toggle.
+    func wipeAllItemPartitions(totalCents: Int, tipAmount: String) {
+        for i in byItemItems.indices {
+            byItemItems[i].partition = .unclaimed
+        }
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Wipes only OTHER guests' claims from every item's partition, preserving
+    /// the sender's own claims. Called when the user flips Tap-to-Claim on so
+    /// recipients get a clean slate without erasing the sender's pre-claims to
+    /// themselves. Toggling off doesn't restore wiped other-guest claims —
+    /// the user can re-assign manually if needed.
+    func wipeNonSenderItemPartitions(totalCents: Int, tipAmount: String) {
+        let myPID = senderPersonID
+
+        for i in byItemItems.indices {
+            switch byItemItems[i].partition {
+            case .unclaimed:
+                continue
+            case .shares(let denom, let slots):
+                let cleaned: [PersonID?] = slots.map { pid in
+                    pid == myPID ? pid : nil
+                }
+                if cleaned.allSatisfy({ $0 == nil }) {
+                    byItemItems[i].partition = .unclaimed
+                } else {
+                    byItemItems[i].partition = .shares(denominator: denom, slots: cleaned)
+                }
+            case .custom(let claims):
+                let cleaned = claims.filter { $0.personID == myPID }
+                byItemItems[i].partition = cleaned.isEmpty ? .unclaimed : .custom(cleaned)
+            }
+        }
+
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Sender's PersonID — the active guest that's locked-in while
+    /// claimMode is on. Returns the local user's slot, falling back to
+    /// the payer or the first active guest.
+    var senderPersonID: PersonID {
+        if let me = activeGuests.first(where: { $0.isMe(localUserId: localUserId) }) {
+            return me.id
+        }
+        if activeGuests.contains(where: { $0.id == payerID }) { return payerID }
+        return activeGuests.first?.id ?? payerID
+    }
+
+    /// Sets `itemId`'s partition to `.shares(denom, [activeGuest, nil, nil, ...])`
+    /// — first slot claimed by the active guest, the rest unclaimed. Used by
+    /// the Split button picker to enter explicit shares mode. In claim mode,
+    /// the first slot always goes to the sender (regardless of who's active),
+    /// preventing accidental pre-assignment to other guests.
+    func setItemDenominator(itemId: UUID, denominator: Int, totalCents: Int, tipAmount: String) {
+        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
+        guard denominator >= 1 else { return }
+
+        let activeID = claimMode ? senderPersonID : byItemSelectedGuestID
+        guard activeGuests.contains(where: { $0.id == activeID }) else { return }
+
+        var slots: [PersonID?] = Array(repeating: nil, count: denominator)
+        slots[0] = activeID
+        byItemItems[idx].partition = .shares(denominator: denominator, slots: slots)
+
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Tap rules on `shareIndex` of `itemId`'s shares partition:
+    ///   - Tap a filled slot (own or someone else's) → unclaim it.
+    ///   - Tap an empty slot → claim. In normal compose, claims the active
+    ///     guest, falling back to the next active guest who isn't yet placed
+    ///     (so the second/third tap on empty circles fills with the next
+    ///     person automatically). In Tap-to-Claim mode, claims for the
+    ///     sender only — never auto-rotates to other guests.
+    ///   - The active-guest selector (`byItemSelectedGuestID`) is never
+    ///     auto-mutated by this — slot changes don't change who's active.
+    ///   - All slots empty → collapse to `.unclaimed` (Split button reappears).
+    func togglePartitionShare(itemId: UUID, shareIndex: Int, totalCents: Int, tipAmount: String) {
+        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
+        guard case .shares(let denom, var slots) = byItemItems[idx].partition else { return }
+        guard slots.indices.contains(shareIndex) else { return }
+
+        let activeID = claimMode ? senderPersonID : byItemSelectedGuestID
+        guard activeGuests.contains(where: { $0.id == activeID }) else { return }
+
+        if slots[shareIndex] != nil {
+            // Permissive deselect — any filled slot can be unclaimed,
+            // regardless of who's active. Lets the user tap a circle to
+            // remove that person without first switching the active selector.
+            slots[shareIndex] = nil
+        } else {
+            // Claim. In normal mode: active if free, else next un-placed
+            // active guest. In claim mode: sender-only, no auto-rotate.
+            let claimer: PersonID? = {
+                if !slots.contains(activeID) { return activeID }
+                if claimMode { return nil }
+                return activeGuests.first(where: { !slots.contains($0.id) })?.id
+            }()
+            guard let claimer else { return }
+            slots[shareIndex] = claimer
+        }
+
+        if slots.allSatisfy({ $0 == nil }) {
+            byItemItems[idx].partition = .unclaimed
+        } else {
+            byItemItems[idx].partition = .shares(denominator: denom, slots: slots)
+        }
+
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Removes PersonIDs from every byItemItem's partition that no longer
+    /// correspond to a guest in `guests`. Called whenever the guest list
+    /// changes (add / remove) so partitions can't hold orphaned IDs that
+    /// produce "stuck" badges after a guest is removed and re-added.
+    func scrubOrphanedPartitionRefs() {
+        let validIDs = Set(guests.map(\.id))
+
+        for i in byItemItems.indices {
+            switch byItemItems[i].partition {
+            case .unclaimed:
+                continue
+            case .shares(let denom, let slots):
+                let cleaned: [PersonID?] = slots.map { pid in
+                    guard let p = pid, validIDs.contains(p) else { return nil }
+                    return p
+                }
+                if cleaned.allSatisfy({ $0 == nil }) {
+                    byItemItems[i].partition = .unclaimed
+                } else {
+                    byItemItems[i].partition = .shares(denominator: denom, slots: cleaned)
+                }
+            case .custom(let claims):
+                let cleaned = claims.filter { validIDs.contains($0.personID) }
+                byItemItems[i].partition = cleaned.isEmpty ? .unclaimed : .custom(cleaned)
+            }
+        }
+    }
+
     /// Syncs the current `byItemItems` (form-state) into
     /// `receiptDraftVM.currentSplitDraft.items`, building a draft if none exists.
     /// Called whenever assignments change so the rest of the pipeline
@@ -324,12 +519,18 @@ final class SplitEditorViewModel: ObservableObject {
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
+                    partition: it.partition
                 )
             }
 
         if var draft = receiptDraftVM.currentSplitDraft {
             draft.items = items
+            // Propagate the Tap-to-Claim flag through every sync, otherwise
+            // toggling the switch updates VM state but the live draft (which
+            // drives bill-card ring math via `owedFromDraft`) keeps the old
+            // claimMode and unclaimed cents get even-split instead of staying
+            // unattributed.
+            draft.claimMode = claimMode && mode == .byItems
             receiptDraftVM.currentSplitDraft = draft
         } else {
             receiptDraftVM.currentSplitDraft = buildSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
@@ -359,6 +560,12 @@ final class SplitEditorViewModel: ObservableObject {
     func selectMode(_ newMode: SplitDraft.Mode, totalCents: Int) {
         lastMode = mode
         mode = newMode
+
+        // Tap-to-Claim is a variant of byItems; switching to any other mode
+        // drops the variant flag.
+        if newMode != .byItems {
+            claimMode = false
+        }
 
         if newMode == .equally {
             ensureGuestArrays()
@@ -396,7 +603,7 @@ final class SplitEditorViewModel: ObservableObject {
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
+                    partition: it.partition
                 )
             }
 
@@ -411,7 +618,8 @@ final class SplitEditorViewModel: ObservableObject {
             feesCents: stringToCents(feesString),
             discountCents: receiptDraftVM.currentReceipt?.discountCents ?? 0,
             taxCents: stringToCents(taxString),
-            tipCents: stringToCents(tipString)
+            tipCents: stringToCents(tipString),
+            claimMode: claimMode && mode == .byItems
         )
     }
 
@@ -506,6 +714,7 @@ final class SplitEditorViewModel: ObservableObject {
             guestAmountsCents = newActive.map { oldAmounts[$0.id] ?? 0 }
         }
         ensureGuestArrays()
+        scrubOrphanedPartitionRefs()
     }
 
     func removeGuestInline(guestId: PersonID, totalCents: Int) {
@@ -553,6 +762,8 @@ final class SplitEditorViewModel: ObservableObject {
         if !newActive.contains(where: { $0.id == byItemSelectedGuestID }) {
             byItemSelectedGuestID = newActive.first?.id ?? PersonID(rawValue: "")
         }
+
+        scrubOrphanedPartitionRefs()
     }
 
     func reIncludeGuest(guestId: PersonID, totalCents: Int) {
@@ -583,6 +794,10 @@ final class SplitEditorViewModel: ObservableObject {
         participantCount: Int,
         totalCents: Int
     ) {
+        if let existingDraft = splitDraft {
+            claimMode = existingDraft.claimMode
+        }
+
         if guests.isEmpty {
             if let existingDraft = splitDraft, !existingDraft.guests.isEmpty {
                 guests = existingDraft.guests

@@ -66,18 +66,41 @@ enum TabReceiptAdapter {
             return ReceiptSplit(memberId: memberId, owedCents: split.o[idx])
         }
 
-        // Build items (if by-items mode)
-        let items: [ReceiptItem]? = splitMode == .byItems ? receipt.i.map { item in
-            let assignedMemberIds = item.rs.compactMap { slotIdx -> String? in
-                guard split.g.indices.contains(slotIdx) else { return nil }
-                let uid = split.g[slotIdx].uid ?? ""
-                return uidToMemberId[uid] ?? uid
-            }
+        // Build items (if by-items mode). Both legacy assignedMemberIds and
+        // the new ReceiptItemPartition are populated — old readers fall back
+        // to assignedMemberIds, new readers prefer partition.
+        let memberIdForSlot: (Int) -> String? = { slotIdx in
+            guard split.g.indices.contains(slotIdx) else { return nil }
+            let uid = split.g[slotIdx].uid ?? ""
+            return uidToMemberId[uid] ?? (uid.isEmpty ? nil : uid)
+        }
+
+        let items: [ReceiptItem]? = splitMode == .byItems ? receipt.i.map { item -> ReceiptItem in
+            let assignedMemberIds = item.rs.compactMap(memberIdForSlot)
+
+            let partition: ReceiptItemPartition? = {
+                if let cu = item.cu, !cu.isEmpty {
+                    let claims = cu.compactMap { wire -> ReceiptItemCustomClaim? in
+                        guard let mid = memberIdForSlot(wire.s) else { return nil }
+                        return ReceiptItemCustomClaim(memberId: mid, cents: wire.c)
+                    }
+                    return claims.isEmpty ? nil : .custom(claims: claims)
+                }
+                if let sh = item.sh, !sh.isEmpty {
+                    let slots: [String?] = sh.map { slotOpt in
+                        slotOpt.flatMap(memberIdForSlot)
+                    }
+                    return .shares(denominator: sh.count, slots: slots)
+                }
+                return nil  // legacy rs-only — assignedMemberIds covers it
+            }()
+
             return ReceiptItem(
                 label: item.l,
                 priceCents: item.p,
                 quantity: 1,
-                assignedMemberIds: assignedMemberIds
+                assignedMemberIds: assignedMemberIds,
+                partition: partition
             )
         } : nil
 

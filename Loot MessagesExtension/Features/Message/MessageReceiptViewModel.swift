@@ -172,6 +172,38 @@ final class MessageReceiptViewModel: ObservableObject {
         }
     }
 
+    /// Persists both split + receipt items in one round trip. Used by the
+    /// Tap-to-Claim recipient flow where claiming an item updates both the
+    /// item's partition wire fields (rs/sh/cu) AND the recomputed `split.o`.
+    /// State-before-broadcast: `openedMessagePayload` is mutated first, then
+    /// the bus broadcast fires, then Firestore writes in a Task.
+    func persist(
+        split: SplitPayload,
+        items: [ReceiptItemPayload],
+        broadcast: Bool = true,
+        action: BillUpdateAction = .edited,
+        via bus: MessageBus
+    ) {
+        guard var payload = openedMessagePayload,
+              let docId = openedMessageDocId else { return }
+
+        payload.s = split
+        payload.r.i = items
+        openedMessagePayload = payload
+        if broadcast {
+            bus.sendBillUpdate(payload: payload, docId: docId, action: action)
+        }
+
+        Task {
+            do {
+                try await SharedReceiptService.shared.updatePayload(payload, docId: docId)
+                print("[MessageReceiptViewModel] Payload persisted to \(docId)")
+            } catch {
+                print("[MessageReceiptViewModel] Failed to persist payload: \(error)")
+            }
+        }
+    }
+
     // MARK: - Live receipt listener
 
     private var openedReceiptListener: ListenerRegistration? = nil

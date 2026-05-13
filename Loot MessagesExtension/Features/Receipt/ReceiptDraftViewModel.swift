@@ -128,29 +128,46 @@ final class ReceiptDraftViewModel: ObservableObject {
         let updatedItems: [ReceiptDisplay.Item] = {
             switch effectiveDraft.mode {
             case .byItems:
+                // Map the draft partition's PersonIDs (which are SplitDraft.guests.id —
+                // either UUID-derived for anonymous slots or uid-derived for identified
+                // ones) onto the canonical wire-form PersonID raw values: the guest's
+                // Keychain userId when present, otherwise "slot-N" so the wire encoder's
+                // slotIndex(for:) helper can reverse it.
                 return effectiveDraft.items.map { it in
-                    // PersonID raw value: guest's Keychain userId when present,
-                    // otherwise "slot-N" so the wire encoder's slotIndex(for:)
-                    // helper can reverse it.
-                    let assigneeIDs: [PersonID] = it.assignedGuestIds.compactMap { gid in
+                    let canonicalPID: (PersonID) -> PersonID? = { gid in
                         guard let idx = effectiveDraft.guests.firstIndex(where: { $0.id == gid }) else { return nil }
                         let g = effectiveDraft.guests[idx]
                         let raw = (g.userId?.isEmpty == false) ? g.userId! : "slot-\(idx)"
                         return PersonID(rawValue: raw)
                     }
+                    let canonicalPartition: ItemPartition = {
+                        switch it.partition {
+                        case .unclaimed:
+                            return .unclaimed
+                        case .shares(let denom, let slots):
+                            return .shares(
+                                denominator: denom,
+                                slots: slots.map { $0.flatMap(canonicalPID) }
+                            )
+                        case .custom(let claims):
+                            return .custom(claims.compactMap { c in
+                                canonicalPID(c.personID).map { CustomClaim(personID: $0, cents: c.cents) }
+                            })
+                        }
+                    }()
 
                     return ReceiptDisplay.Item(
                         id: it.id.uuidString,
                         label: it.label,
                         priceCents: it.priceCents,
-                        assigneeIDs: assigneeIDs
+                        partition: canonicalPartition
                     )
                 }
 
             case .equally, .custom:
                 return r.items.map { old in
                     ReceiptDisplay.Item(id: old.id, label: old.label, priceCents: old.priceCents,
-                                        assigneeIDs: [])
+                                        partition: .unclaimed)
                 }
             }
         }()

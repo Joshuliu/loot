@@ -107,6 +107,12 @@ struct ConfirmationView: View {
     @State private var billCardBounceToken: Int = 0
     @State var introAnimationDone: Bool = false
     @State var showEditReceipt: Bool = false
+    /// Item ID currently presenting the split-denominator picker, or nil if hidden.
+    @State var splitPickerItemId: UUID? = nil
+    /// Non-obstructive toast shown after Save when there are still unclaimed
+    /// item cents in non-claim byItems mode — surfaces the "remaining items
+    /// split evenly" rule that the bill card will apply.
+    @State var showSplitEvenlyBanner: Bool = false
 
 
 //    private let collapsedHeight: CGFloat = 60
@@ -610,6 +616,7 @@ struct ConfirmationView: View {
             mainScrollContent(panelH: panelH, topPad: topPad)
             keyboardOverlay
             successOverlay
+            splitEvenlyBannerOverlay
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { dragBackground }
@@ -738,6 +745,38 @@ struct ConfirmationView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(hex: "#06A77D"))
             .transition(.opacity)
+        }
+    }
+
+    /// Non-obstructive toast that surfaces after Save when items are left
+    /// unassigned in non-claim byItems mode. Anchored to the top of the screen
+    /// so it doesn't cover the bill card; auto-dismisses ~3.5s after Save.
+    @ViewBuilder
+    private var splitEvenlyBannerOverlay: some View {
+        if showSplitEvenlyBanner {
+            VStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.9))
+                    Text("Remaining items split evenly between guests.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.leading)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.black.opacity(0.78))
+                )
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .allowsHitTesting(false)
+            .transition(.move(edge: .top).combined(with: .opacity))
         }
     }
 
