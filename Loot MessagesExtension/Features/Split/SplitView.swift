@@ -94,7 +94,7 @@ extension ConfirmationView {
             HStack {
                 Text(splitEditorVM.claimMode
                      ? "Recipients claim their own items in chat."
-                     : "Select a guest, then tap items to assign.")
+                     : "Tap items to assign. Unassigned items split evenly between guests.")
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
