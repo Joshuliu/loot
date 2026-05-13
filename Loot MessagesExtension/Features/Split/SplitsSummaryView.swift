@@ -1456,9 +1456,9 @@ struct SplitsSummaryView: View {
     @ViewBuilder
     private func itemRow(displayItem item: ReceiptDisplay.Item) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            // Left side is a Button when tap-to-claim is active, so the row
-            // tap can fire claim/unclaim independently from the right widget's
-            // inner Buttons (sibling layout — no nested-Button hit-test race).
+            // Left side is a Button only when this user can claim inline. The
+            // sender (or anyone read-only) gets a plain HStack — no row-tap
+            // claim path for them; they edit via the Edit Splits sheet.
             if isClaimModeForMe {
                 Button {
                     handleItemRowTap(itemId: item.id)
@@ -1500,12 +1500,14 @@ struct SplitsSummaryView: View {
         }
     }
 
-    /// Picks between the existing read-only assignee badges and the new
-    /// interactive tap-to-claim widget based on whether claim mode is active
-    /// and the local user can edit this bill.
+    /// Picks between the existing read-only assignee badges and the
+    /// partition-aware claim widget. The widget renders for any Tap-to-Claim
+    /// bill so the sender's read-only view still shows the partition state
+    /// (filled + hollow slots), but interactivity is gated on
+    /// `isClaimModeForMe` (sender viewing their own bill → read-only).
     @ViewBuilder
     private func claimOrAssigneeWidget(for item: ReceiptDisplay.Item) -> some View {
-        if isClaimModeForMe, let wireItem = items.first(where: { $0.id == item.id }) {
+        if isClaimModeBill, let wireItem = items.first(where: { $0.id == item.id }) {
             claimWidget(displayItem: item, wireItem: wireItem)
         } else {
             HStack(spacing: 6) {
@@ -1528,10 +1530,24 @@ struct SplitsSummaryView: View {
 
     // MARK: - Tap-to-Claim widget (recipient side)
 
-    /// True when `split.cl == true` and the local user has permission to edit
-    /// the bill (canEdit). Disables the widget for read-only viewers.
+    /// True when this bill was sent in Tap-to-Claim mode. Drives the
+    /// partition-aware display (circles + claimer badges) regardless of
+    /// whether the local user can interact with it.
+    private var isClaimModeBill: Bool {
+        split.cl == true
+    }
+
+    /// True when the local user can claim/unclaim items inline. The sender of
+    /// the bill is excluded — they edit through the Edit Splits sheet, not
+    /// inline. Any other chat participant can claim in a `cl=true` bill (the
+    /// first tap binds them to a free slot via `ensureMySlotBound`).
     private var isClaimModeForMe: Bool {
-        (split.cl == true) && canEdit
+        guard isClaimModeBill else { return false }
+        let myUid = KeychainHelper.getOrCreateUserId()
+        if let payload = messageReceiptVM.openedMessagePayload, payload.su == myUid {
+            return false
+        }
+        return true
     }
 
     /// Wire-canonical PersonID list, one per slot — uid for identified
@@ -1552,22 +1568,29 @@ struct SplitsSummaryView: View {
 
         switch partition {
         case .unclaimed:
-            Button {
-                claimPickerItemId = wireItem.id
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "rectangle.split.3x1")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Split")
-                        .font(.system(size: 13, weight: .semibold))
+            if isClaimModeForMe {
+                Button {
+                    claimPickerItemId = wireItem.id
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "rectangle.split.3x1")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Split")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.15))
+                    .foregroundStyle(Color.blue)
+                    .clipShape(Capsule())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.15))
-                .foregroundStyle(Color.blue)
-                .clipShape(Capsule())
+                .buttonStyle(.plain)
+            } else {
+                // Sender's read-only view: single hollow circle indicating an
+                // open slot — no Split button (Edit Splits is the only edit
+                // path for the sender) and no `+` invitation icon.
+                staticHollowCircle()
             }
-            .buttonStyle(.plain)
 
         case .shares(let denom, let slots):
             if denom == 1, slots.indices.contains(0), let pid = slots[0] {
@@ -1576,16 +1599,24 @@ struct SplitsSummaryView: View {
                 HStack(spacing: 4) {
                     ForEach(0..<denom, id: \.self) { i in
                         let claimer = slots.indices.contains(i) ? slots[i] : nil
-                        Button {
-                            handleCircleTap(itemId: wireItem.id, shareIndex: i)
-                        } label: {
+                        if isClaimModeForMe {
+                            Button {
+                                handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                            } label: {
+                                if let pid = claimer {
+                                    claimerBadge(for: pid)
+                                } else {
+                                    hollowClaimCircle()
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        } else {
                             if let pid = claimer {
                                 claimerBadge(for: pid)
                             } else {
-                                hollowClaimCircle()
+                                staticHollowCircle()
                             }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -1597,6 +1628,20 @@ struct SplitsSummaryView: View {
                 }
             }
         }
+    }
+
+    /// Non-interactive hollow circle used in the sender's read-only view of a
+    /// Tap-to-Claim bill — no `+` icon, no pulse animation, no Button wrapper.
+    /// Purely visual indicator that a slot is open for recipients to claim.
+    @ViewBuilder
+    private func staticHollowCircle() -> some View {
+        Circle()
+            .fill(Color.gray.opacity(0.08))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.secondary.opacity(0.35), lineWidth: 1.5)
+            )
     }
 
     @ViewBuilder
