@@ -69,11 +69,12 @@ enum SplitMath {
         payerIndex: Int,
         totalCents: Int,
         perGuestActive: [Int]?,
-        items: [(label: String, priceCents: Int, assignedSlots: [Int])],
+        items: [(label: String, priceCents: Int, partition: ItemPartition)],
         feesCents: Int,
         discountCents: Int,
         taxCents: Int,
-        tipCents: Int
+        tipCents: Int,
+        claimMode: Bool = false
     ) -> [Int] {
 
         let included = guests.indices.filter { guests[$0].inc }
@@ -102,24 +103,37 @@ enum SplitMath {
             var subtotals = Array(repeating: 0, count: guests.count)
 
             for it in items {
-                let assigned = it.assignedSlots.filter { guests.indices.contains($0) && guests[$0].inc }
-                let targets = assigned.isEmpty ? [safePayer] : assigned.sorted()
-                let parts = splitCentsEvenly(total: max(0, it.priceCents), count: targets.count)
-                for (i, gidx) in targets.enumerated() { subtotals[gidx] += parts[i] }
+                var attributedToSlots = 0
+                for slotIndex in guests.indices where guests[slotIndex].inc {
+                    let pid = guests.personID(forSlot: slotIndex)
+                    let cents = it.partition.centsClaimed(by: pid, priceCents: it.priceCents)
+                    subtotals[slotIndex] += cents
+                    attributedToSlots += cents
+                }
+
+                let unattributed = max(0, it.priceCents - attributedToSlots)
+                if unattributed > 0 && !included.isEmpty && !claimMode {
+                    // Non-claim mode: distribute unclaimed cents evenly among
+                    // included guests so owed.sum == totalCents.
+                    let shares = splitCentsEvenly(total: unattributed, count: included.count)
+                    for (i, slotIndex) in included.enumerated() {
+                        subtotals[slotIndex] += shares[i]
+                    }
+                }
+                // Claim mode: unclaimed stays unattributed. Recipients will
+                // claim it later via the recipient claim UI (Phase 8).
+                // owed.sum < totalCents until everything's claimed.
             }
 
-            // Anchor `extras` on `totalCents - itemsTotal` rather than
-            // `feesCents - discountCents + taxCents + tipCents`. The latter
-            // formula assumed `sum(item.priceCents) == subtotal`, which
-            // breaks whenever items don't fully account for the subtotal —
-            // empty items array (Phase 2 OCR returned nothing), partial
-            // capture, or items dropped by the `isComplete` filter at
-            // payload-build time. Result of the old formula: per-guest
-            // owed cents summed below `totalCents`, and the bill card
-            // donut ring visibly under-filled. Anchoring on `totalCents`
-            // guarantees `owed.sum == totalCents` for every input.
+            // Extras = tax + tip + fees − discount. In non-claim mode we
+            // anchor on `totalCents - itemsTotal` so any subtotal/items gap
+            // gets distributed (handles partial OCR capture). In claim mode
+            // that gap and the unclaimed item cents need to STAY unattributed,
+            // so use the explicit breakdown.
             let itemsTotal = subtotals.reduce(0, +)
-            let extras = max(0, totalCents - itemsTotal)
+            let extras: Int = claimMode
+                ? max(0, feesCents - discountCents + taxCents + tipCents)
+                : max(0, totalCents - itemsTotal)
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {
@@ -157,11 +171,21 @@ enum SplitMath {
 
             let payerIndex = draft.guests.firstIndex(where: { $0.id == draft.payerID }) ?? 0
 
-            let items: [(label: String, priceCents: Int, assignedSlots: [Int])] = draft.items.map { item in
-                let slots = item.assignedGuestIds.compactMap { gid in
-                    draft.guests.firstIndex(where: { $0.id == gid })
-                }
-                return (label: item.label, priceCents: item.priceCents, assignedSlots: slots)
+            // Remap draft-internal PersonIDs (random UUIDs for anonymous slots)
+            // to wire-canonical (uid or "slot-N"). SplitMath uses the wire form
+            // when resolving slot → PersonID, so anonymous-slot claims wouldn't
+            // match without this remap. Same fix as in `SplitPayload.from(draft:)`.
+            let remap: [PersonID: PersonID] = Dictionary(uniqueKeysWithValues:
+                draft.guests.enumerated().map { (idx, p) in
+                    let canonical = (p.userId?.isEmpty == false)
+                        ? PersonID(rawValue: p.userId!)
+                        : PersonID(rawValue: "slot-\(idx)")
+                    return (p.id, canonical)
+                })
+            let items: [(label: String, priceCents: Int, partition: ItemPartition)] = draft.items.map { item in
+                (label: item.label,
+                 priceCents: item.priceCents,
+                 partition: item.partition.remappingPersonIDs(remap))
             }
 
             // Prefer the draft's total; fall back to the live `amount` prop
@@ -178,7 +202,8 @@ enum SplitMath {
                 feesCents: draft.feesCents,
                 discountCents: draft.discountCents,
                 taxCents: draft.taxCents,
-                tipCents: draft.tipCents
+                tipCents: draft.tipCents,
+                claimMode: draft.claimMode && mode == .byItems
             )
         } else {
             guard participantCount > 0 else { return nil }

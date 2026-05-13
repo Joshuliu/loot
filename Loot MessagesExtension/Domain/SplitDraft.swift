@@ -25,13 +25,58 @@ struct SplitDraft: Equatable, Codable {
         let id: UUID
         var label: String
         var priceCents: Int
-        var assignedGuestIds: [PersonID]
+        var partition: ItemPartition
 
-        init(id: UUID, label: String, priceCents: Int, assignedGuestIds: [PersonID]) {
+        init(id: UUID, label: String, priceCents: Int, partition: ItemPartition) {
             self.id = id
             self.label = label
             self.priceCents = priceCents
-            self.assignedGuestIds = assignedGuestIds
+            self.partition = partition
+        }
+
+        /// Convenience: builds a `.shares` partition with one slot per assignee
+        /// (or `.unclaimed` when empty). Preserves the pre-shares semantics so
+        /// existing call sites compile without modification.
+        init(id: UUID, label: String, priceCents: Int, assignedGuestIds: [PersonID]) {
+            self.init(
+                id: id,
+                label: label,
+                priceCents: priceCents,
+                partition: .legacyAssignedGuests(assignedGuestIds)
+            )
+        }
+
+        /// Backward-compat read accessor for sites that previously read
+        /// `assignedGuestIds`. New code should read `partition` directly.
+        var assignedGuestIds: [PersonID] {
+            partition.claimerPersonIDs
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, label, priceCents, partition
+            case assignedGuestIds  // legacy
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id)
+            label = try c.decode(String.self, forKey: .label)
+            priceCents = try c.decode(Int.self, forKey: .priceCents)
+            if let p = try? c.decode(ItemPartition.self, forKey: .partition) {
+                partition = p
+            } else if let legacy = try? c.decode([PersonID].self, forKey: .assignedGuestIds) {
+                partition = .legacyAssignedGuests(legacy)
+            } else {
+                partition = .unclaimed
+            }
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(id, forKey: .id)
+            try c.encode(label, forKey: .label)
+            try c.encode(priceCents, forKey: .priceCents)
+            try c.encode(partition, forKey: .partition)
         }
     }
 
@@ -49,6 +94,10 @@ struct SplitDraft: Equatable, Codable {
     var discountCents: Int
     var taxCents: Int
     var tipCents: Int
+    /// Tap-to-Claim variant of `byItems`: recipients claim their own items in
+    /// chat. Only meaningful when `mode == .byItems`. Round-trips through the
+    /// wire payload's `cl` flag.
+    var claimMode: Bool
 
     init(
         guests: [Person],
@@ -61,7 +110,8 @@ struct SplitDraft: Equatable, Codable {
         feesCents: Int,
         discountCents: Int,
         taxCents: Int,
-        tipCents: Int
+        tipCents: Int,
+        claimMode: Bool = false
     ) {
         self.guests = guests
         self.includedIDs = includedIDs ?? Set(guests.map(\.id))
@@ -74,6 +124,7 @@ struct SplitDraft: Equatable, Codable {
         self.discountCents = discountCents
         self.taxCents = taxCents
         self.tipCents = tipCents
+        self.claimMode = claimMode
     }
 
     /// Guests included in this split, in the order they appear in `guests`.
@@ -92,6 +143,7 @@ struct SplitDraft: Equatable, Codable {
         case payerGuestId  // legacy field name from pre-Phase-2.8 sessions
         case mode, totalCents, perGuestCents, items
         case feesCents, discountCents, taxCents, tipCents
+        case claimMode
     }
 
     init(from decoder: Decoder) throws {
@@ -153,6 +205,7 @@ struct SplitDraft: Equatable, Codable {
         self.discountCents = try c.decode(Int.self, forKey: .discountCents)
         self.taxCents = try c.decode(Int.self, forKey: .taxCents)
         self.tipCents = try c.decode(Int.self, forKey: .tipCents)
+        self.claimMode = (try? c.decode(Bool.self, forKey: .claimMode)) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -168,6 +221,7 @@ struct SplitDraft: Equatable, Codable {
         try c.encode(discountCents, forKey: .discountCents)
         try c.encode(taxCents, forKey: .taxCents)
         try c.encode(tipCents, forKey: .tipCents)
+        if claimMode { try c.encode(true, forKey: .claimMode) }
     }
 }
 

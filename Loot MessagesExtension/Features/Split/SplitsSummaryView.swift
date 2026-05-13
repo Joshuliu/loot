@@ -16,7 +16,11 @@ struct SplitsSummaryView: View {
     @ObservedObject var tabContextVM: TabContextViewModel
     let bus: MessageBus
     @State private var split: SplitPayload
-    let items: [ReceiptItemPayload]  // Receipt items with responsibleSlots
+    /// Receipt items with partition wire fields. Mutable so the Tap-to-Claim
+    /// recipient flow can update per-item rs/sh/cu in place, then persist
+    /// both `split` and `items` in one round trip via
+    /// `messageReceiptVM.persist(split:items:...)`.
+    @State private var items: [ReceiptItemPayload]
     let onEditSplit: (() -> Void)?
     let onEditReceipt: (() -> Void)?
     let onRemoveFromTab: (() -> Void)?
@@ -32,6 +36,9 @@ struct SplitsSummaryView: View {
     private var isTabReceipt: Bool { messageReceiptVM.openedMessagePayload?.tid != nil }
 
     @State private var selectedIndex: Int? = nil
+    /// Item ID currently presenting the Tap-to-Claim split picker (recipient
+    /// side), or nil if hidden.
+    @State private var claimPickerItemId: String? = nil
 
     private enum MyBillState { case choosing, joined, notInBill }
     @State private var billState: MyBillState = .choosing
@@ -90,7 +97,7 @@ struct SplitsSummaryView: View {
         self.tabContextVM = tabContextVM
         self.bus = bus
         self._split = State(initialValue: split)
-        self.items = items
+        self._items = State(initialValue: items)
         self.onEditSplit = onEditSplit
         self.onEditReceipt = onEditReceipt
         self.onRemoveFromTab = onRemoveFromTab
@@ -833,42 +840,7 @@ struct SplitsSummaryView: View {
                             .padding(.vertical, 40)
                         } else {
                             ForEach(receipt.items) { item in
-                                HStack(alignment: .center, spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(item.label)
-                                            .font(.system(size: 16, weight: .semibold))
-                                            .lineLimit(1)
-
-                                        Text(ReceiptDisplay.money(item.priceCents))
-                                            .font(.system(size: 13, weight: .regular))
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer(minLength: 8)
-
-                                    HStack(spacing: 6) {
-                                        // Resolve the slot index from the canonical
-                                        // assigneeIDs, then defer to the local
-                                        // displayName(for idx:) helper so the badge
-                                        // text picks up the Firestore-cached name
-                                        // for joined members and `myDisplayName`
-                                        // for the local user. The wire payload's
-                                        // g.n alone would be stale for slots that
-                                        // joined after the bill was sent.
-                                        let assigneeSlots: [Int] = item.assigneeIDs.compactMap { pid in
-                                            split.g.slotIndex(for: pid)
-                                        }
-                                        ForEach(Array(assigneeSlots.enumerated()), id: \.offset) { _, slot in
-                                            ColoredCircleBadge(
-                                                text: BadgeColors.initials(from: displayName(for: slot), fallback: slot),
-                                                color: BadgeColors.color(for: slot)
-                                            )
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-
+                                itemRow(displayItem: item)
                                 if item.id != receipt.items.last?.id {
                                     Divider().padding(.leading, 14)
                                 }
@@ -1307,6 +1279,15 @@ struct SplitsSummaryView: View {
             split = latestSplit
             reconcileClaimState()
         }
+        .onChange(of: messageReceiptVM.openedMessagePayload?.r.i) { _, latestItems in
+            // Real-time sync for the Tap-to-Claim recipient flow: when another
+            // viewer claims an item via the Firestore listener, refresh the
+            // local @State `items` so the partition widget rerenders. Equality
+            // guard avoids re-firing on our own writes (the listener bounces
+            // them back through openedMessagePayload).
+            guard let latestItems, latestItems != items else { return }
+            items = latestItems
+        }
         .task {
             let myUid = KeychainHelper.getOrCreateUserId()
 
@@ -1450,6 +1431,335 @@ struct SplitsSummaryView: View {
         .onAppear {
             presentPendingRequestIfPossible()
         }
+        .confirmationDialog(
+            "Split into how many?",
+            isPresented: Binding(
+                get: { claimPickerItemId != nil },
+                set: { presented in if !presented { claimPickerItemId = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: claimPickerItemId
+        ) { itemId in
+            let inlineMax = max(2, min(9, split.g.count))
+            ForEach(2...max(inlineMax, 2), id: \.self) { n in
+                Button("Split \(n) ways") {
+                    handleSplitPickerSelection(itemId: itemId, denominator: n)
+                    claimPickerItemId = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { claimPickerItemId = nil }
+        }
+    }
+
+    // MARK: - Item row (tap-to-claim aware)
+
+    @ViewBuilder
+    private func itemRow(displayItem item: ReceiptDisplay.Item) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            // Left side is a Button when tap-to-claim is active, so the row
+            // tap can fire claim/unclaim independently from the right widget's
+            // inner Buttons (sibling layout — no nested-Button hit-test race).
+            if isClaimModeForMe {
+                Button {
+                    handleItemRowTap(itemId: item.id)
+                } label: {
+                    HStack {
+                        itemLabelBlock(item: item)
+                        Spacer(minLength: 8)
+                    }
+                    .padding(.leading, 14)
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                HStack {
+                    itemLabelBlock(item: item)
+                    Spacer(minLength: 8)
+                }
+                .padding(.leading, 14)
+                .padding(.vertical, 12)
+            }
+
+            claimOrAssigneeWidget(for: item)
+                .padding(.trailing, 14)
+                .padding(.vertical, 12)
+        }
+    }
+
+    @ViewBuilder
+    private func itemLabelBlock(item: ReceiptDisplay.Item) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(item.label)
+                .font(.system(size: 16, weight: .semibold))
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+            Text(ReceiptDisplay.money(item.priceCents))
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Picks between the existing read-only assignee badges and the new
+    /// interactive tap-to-claim widget based on whether claim mode is active
+    /// and the local user can edit this bill.
+    @ViewBuilder
+    private func claimOrAssigneeWidget(for item: ReceiptDisplay.Item) -> some View {
+        if isClaimModeForMe, let wireItem = items.first(where: { $0.id == item.id }) {
+            claimWidget(displayItem: item, wireItem: wireItem)
+        } else {
+            HStack(spacing: 6) {
+                // Resolve slot index from canonical assigneeIDs, then use the
+                // local displayName helper so the badge text reflects the
+                // Firestore-cached name for joined members and `myDisplayName`
+                // for the local user.
+                let assigneeSlots: [Int] = item.assigneeIDs.compactMap { pid in
+                    split.g.slotIndex(for: pid)
+                }
+                ForEach(Array(assigneeSlots.enumerated()), id: \.offset) { _, slot in
+                    ColoredCircleBadge(
+                        text: BadgeColors.initials(from: displayName(for: slot), fallback: slot),
+                        color: BadgeColors.color(for: slot)
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Tap-to-Claim widget (recipient side)
+
+    /// True when `split.cl == true` and the local user has permission to edit
+    /// the bill (canEdit). Disables the widget for read-only viewers.
+    private var isClaimModeForMe: Bool {
+        (split.cl == true) && canEdit
+    }
+
+    /// Wire-canonical PersonID list, one per slot — uid for identified
+    /// guests, `"slot-N"` for anonymous ones. Used to translate between
+    /// item partitions (PersonID-keyed) and the wire format.
+    private var canonicalSlotPIDs: [PersonID] {
+        split.g.indices.map { split.g.personID(forSlot: $0) }
+    }
+
+    /// PersonID for the current user, derived from their Keychain uid.
+    private var myCanonicalPID: PersonID {
+        PersonID(rawValue: KeychainHelper.getOrCreateUserId())
+    }
+
+    @ViewBuilder
+    private func claimWidget(displayItem: ReceiptDisplay.Item, wireItem: ReceiptItemPayload) -> some View {
+        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+
+        switch partition {
+        case .unclaimed:
+            Button {
+                claimPickerItemId = wireItem.id
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "rectangle.split.3x1")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Split")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.15))
+                .foregroundStyle(Color.blue)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+        case .shares(let denom, let slots):
+            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
+                claimerBadge(for: pid)
+            } else {
+                HStack(spacing: 4) {
+                    ForEach(0..<denom, id: \.self) { i in
+                        let claimer = slots.indices.contains(i) ? slots[i] : nil
+                        Button {
+                            handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                        } label: {
+                            if let pid = claimer {
+                                claimerBadge(for: pid)
+                            } else {
+                                hollowClaimCircle()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+        case .custom(let claims):
+            HStack(spacing: 4) {
+                ForEach(claims, id: \.personID) { c in
+                    claimerBadge(for: c.personID)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func claimerBadge(for pid: PersonID) -> some View {
+        let slotIdx = split.g.slotIndex(for: pid) ?? 0
+        ColoredCircleBadge(
+            text: BadgeColors.initials(from: displayName(for: slotIdx), fallback: slotIdx),
+            color: BadgeColors.color(for: slotIdx)
+        )
+    }
+
+    @ViewBuilder
+    private func hollowClaimCircle() -> some View {
+        Circle()
+            .fill(Color.gray.opacity(0.12))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+            )
+            .overlay(
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.secondary.opacity(0.7))
+                    .symbolEffect(.pulse, options: .repeating)
+            )
+            .contentShape(Circle())
+    }
+
+    // MARK: - Tap-to-Claim handlers (recipient side)
+
+    /// Row-tap handler for recipient claim flow. Mirrors compose's
+    /// `handleItemRowTap` rules but with the active guest forced to the
+    /// local user. Auto-claims a slot if the user isn't bound yet.
+    private func handleItemRowTap(itemId: String) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let myPID = myCanonicalPID
+
+        let newPartition: ItemPartition = {
+            switch partition {
+            case .unclaimed:
+                return .shares(denominator: 1, slots: [myPID])
+            case .shares(let denom, var slots) where denom == 1:
+                if slots.first == myPID { return .unclaimed }
+                return partition
+            case .shares(let denom, var slots):
+                if let myIdx = slots.firstIndex(of: myPID) {
+                    slots[myIdx] = nil
+                    if slots.allSatisfy({ $0 == nil }) { return .unclaimed }
+                    return .shares(denominator: denom, slots: slots)
+                } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
+                    slots[emptyIdx] = myPID
+                    return .shares(denominator: denom, slots: slots)
+                }
+                return partition
+            case .custom:
+                return partition
+            }
+        }()
+
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    private func handleCircleTap(itemId: String, shareIndex: Int) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        guard case .shares(let denom, var slots) = partition,
+              slots.indices.contains(shareIndex) else { return }
+
+        let myPID = myCanonicalPID
+        if slots[shareIndex] != nil {
+            // Permissive deselect — recipient can clear any slot.
+            slots[shareIndex] = nil
+        } else {
+            // Claim, sender-locked: only the local user can claim, no
+            // auto-rotate to other guests.
+            if slots.contains(myPID) { return }
+            slots[shareIndex] = myPID
+        }
+
+        let newPartition: ItemPartition = slots.allSatisfy({ $0 == nil })
+            ? .unclaimed
+            : .shares(denominator: denom, slots: slots)
+
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    private func handleSplitPickerSelection(itemId: String, denominator: Int) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+
+        let myPID = myCanonicalPID
+        var slots: [PersonID?] = Array(repeating: nil, count: denominator)
+        slots[0] = myPID
+        let newPartition: ItemPartition = .shares(denominator: denominator, slots: slots)
+
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    /// Write the new partition into `items[itemIndex]` as wire fields, recompute
+    /// `split.o`, and persist both via `messageReceiptVM.persist(split:items:...)`.
+    /// State-before-broadcast: the persist call updates `openedMessagePayload`
+    /// before firing the bus, so the iMessage bubble retracts in place.
+    private func applyPartitionUpdate(itemIndex: Int, newPartition: ItemPartition) {
+        let wire = newPartition.wireFields(guests: split.g)
+        items[itemIndex].rs = wire.rs
+        items[itemIndex].sh = wire.sh
+        items[itemIndex].cu = wire.cu
+
+        // Recompute owed amounts from the freshly-updated items.
+        let slotPIDs = canonicalSlotPIDs
+        let mathItems = items.map { it -> (label: String, priceCents: Int, partition: ItemPartition) in
+            (label: it.l,
+             priceCents: it.p,
+             partition: it.itemPartition(slotPersonIDs: slotPIDs))
+        }
+        split.o = SplitMath.computeOwedCents(
+            mode: split.m,
+            guests: split.g,
+            payerIndex: split.pi,
+            totalCents: split.tot,
+            perGuestActive: nil,
+            items: mathItems,
+            feesCents: split.f ?? 0,
+            discountCents: split.d ?? 0,
+            taxCents: split.tx ?? 0,
+            tipCents: split.tip ?? 0,
+            claimMode: split.cl ?? false
+        )
+
+        messageReceiptVM.persist(
+            split: split, items: items,
+            broadcast: true, action: .edited, via: bus
+        )
+    }
+
+    /// Binds the local user to a slot if they aren't yet. Returns true on
+    /// success. Mirrors the existing `claimSlot(at:)` logic: sets uid on the
+    /// first slot without a uid, never overwrites the slot's stored name
+    /// (per `feedback_slot_name_design.md`).
+    @discardableResult
+    private func ensureMySlotBound() -> Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        if split.g.contains(where: { $0.uid == myUid }) { return true }
+        guard let emptyIdx = split.g.firstIndex(where: { $0.uid == nil }) else {
+            return false
+        }
+        split.g[emptyIdx].uid = myUid
+        billState = .joined
+
+        // Make sure the user's display name is cached so cross-sender viewers
+        // see it before the bubble propagates.
+        let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+        if !myName.isEmpty {
+            Task { try? await TabService.shared.createOrUpdateUser(userId: myUid, displayName: myName) }
+        }
+        removeCurrentUserFromIgnoredIfPresent()
+        return true
     }
 }
 

@@ -67,12 +67,16 @@ struct EditSplitView: View {
         _guestAmountsCents = State(initialValue: amounts)
 
         _byItemSelectedGuestID = State(initialValue: active.first?.id ?? PersonID(rawValue: ""))
+        // Pass partition through directly (Phase 8b) so uneven shares and
+        // custom claims survive an Edit Split round-trip. The legacy Set-based
+        // accessor on LineItemForm still works for the existing tap-toggle UI,
+        // but the underlying partition is preserved for untouched items.
         _byItemItems = State(initialValue: draft.items.map { item in
             LineItemForm(
                 id: item.id,
                 label: item.label,
                 priceText: Money(cents: item.priceCents).inputString,
-                assignedGuestIds: Set(item.assignedGuestIds)
+                partition: item.partition
             )
         })
     }
@@ -147,7 +151,8 @@ struct EditSplitView: View {
         print("[EditSplit.save] includedIDs=\(includedIDs.map(\.rawValue))")
         print("[EditSplit.save] byItemItems=\(byItemItems.map { "(label=\($0.label) priceText=\($0.priceText) priceCents=\($0.priceCents) isComplete=\($0.isComplete) assigned=\($0.assignedGuestIds.map(\.rawValue)))" })")
 
-        // Build SplitDraft from current state
+        // Build SplitDraft from current state. Pass partition through (not
+        // the flat Set view) so uneven shares / custom claims aren't flattened.
         let items: [SplitDraft.Item] = byItemItems
             .filter { $0.isComplete }
             .map { it in
@@ -155,7 +160,7 @@ struct EditSplitView: View {
                     id: it.id,
                     label: it.label,
                     priceCents: it.priceCents,
-                    assignedGuestIds: it.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }
+                    partition: it.partition
                 )
             }
         print("[EditSplit.save] items_after_filter=\(items.map { "(label=\($0.label) priceCents=\($0.priceCents) assigned=\($0.assignedGuestIds.map(\.rawValue)))" })")
@@ -171,7 +176,11 @@ struct EditSplitView: View {
             feesCents: payload.s.f ?? 0,
             discountCents: payload.s.d ?? 0,
             taxCents: payload.s.tx ?? 0,
-            tipCents: payload.s.tip ?? 0
+            tipCents: payload.s.tip ?? 0,
+            // Preserve Tap-to-Claim flag so SplitMath computes owed amounts in
+            // claim mode (unclaimed cents stay unattributed instead of even-
+            // splitting onto everyone).
+            claimMode: payload.s.cl ?? false
         )
 
         // Convert draft back to SplitPayload
@@ -187,17 +196,37 @@ struct EditSplitView: View {
         updatedPayload.s = newSplit
         updatedPayload.s.pd = payload.s.pd
 
-        // Update receipt items with new responsible slots if by-items mode
+        // Update receipt items with the new partition wire fields. Encode
+        // through `ItemPartition.wireFields(guests:)` so shares (with possibly
+        // some nil slots) and custom claims survive the round-trip — the
+        // earlier code cleared sh/cu unconditionally, degrading partition
+        // fidelity to legacy flat shares.
         if mode == .byItems {
-            let slotIndexByPersonID: [PersonID: Int] = Dictionary(
-                uniqueKeysWithValues: guests.enumerated().map { ($1.id, $0) }
-            )
+            // Build the wire-format guest array that wireFields/slotIndex(for:)
+            // expect, plus a remap dict from EditSplitView's draft-internal
+            // PersonIDs (random UUIDs for anonymous slots) to wire-canonical
+            // PersonIDs (uid or "slot-N"). Same boundary fix as in
+            // SplitPayload.from(draft:) — without it, anonymous-slot claims
+            // get dropped by slotIndex(for:) lookup.
+            let wireGuests: [SplitPayload.Guest] = guests.map { p in
+                SplitPayload.Guest(n: p.displayName, inc: includedIDs.contains(p.id), uid: p.userId)
+            }
+            let remap: [PersonID: PersonID] = Dictionary(uniqueKeysWithValues:
+                guests.enumerated().map { (idx, p) in
+                    let canonical = (p.userId?.isEmpty == false)
+                        ? PersonID(rawValue: p.userId!)
+                        : PersonID(rawValue: "slot-\(idx)")
+                    return (p.id, canonical)
+                })
+
             updatedPayload.r.i = updatedPayload.r.i.enumerated().map { idx, item in
                 var updated = item
                 if byItemItems.indices.contains(idx) {
-                    updated.rs = byItemItems[idx].assignedGuestIds
-                        .compactMap { slotIndexByPersonID[$0] }
-                        .sorted()
+                    let canonical = byItemItems[idx].partition.remappingPersonIDs(remap)
+                    let wire = canonical.wireFields(guests: wireGuests)
+                    updated.rs = wire.rs
+                    updated.sh = wire.sh
+                    updated.cu = wire.cu
                 }
                 return updated
             }

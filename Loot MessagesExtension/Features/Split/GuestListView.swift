@@ -53,12 +53,16 @@ extension ConfirmationView {
                 ForEach(0..<splitEditorVM.activeCount, id: \.self) { i in
                     let guest = splitEditorVM.activeGuests[i]
                     let gid = guest.id
+                    let isSenderRow = guest.isMe(localUserId: splitEditorVM.localUserId)
+                    let selectionDisabled = splitEditorVM.claimMode && splitEditorVM.mode == .byItems && !isSenderRow
                     let isSelected: Bool = splitEditorVM.mode == .byItems
-                    ? gid == splitEditorVM.byItemSelectedGuestID
+                    ? gid == splitEditorVM.byItemSelectedGuestID && !selectionDisabled
                     : i == splitEditorVM.guestSelectedIndex
 
                     HStack(spacing: 8) {
-                        // Badge – tap to select guest
+                        // Badge – tap to select guest (disabled for non-sender
+                        // rows when claimMode is on; the sender can only
+                        // claim items for themselves).
                         ColoredCircleBadge(
                             text: BadgeColors.initials(
                                 from: splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: gid)),
@@ -66,7 +70,9 @@ extension ConfirmationView {
                             ),
                             color: splitEditorVM.colorForActiveIdx(i)
                         )
+                        .opacity(selectionDisabled ? 0.5 : 1)
                         .onTapGesture {
+                            guard !selectionDisabled else { return }
                             if splitEditorVM.mode == .byItems { splitEditorVM.byItemSelectedGuestID = gid }
                             else { splitEditorVM.guestSelectedIndex = i }
                         }
@@ -117,13 +123,20 @@ extension ConfirmationView {
                         // Right side: amount (byItems shows running total; other modes show editable amount)
                         if splitEditorVM.mode == .byItems {
                             let guestCents = splitEditorVM.byItemsGuestCents(for: gid)
-                            Text(ReceiptDisplay.money(guestCents))
-                                .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
-                                .foregroundColor(guestCents > 0 ? .primary : .secondary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(isSelected ? Color(.tertiarySystemFill) : Color.clear)
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                            // In claim mode: only show the sender's amount.
+                            // Other guests' running totals stay hidden in
+                            // compose — recipients claim their own items in
+                            // chat, so showing $0.00 for everyone else is noise.
+                            let shouldShowAmount = !splitEditorVM.claimMode || isSenderRow
+                            if shouldShowAmount {
+                                Text(ReceiptDisplay.money(guestCents))
+                                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                                    .foregroundColor(guestCents > 0 ? .primary : .secondary)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(isSelected ? Color(.tertiarySystemFill) : Color.clear)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                            }
                         } else {
                             Text(ReceiptDisplay.money(splitEditorVM.guestAmountsCents.indices.contains(i) ? splitEditorVM.guestAmountsCents[i] : 0))
                                 .font(.system(size: 15, weight: .semibold))
@@ -161,6 +174,7 @@ extension ConfirmationView {
                             splitEditorVM.editingGuestNameID = nil
                             guestNameFocusedID = nil
                         }
+                        guard !selectionDisabled else { return }
                         if splitEditorVM.mode == .byItems { splitEditorVM.byItemSelectedGuestID = gid }
                         else { splitEditorVM.guestSelectedIndex = i }
                     }

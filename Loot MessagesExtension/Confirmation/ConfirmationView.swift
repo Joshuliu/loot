@@ -107,6 +107,8 @@ struct ConfirmationView: View {
     @State private var billCardBounceToken: Int = 0
     @State var introAnimationDone: Bool = false
     @State var showEditReceipt: Bool = false
+    /// Item ID currently presenting the split-denominator picker, or nil if hidden.
+    @State var splitPickerItemId: UUID? = nil
 
 
 //    private let collapsedHeight: CGFloat = 60

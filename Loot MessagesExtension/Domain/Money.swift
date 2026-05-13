@@ -50,6 +50,22 @@ struct Money: Hashable, Codable {
     static func - (l: Money, r: Money) -> Money { Money(cents: l.cents - r.cents) }
     static prefix func - (m: Money) -> Money { Money(cents: -m.cents) }
 
+    /// Splits `totalCents` across `count` participants, distributing remainder
+    /// cents to the earliest indices so shares always sum back to `totalCents`.
+    /// Domain-layer canonical version; `Utilities/MoneyHelpers.splitCentsEvenly`
+    /// and `ReceiptDraft.equalSplitCents` predate this and do the same thing.
+    static func splitEvenly(totalCents: Int, count: Int) -> [Int] {
+        guard totalCents > 0, count > 0 else {
+            return Array(repeating: 0, count: max(0, count))
+        }
+        var out = Array(repeating: totalCents / count, count: count)
+        let remainder = totalCents - out.reduce(0, +)
+        if remainder > 0 {
+            for i in 0..<min(remainder, count) { out[i] += 1 }
+        }
+        return out
+    }
+
     init(from decoder: Decoder) throws {
         self.cents = try decoder.singleValueContainer().decode(Int.self)
     }
