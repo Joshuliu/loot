@@ -106,29 +106,22 @@ final class SplitEditorViewModel: ObservableObject {
     }
 
     func byItemsGuestCents(for guestId: PersonID) -> Int {
-        // Guest-list running total: sum of THIS guest's explicit claims
-        // (partial selections included via `partition.centsClaimed`) plus
-        // their proportional share of tax/tip/fees (proportion = their
-        // claimed cents / total claimed cents across all included guests).
+        // Per-guest running total for the byItems guest list. The math splits
+        // by claim mode:
         //
-        // Does NOT include any share of unclaimed item cents. In non-claim
-        // mode those split evenly at send time — surfaced via the "Remaining
-        // items split evenly" Save banner so the sender knows the bill-card
-        // amount may be higher than the guest-list running total. In claim
-        // mode those stay unattributed entirely.
+        //  • Claim mode (cl=true): explicit claims + this guest's proportional
+        //    share of tax/tip/fees, where the proportion is claimed/subtotal
+        //    (NOT claimed/totalClaimed). Claiming half the bill = half the
+        //    tax, regardless of whether anyone else has claimed yet.
+        //    Unclaimed cents stay unattributed — others show $0.
         //
-        // Keeping the guest list as a pure "what I picked" view avoids the
-        // even-split rounding drift that made select/deselect look like it
-        // changed amounts by 3¢ at a time.
+        //  • Non-claim mode (cl=false): previews the bill-card amount,
+        //    including this guest's share of unclaimed cents (even-split at
+        //    send time). Computed in Doubles with a single rounding at the
+        //    end so per-tap toggles don't accumulate the rounding-cascade
+        //    drift that previously made amounts shift by 3¢ on each select.
         let claimed = byItemItems.reduce(0) { acc, item in
             acc + item.partition.centsClaimed(by: guestId, priceCents: item.priceCents)
-        }
-
-        let totalClaimed = activeGuests.reduce(0) { acc, g in
-            let gid = g.id
-            return acc + byItemItems.reduce(0) { sub, item in
-                sub + item.partition.centsClaimed(by: gid, priceCents: item.priceCents)
-            }
         }
 
         let fees = stringToCents(feesString)
@@ -136,10 +129,28 @@ final class SplitEditorViewModel: ObservableObject {
         let tip = stringToCents(tipString)
         let discount = receiptDraftVM.currentReceipt?.discountCents ?? 0
         let extras = max(0, fees + tax + tip - discount)
+        let subtotal = byItemItems.reduce(0) { $0 + $1.priceCents }
 
-        guard totalClaimed > 0, claimed > 0, extras > 0 else { return claimed }
-        let extrasShare = Int((Double(extras) * Double(claimed) / Double(totalClaimed)).rounded())
-        return claimed + extrasShare
+        if claimMode {
+            guard subtotal > 0, claimed > 0, extras > 0 else { return claimed }
+            let extrasShare = Int((Double(extras) * Double(claimed) / Double(subtotal)).rounded())
+            return claimed + extrasShare
+        } else {
+            let totalClaimedAcrossGuests = activeGuests.reduce(0) { acc, g in
+                let gid = g.id
+                return acc + byItemItems.reduce(0) { sub, item in
+                    sub + item.partition.centsClaimed(by: gid, priceCents: item.priceCents)
+                }
+            }
+            let unclaimedTotal = max(0, subtotal - totalClaimedAcrossGuests)
+            let count = max(1, activeCount)
+            let unclaimedShareDouble = Double(unclaimedTotal) / Double(count)
+            let effectiveClaimDouble = Double(claimed) + unclaimedShareDouble
+            let extrasShareDouble = subtotal > 0
+                ? Double(extras) * effectiveClaimDouble / Double(subtotal)
+                : 0
+            return Int((effectiveClaimDouble + extrasShareDouble).rounded())
+        }
     }
 
     func ensureGuestArrays() {
