@@ -302,6 +302,30 @@ extension ConfirmationView {
                 onSelectMode(splitEditorVM.mode)
                 onGuestsChanged(splitEditorVM.guests, splitEditorVM.includedIDs, splitEditorVM.payerID)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+
+                // If we're saving non-claim byItems with items the user
+                // didn't explicitly assign to anyone, surface the
+                // "remaining items split evenly" rule via a transient toast
+                // — the bill card will distribute those cents across guests,
+                // which can otherwise look like a math error to a user who
+                // expected unclaimed = $0 owed.
+                if splitEditorVM.mode == .byItems && !splitEditorVM.claimMode {
+                    let hasUnclaimed = splitEditorVM.byItemItems.contains { item in
+                        guard item.isComplete else { return false }
+                        return item.partition.claimedCents(priceCents: item.priceCents) < item.priceCents
+                    }
+                    if hasUnclaimed {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            showSplitEvenlyBanner = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showSplitEvenlyBanner = false
+                            }
+                        }
+                    }
+                }
+
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
                     splitEditorVM.confirmed = true
                 }
