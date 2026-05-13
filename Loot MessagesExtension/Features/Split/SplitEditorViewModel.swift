@@ -325,13 +325,44 @@ final class SplitEditorViewModel: ObservableObject {
         syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
     }
 
-    /// Resets every item's partition to `.unclaimed`. Called when the user
-    /// flips the Tap-to-Claim toggle on — the sender's prior pre-assignments
-    /// to other guests are wiped so recipients can claim from scratch.
+    /// Resets every item's partition to `.unclaimed`. Used by the orphan-ref
+    /// scrub when removing a guest. The Tap-to-Claim toggle uses the gentler
+    /// `wipeNonSenderItemPartitions` instead so the sender's own pre-claims
+    /// aren't lost on an accidental toggle.
     func wipeAllItemPartitions(totalCents: Int, tipAmount: String) {
         for i in byItemItems.indices {
             byItemItems[i].partition = .unclaimed
         }
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Wipes only OTHER guests' claims from every item's partition, preserving
+    /// the sender's own claims. Called when the user flips Tap-to-Claim on so
+    /// recipients get a clean slate without erasing the sender's pre-claims to
+    /// themselves. Toggling off doesn't restore wiped other-guest claims —
+    /// the user can re-assign manually if needed.
+    func wipeNonSenderItemPartitions(totalCents: Int, tipAmount: String) {
+        let myPID = senderPersonID
+
+        for i in byItemItems.indices {
+            switch byItemItems[i].partition {
+            case .unclaimed:
+                continue
+            case .shares(let denom, let slots):
+                let cleaned: [PersonID?] = slots.map { pid in
+                    pid == myPID ? pid : nil
+                }
+                if cleaned.allSatisfy({ $0 == nil }) {
+                    byItemItems[i].partition = .unclaimed
+                } else {
+                    byItemItems[i].partition = .shares(denominator: denom, slots: cleaned)
+                }
+            case .custom(let claims):
+                let cleaned = claims.filter { $0.personID == myPID }
+                byItemItems[i].partition = cleaned.isEmpty ? .unclaimed : .custom(cleaned)
+            }
+        }
+
         syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
     }
 
