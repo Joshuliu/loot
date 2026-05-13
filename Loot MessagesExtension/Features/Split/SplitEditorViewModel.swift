@@ -106,15 +106,29 @@ final class SplitEditorViewModel: ObservableObject {
     }
 
     func byItemsGuestCents(for guestId: PersonID) -> Int {
-        // Sum each item's actual claimed cents for this guest. Reads the
-        // partition directly so partial claims (e.g. shares(2, [Me, nil]))
-        // give Me half the item's price, not the full price. The legacy
-        // `byItemsGuestSubtotalCents` path went through the deduped Set view,
-        // which misses partition denominators and produced a "full item per
-        // claimer" miscount.
-        byItemItems.reduce(0) { acc, item in
-            acc + item.partition.centsClaimed(by: guestId, priceCents: item.priceCents)
+        // Returns the per-guest amount the bill card will actually show —
+        // explicit claims plus the guest's share of unclaimed cents (even-split
+        // in non-claim mode) plus their proportional share of tax/tip/fees.
+        // Computed by running SplitMath.owedFromDraft against the live draft so
+        // the guest list mirrors the bill card exactly. Falls back to summing
+        // explicit partition claims if the draft hasn't been built yet.
+        guard let draft = receiptDraftVM.currentSplitDraft, !draft.guests.isEmpty else {
+            return byItemItems.reduce(0) { acc, item in
+                acc + item.partition.centsClaimed(by: guestId, priceCents: item.priceCents)
+            }
         }
+        let effectiveTotal = draft.totalCents > 0
+            ? draft.totalCents
+            : (receiptDraftVM.currentReceipt?.totalCents ?? 0)
+        guard let owed = SplitMath.owedFromDraft(
+            draft,
+            fallbackTotalCents: effectiveTotal,
+            participantCount: activeCount
+        ),
+        let slotIndex = draft.guests.firstIndex(where: { $0.id == guestId }),
+        owed.indices.contains(slotIndex)
+        else { return 0 }
+        return owed[slotIndex]
     }
 
     func ensureGuestArrays() {
