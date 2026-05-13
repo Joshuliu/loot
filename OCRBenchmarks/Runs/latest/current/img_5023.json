@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:50:59Z",
+  "capturedAt" : "2026-05-12T07:38:08Z",
   "caseID" : "img_5023",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -31,7 +31,7 @@
       }
     ],
     "phase1" : {
-      "merchant" : "MARY FARMS MED",
+      "merchant" : "YOUNG MI",
       "total_cents" : 10632
     },
     "phase2" : {
@@ -147,12 +147,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Mary Farms Brown Egg|99\nITEM|Marinated All Natural Pork|548\nITEM|Spicy Marinated Natural Chic|1578\nITEM|Marinated Angus Beef Bnls S|1131\nITEM|Marinated Angus Beef Finger|\nITEM|Marinated Natural Chicken Th|671\nITEM|Unknown Item|1299\nITEM|Marinated Beef Rib Eye Bulg|899\nITEM|Jimmy Dean Sausage, Egg, &am|399\nITEM|Unknown Item|699\nITEM|Tang Myun|199\nITEM|Pmo Juicy Dumpling W\/ Pork &|599\nITEM|Unknown Item|999\nITEM|Pulmuone Mini Wontons 600 G|\nITEM|Simply Mango Juice 1.53 L|399\nDISCOUNT|Markdown|100\nITEM|Ghai Bokchoy|297\nITEM|Enleaf Lettuce|50\nITEM|Low Onion|\nITEM|Rrots|\nITEM|Chocolate Chip Waffles|\nITEM|Nongshim Mupama|\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nFEE|Fee|18\nFEE|Fee|99\nFEE|Bottle Sales|10\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.9881659746170044,
-      "phase2Seconds" : 29.829389929771423,
-      "totalWorkflowSeconds" : 33.4252769947052,
-      "transcriptSeconds" : 1.607704997062683,
-      "transcriptToPhase1Seconds" : 1.9881659746170044,
-      "transcriptToPhase2Seconds" : 31.817571997642517,
+      "phase1Seconds" : 3.5171409845352173,
+      "phase2Seconds" : 25.80733609199524,
+      "totalWorkflowSeconds" : 30.813935041427612,
+      "transcriptSeconds" : 1.4894449710845947,
+      "transcriptToPhase1Seconds" : 3.5171409845352173,
+      "transcriptToPhase2Seconds" : 29.324490070343018,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "0071\/19\/2026 19:27:02 Young Mi 00137387 Trs#: 138073 MARY FARMS MED A BROWN E $2.99 F $0.75 F $0.99 F RINATED ALL NATURAL PORK B $6.12 F $5.48 F PICY MARINATED NATURAL CHIC $15.78 F ARINATED ANGUS BEEF BNLS S $11.31 F • MARINATED ANGUS BEEF FINGER MARINATED NATURAL CHICKEN TH $6.71 F $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F $6.99 F TANG MYUN - $1.99 F PMO JUICY DUMPLING W\/ PORK & $5.99 F $9.99 F PULMUONE MINI WONTONS 600 G SIMPLY MANGO JUICE 1.53 L $3.99| $106.22 $0.10 $106.32 $106.3 $106.3 $0.0\n$0.18 F $0.99 F\nkdown: $1.00 3 1b @ $0.99\/1b GHAI BOKCHOY LB ENLEAF LETTUCE 1 1b @ $0.99\/21b _LOW ONION LB RROTS 1LB CHOCOLATE CHIP WAFFLES NONGSHIM MUPAMA Markdown: $2.00 #7985* Markdown: $3.50 +Bottle sales: $0.10 Bottle sales TOTAL SALES **1407\n17 Z 1LB GARLIC PK ul# PK Net Sales SUB TOTAL Visa #*****> Balance"

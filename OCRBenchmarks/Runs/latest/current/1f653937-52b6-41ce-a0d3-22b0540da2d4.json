@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:40:08Z",
+  "capturedAt" : "2026-05-12T07:24:30Z",
   "caseID" : "1f653937-52b6-41ce-a0d3-22b0540da2d4",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -8,7 +8,7 @@
     "expectedTotalCents" : 23232,
     "itemValues" : 1,
     "lineItemValues" : 1,
-    "merchant" : 1,
+    "merchant" : 0,
     "overall" : 1,
     "passesTotalReconciliation" : true,
     "reconciliation" : 1,
@@ -27,7 +27,6 @@
       }
     ],
     "phase1" : {
-      "merchant" : "Margarita Tower",
       "total_cents" : 23232
     },
     "phase2" : {
@@ -92,12 +91,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Margarita Tower|5000\nITEM|Guacamole Dip|1000\nITEM|Cheese Dip|750\nITEM|Fried Chicken Burritos|2000\nITEM|Pollo Fundido|2100\nITEM|Quesadilla Texans Entree|1900\nITEM|Cheese Quesadilla|1000\nITEM|Add Shredded Chicken|200\nITEM|Tacos De Birria|2200\nITEM|Tacos Carnitas|2000\nTAX|Tax|1452\nTIP|Gratuity|3630\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.664605975151062,
-      "phase2Seconds" : 3.7465829849243164,
-      "totalWorkflowSeconds" : 6.476652979850769,
-      "transcriptSeconds" : 2.0654460191726685,
-      "transcriptToPhase1Seconds" : 0.664605975151062,
-      "transcriptToPhase2Seconds" : 4.411206960678101,
+      "phase1Seconds" : 1.9882479906082153,
+      "phase2Seconds" : 5.490250945091248,
+      "totalWorkflowSeconds" : 9.43597400188446,
+      "transcriptSeconds" : 1.9574580192565918,
+      "transcriptToPhase1Seconds" : 1.9882479906082153,
+      "transcriptToPhase2Seconds" : 7.478515982627869,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "203 Walton Street\n315-299-5790\nServer: Walter 04\/05\/2025\nC9\/1 3:01 PM\nGuests: 1\n# 100024\nMargarita Tower 50.00\nGuacamole Dip 10.00\nCheese Dip 7.50\nFrd Chk Burritos 20.00\nPollo Fundido 21.00\nQuesadilla Texans Entrée 19.00\nAC Chs Quesadilla 2 10.00\nADD SHEREDDED CHIKEN 2.00\nTacos De Birria 22.00\nTacos Carnitas 20.00\nSubtotal 181.50\nTax 14.52\nTotal 196. 02\nGratuity 20.00% 36. 30\nTotal 232. 32\nBalance Due 232.32\nMargaritas\nTip Suggestion on Total\n18% Tip =32.67\n20% Tip =36.30\n22% Tip =39.93"

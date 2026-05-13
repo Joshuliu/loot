@@ -1,0 +1,102 @@
+{
+  "capturedAt" : "2026-05-08T19:39:25Z",
+  "caseID" : "img_4591",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 16501,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 16501,
+    "itemValues" : 0.9,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.895,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Reed's Indoor Range",
+      "total_cents" : 16501
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 4000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 198,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1398,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1509,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 16501
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|4000\nITEM|Unknown Item|1200\nITEM|Unknown Item|2000\nITEM|Unknown Item|2299\nITEM|Unknown Item|198\nITEM|Unknown Item|1398\nITEM|Unknown Item|398\nITEM|Unknown Item|1200\nITEM|Unknown Item|2299\nITEM|Unknown Item|14992\nITEM|Unknown Item|1509\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 9.686470031738281,
+      "phase2Seconds" : 35.732908964157104,
+      "totalWorkflowSeconds" : 46.88907301425934,
+      "transcriptSeconds" : 1.4696860313415527,
+      "transcriptToPhase1Seconds" : 9.686470031738281,
+      "transcriptToPhase2Seconds" : 45.419386982917786,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Welcome to Reed's Indoor Range Dec 23 25 2 Time 03:38 Ext 40.00 12.00 20.00 22.99 1.98 13.98 3.98 12.00 22.99 149.92 15.09 =-- 165.01 165.01\nReed's Indoor Range 1100 Duane Ave. Santa Clara, CA 95054 (408) 970-9870 Ticket#945742 Cus#Y6951877 2 Dr# Price 40.00 12.00 PI19502 20.00 9MM 16IN 22.99 .99 PYDP1000BN DISPOSABLE EAR 6.99 1.99 12.00 22.99\nQty 19117 SB9A 9MM 115GRN FMJ PLUGS 32DB DP1000 S4110S OR XV100 SAFETY B-27E BLACK SILH TARGET 19502 **075C JOSHUA LIU 15520 BELNAP WAY SARATOGA CA 95070\nUsr JGR Item Number 2 PEOPLE 1 LANE <--- LANE BPHE823 GLOCK 19 9MM 4IN SR# BPHE823 915-01337 RUGER PC CARBINE SR# 618-01337 SBBB-SB9A PYRX-PYDP1000BN PYRX-S4110S GLASSES CLEAR ALCO-B27E Total sale ****\n2PPL 50BX F #4 BXML.023 GLOrU MC\/Visa Approval"
+  },
+  "sourceFilename" : "IMG_4591.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:42:51Z",
+  "capturedAt" : "2026-05-12T07:28:23Z",
   "caseID" : "img_9b8dba8a-75c2-4166-8827-c1478e42910c",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -9,11 +9,11 @@
     "itemValues" : 1,
     "lineItemValues" : 1,
     "merchant" : 1,
-    "overall" : 0.9800000000000001,
+    "overall" : 0.8300000000000002,
     "passesTotalReconciliation" : true,
     "reconciliation" : 1,
     "reconciliationDifferenceCents" : 0,
-    "total" : 1
+    "total" : 0
   },
   "snapshot" : {
     "lineItems" : [
@@ -21,11 +21,11 @@
     ],
     "phase1" : {
       "merchant" : "Green Supermarket",
-      "total_cents" : 2735
+      "total_cents" : 3000
     },
     "phase2" : {
       "issues" : [
-
+        "Resolved rows differ from known total by 265 cents"
       ],
       "items" : [
         {
@@ -99,16 +99,16 @@
           "qty" : 1
         }
       ],
-      "subtotal_cents" : 2735
+      "subtotal_cents" : 3000
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Apple|100\nITEM|Banana|150\nITEM|Orange|120\nITEM|Pear|75\nITEM|Grapes|300\nITEM|Strawberry|250\nITEM|Blueberry|200\nITEM|Kiwi|180\nITEM|Watermelon|450\nITEM|Lemon|60\nITEM|Raspberry|300\nITEM|Milk|150\nITEM|Cheese|280\nITEM|Yogurt|120\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 0.41614699363708496,
-      "phase2Seconds" : 4.328107953071594,
-      "totalWorkflowSeconds" : 5.825495004653931,
-      "transcriptSeconds" : 1.081225037574768,
-      "transcriptToPhase1Seconds" : 0.41614699363708496,
-      "transcriptToPhase2Seconds" : 4.744269967079163,
+      "phase1Seconds" : 17.567790031433105,
+      "phase2Seconds" : 4.608428001403809,
+      "totalWorkflowSeconds" : 23.2360600233078,
+      "transcriptSeconds" : 1.0598289966583252,
+      "transcriptToPhase1Seconds" : 17.567790031433105,
+      "transcriptToPhase2Seconds" : 22.176231026649475,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Green Supermarket 1.00 1.50 1.20 0.75 3.00 2.50 2.00 1.80 4.50 0.60 3.00 1.50 2.80 1.20 27.35 30.00 2.65\nAPPLE BANANA ORANGE PEAR GRAPES STRAWBERRY BLUEBERRY KIWI WATERMELON LEMON RASPBERRY MILK CHEESE YOGURT OTAL SH HANGE"

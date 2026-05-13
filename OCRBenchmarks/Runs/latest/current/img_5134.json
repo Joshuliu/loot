@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:52:56Z",
+  "capturedAt" : "2026-05-12T07:39:44Z",
   "caseID" : "img_5134",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -114,12 +114,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Everyone|199\nITEM|Unknown Item|319\nITEM|Unknown Item|999\nITEM|Unknown Item|1249\nITEM|Unknown Item|167\nITEM|Unknown Item|167\nITEM|Unknown Item|166\nITEM|Unknown Item|1000\nITEM|Unknown Item|1099\nITEM|Barlla Fettuccine Classico Psta Sauce|\nDISCOUNT|Ralphs Savings|80\nITEM|Cafe Bustelo Esprs Black Rifle Coffee|\nITEM|Minutemaid Juice|\nDISCOUNT|Ralphs Savings|132\nITEM|Minutemaid Punch|\nDISCOUNT|Ralphs Savings|132\nITEM|Minutemaid Punch|\nDISCOUNT|Ralphs Savings|133\nITEM|Watermelon Cubes Shrimp XL|200\nTAX|Customer Tax|\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 6.449967980384827,
-      "phase2Seconds" : 32.328872084617615,
-      "totalWorkflowSeconds" : 40.87721109390259,
-      "transcriptSeconds" : 2.0983591079711914,
-      "transcriptToPhase1Seconds" : 6.449967980384827,
-      "transcriptToPhase2Seconds" : 38.7788519859314,
+      "phase1Seconds" : 1.1030479669570923,
+      "phase2Seconds" : 31.34528398513794,
+      "totalWorkflowSeconds" : 33.98816001415253,
+      "transcriptSeconds" : 1.5398149490356445,
+      "transcriptToPhase1Seconds" : 1.1030479669570923,
+      "transcriptToPhase2Seconds" : 32.44834506511688,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "EVERYON 1.99 F 3.19 F 9.99 F 12.49 F 1.67 F 1.67 F 1.66 F 10.00 F 10.99 F *******7252 0.00 53.65 53.65 0.00 TOTAL NUMBER OF ITEMS SOLD = 56.6. 11 77 552 159 999999553 *...\nRalphs FRESH FOR 5680 Mission Center Rd. Your cashier was CHEC 553 BARLLA FETTUCN CLASSICO PSTA SCE RC RALPHS SAVED YOU 0.80 CAFE BUSTELO ESPRS BLACK RIFLE COFFEE MINUTEMAID JUICE RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.33 WATERMELON CUBES SHRIMP XL RC 2.00 RALPHS SAVED YOU rewards CUSTOMER TAX **** BALANCE San Diego CA 92108 VISA CREDIT Purchase ************3578 - H REF#: 07966C TOTAL: 53.65 AID: A0000000031010 TC: 4FBA00D59D618582 VISA CHANGE RALPHS rewards SAVINGS TOTAL COUPONS\n(619) 297-2593 SC SC SC RALPHS\nSC SC"

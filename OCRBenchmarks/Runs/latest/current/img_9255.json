@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-04T18:55:32Z",
+  "capturedAt" : "2026-05-12T07:41:38Z",
   "caseID" : "img_9255",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -8,7 +8,7 @@
     "expectedTotalCents" : 10584,
     "itemValues" : 1,
     "lineItemValues" : 1,
-    "merchant" : 0,
+    "merchant" : 0.6666666666666666,
     "overall" : 1,
     "passesTotalReconciliation" : true,
     "reconciliation" : 1,
@@ -27,7 +27,7 @@
       }
     ],
     "phase1" : {
-      "merchant" : "TheRustyPelican.com",
+      "merchant" : "The Rusty Pelican",
       "total_cents" : 10584
     },
     "phase2" : {
@@ -47,12 +47,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Surf and Turf|8400\nTAX|Tax|672\nTIP|Tip|1512\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.2545499801635742,
-      "phase2Seconds" : 9.609267950057983,
-      "totalWorkflowSeconds" : 12.581061005592346,
-      "transcriptSeconds" : 1.717229962348938,
-      "transcriptToPhase1Seconds" : 1.2545509338378906,
-      "transcriptToPhase2Seconds" : 10.863829970359802,
+      "phase1Seconds" : 2.2407959699630737,
+      "phase2Seconds" : 8.192161083221436,
+      "totalWorkflowSeconds" : 11.662530064582825,
+      "transcriptSeconds" : 1.229557991027832,
+      "transcriptToPhase1Seconds" : 2.2407970428466797,
+      "transcriptToPhase2Seconds" : 10.432972073554993,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "enbacker Cswy Kes Biscayne, FL TheRustyPelican.com 305.361,3818 Server: Valentine A Table 25 3\/17\/24 6:57 P $84 - 0 $84.00 $6.72 $15.12 $105.84 C (EMU Chip Read) xxxxxxxx3578 7:39 PM Sale Approved 08854D wxsbrLCpdWww\nCheck #356 Guest count: 1 Surf and Turf Input Type VISA CREDIT Transaction Type Authorization Approval Code Payment ID Application ID\nOrdered: Subtotal Tax Tip Total Time"
