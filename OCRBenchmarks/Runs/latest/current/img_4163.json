@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:34:09Z",
+  "capturedAt" : "2026-05-13T22:25:51Z",
   "caseID" : "img_4163",
   "snapshot" : {
     "lineItems" : [
@@ -9,7 +9,7 @@
       },
       {
         "cents" : 288,
-        "label" : "Service Charge"
+        "label" : "Service charge"
       }
     ],
     "phase1" : {
@@ -19,40 +19,26 @@
     "phase2" : {
       "fees_cents" : 288,
       "issues" : [
-        "Resolved rows differ from known total by 7100 cents"
+
       ],
       "items" : [
         {
           "cents" : 800,
-          "label" : "Price",
-          "qty" : 1
-        },
-        {
-          "label" : "Zero Item",
-          "qty" : 1
-        },
-        {
-          "cents" : 1700,
-          "label" : "Item 17",
-          "qty" : 1
-        },
-        {
           "label" : "Ike & Tako Salad",
           "qty" : 1
         },
         {
+          "cents" : 600,
           "label" : "Seaweed Salad",
           "qty" : 1
         },
         {
+          "cents" : 6500,
           "label" : "Master Maki",
           "qty" : 1
         },
         {
-          "label" : "Special Maki",
-          "qty" : 1
-        },
-        {
+          "cents" : 1700,
           "label" : "Volcano Roll",
           "qty" : 1
         }
@@ -60,17 +46,17 @@
       "subtotal_cents" : 9600,
       "tax_cents" : 1162
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Price|800\nITEM|Zero Item|\nITEM|Item 17|1700\nTAX|Tax|1162\nFEE|Service Charge|288\nITEM|Ike & Tako Salad|\nITEM|Seaweed Salad|\nITEM|Master Maki|\nITEM|Special Maki|\nITEM|Volcano Roll|\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Ike & Tako Salad|800\nITEM|Seaweed Salad|600\nITEM|Master Maki|6500\nITEM|1 Special Maki|0\nITEM|Volcano Roll|1700\nTAX|Tax|1162\nFEE|Service charge|288\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.828279972076416,
-      "phase2Seconds" : 65.6391179561615,
-      "totalWorkflowSeconds" : 69.31510996818542,
-      "transcriptSeconds" : 1.8476979732513428,
-      "transcriptToPhase1Seconds" : 1.828279972076416,
-      "transcriptToPhase2Seconds" : 67.46741199493408,
+      "phase1Seconds" : 1.8301199674606323,
+      "phase2Seconds" : 18.885986924171448,
+      "totalWorkflowSeconds" : 22.925094962120056,
+      "transcriptSeconds" : 2.2089730501174927,
+      "transcriptToPhase1Seconds" : 1.8301199674606323,
+      "transcriptToPhase2Seconds" : 20.716121912002563,
       "usedPrefetchedTranscript" : false
     },
-    "transcript" : "04\/25\/2026 08:55 PM 459855192 Price 8.00 00 65.00 0.00 17.00 96.00 11.62 2.88 $ 110.50 Gross 110.50 110.50\n312 Fish Market Tax 11.62 11.62 Thank you!\nNet 98.88 98.88 312 Fish Market 2105 S Jefferson St 872.222.7288 60616 Chicago 872.222 7288 http:\/\/312FishMarket.com\nVDAY T3 copy copy Jackson # Item Ike & Tako Salad Seaweed Salad Master Maki Special Maki * Volcano Roll Subtotal Tax Service charge Total 11.75%: Tax total:"
+    "transcript" : "04\/25\/2026 08:55 PM 459855192 Price 8.00 6.00 65.00 0.00 17.00 96.00 11.62 2.88 $110.50 Gross 110.50 110.50\n312 Fish Market Tax 11.62 11.62 Thank you!\nNet 98.88 98.88 312 Fish Market 2105S Jefferson St 872. 222.7288 60616 Chicago 872.222.7288 http:\/\/312FishMarket.com\nVDAY T3 copy copy Jackson Item Ike & Tako Salad Seaweed Salad Master Maki 1 Special Maki * Volcano Roll Subtotal Tax Service charge Total 11.75%: Tax total:"
   },
   "sourceFilename" : "IMG_4163.jpeg",
   "variantID" : "current"

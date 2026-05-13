@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:33:00Z",
+  "capturedAt" : "2026-05-13T22:25:28Z",
   "caseID" : "img_2653",
   "snapshot" : {
     "lineItems" : [
@@ -182,12 +182,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|Gnocchi|2400\nITEM|Social Butterfly|800\nITEM|Social Butterfly|800\nITEM|3 Arpege Egg|4500\nITEM|Escargot|1700\nITEM|2 Tartare|5000\nITEM|Ratatouille|2700\nITEM|Nicoise|1900\nITEM|King Louis|2800\nITEM|King Louis|2800\nITEM|Prime Strip Frites|4800\nITEM|King Louis|2800\nITEM|Gnocchi|2400\nITEM|Prime Strip Frites|4800\nITEM|Gnocchi|2400\nITEM|Gnocchi|2400\nITEM|Beef Bourgogne|3600\nITEM|Duck L'Orange|4300\nITEM|Lobster Tail|2700\nITEM|Carrots|1200\nITEM|Parsnip|1500\nITEM|GRISETTE|1800\nITEM|Baguette|200\nITEM|Prime Strip Frites|4800\nITEM|Baguettes Butter Radishes|1500\nITEM|Ratatouille|2700\nITEM|Ora king Salmon|3600\nITEM|2 Chocolate Mousse|2200\nDISCOUNT|Manager Comp|2200\nFEE|Service Charge|15660\nTAX|Tax|8944\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.7244499921798706,
-      "phase2Seconds" : 8.808977961540222,
-      "totalWorkflowSeconds" : 12.68997597694397,
-      "transcriptSeconds" : 2.1565420627593994,
-      "transcriptToPhase1Seconds" : 1.7244499921798706,
-      "transcriptToPhase2Seconds" : 10.53343391418457,
+      "phase1Seconds" : 1.6274189949035645,
+      "phase2Seconds" : 9.524207949638367,
+      "totalWorkflowSeconds" : 13.504633903503418,
+      "transcriptSeconds" : 2.352982997894287,
+      "transcriptToPhase1Seconds" : 1.6274189949035645,
+      "transcriptToPhase2Seconds" : 11.15165090560913,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n1 Gnocchi $24.00\nSeat 9\nNO ROE\n1 Social Butterfly $8.00\nLivener\n1 Social Butterfly $8.00\nLivener\n3 Arpege Egg $45.00\n1 Escargot $17.00\n2 Tartare $50.00\n1 Ratatouille $27.00\n1 Nicoise $19.00\nSeat 7\n1 King Louis $28.00\nMedium Rare\nSeat 1\n1 King Louis $28.00\nMedium Rare\nSeat 2\n1 Prime Strip Frites $48.00\nMedium Rare\nSeat 3\n1 King Louis $28.00\nMedium Rare\nSeat 4\n1 Gnocchi $24.00\nSeat 5\n1 Prime Strip Frites $48.00\nMedium Rare\nSeat 7\n1 Gnocchi $24.00\nSeat 8\n1 Gnocchi $24.00\nSeat 9\n1 Beef Bourgogne $36.00\nSeat 11\n1 Duck L'Orange $43.00\nSeat 12\n1 Lobster Tail $27.00\nSeat 12\nOn Duck\n1 Carrots $12.00\nSeat 9\n1 Parsnip $15.00\nSeat 10\n1 GRISETTE $18.00\n1 Baguette $2.00\n1 Prime Strip Frites $48.00\nMedium Rare\nSeat 1\n1 Baguettes Butter Radishes $15.00\n1 Ratatouille $27.00\nSeat 10\n1 Ora king Salmon $36.00\n2 Chocolate Mousse $22.00\nManager Comp - Item (100%) - $22.00\nPre-discount Subtotal $783.00\nDiscount Total - $22.00\nSubtotal $761.00\n20% Service Charge (20.00%) $156.60\nTax $89.44\nTotal $1,007.04"

@@ -168,10 +168,12 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             rescueReason: nil
         )
 
-        if let resolvedPrimary = decodeAndResolvePhase2(
+        let resolvedPrimary = decodeAndResolvePhase2(
             from: primaryText,
             knownTotalCents: knownTotalCents
-        ), !shouldRescuePhase2(resolvedPrimary, knownTotalCents: knownTotalCents) {
+        )
+
+        if let resolvedPrimary, !shouldRescuePhase2(resolvedPrimary, knownTotalCents: knownTotalCents) {
             return (resolvedPrimary.phase2, resolvedPrimary.lineItems, primaryText)
         }
 
@@ -185,11 +187,23 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
             rescueReason: rescueReason
         )
 
-        if let resolvedRescue = decodeAndResolvePhase2(
+        let resolvedRescue = decodeAndResolvePhase2(
             from: rescueText,
             knownTotalCents: knownTotalCents
-        ) {
+        )
+
+        // Pick the better result: whichever reconciles closer to knownTotal
+        if let resolvedRescue, let resolvedPrimary {
+            let primaryGap = abs(knownTotalCents - computedAccountedTotal(for: resolvedPrimary))
+            let rescueGap = abs(knownTotalCents - computedAccountedTotal(for: resolvedRescue))
+            if primaryGap <= rescueGap {
+                return (resolvedPrimary.phase2, resolvedPrimary.lineItems, primaryText)
+            }
             return (resolvedRescue.phase2, resolvedRescue.lineItems, rescueText)
+        } else if let resolvedRescue {
+            return (resolvedRescue.phase2, resolvedRescue.lineItems, rescueText)
+        } else if let resolvedPrimary {
+            return (resolvedPrimary.phase2, resolvedPrimary.lineItems, primaryText)
         }
 
         throw GeminiReceiptAnalyzerError.decodeFailed
@@ -299,6 +313,10 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         if knownTotalCents >= 1000 && excessBy > Int(Double(knownTotalCents) * 0.4) {
             return "the response over-accounted the receipt by \(excessBy) cents — check for duplicate rows or decimal errors in item prices"
         }
+        let unpricedCount = resolved.phase2.items.filter { $0.cents == nil }.count
+        if unpricedCount >= 3 {
+            return "the response left \(unpricedCount) items without prices — look more carefully at the transcript for dollar amounts near those item names, even if the amounts appear on adjacent lines or in a separate column"
+        }
         return "the response was too sparse and likely omitted visible priced rows"
     }
 
@@ -327,6 +345,11 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
         }
         // Large gap (>50%) regardless of row count — the rows we have are likely wrong
         if knownTotalCents >= 1000 && Double(totalGap) / Double(knownTotalCents) > 0.5 && pricedRowCount <= 8 {
+            return true
+        }
+        // Many unpriced items with a meaningful gap — the LLM missed prices it should have found
+        let unpricedCount = resolved.phase2.items.filter { $0.cents == nil }.count
+        if unpricedCount >= 3 && totalGap > max(500, Int(Double(knownTotalCents) * 0.05)) {
             return true
         }
         return false
@@ -597,6 +620,31 @@ public final class GeminiReceiptAnalyzer: ReceiptLLMAnalyzing {
                             correctedItems[i] = .init(label: correctedItems[i].label, qty: correctedItems[i].qty, cents: nil)
                             break
                         }
+                    }
+                }
+            }
+        }
+
+        // Post-resolution fix: if items overshoot the expected total and there are items with
+        // duplicate prices, OCR likely read the same price column twice. Greedily remove
+        // duplicate-priced items while it improves reconciliation.
+        if knownTotalCents > 0 {
+            let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+            let expectedItemsTotal = knownTotalCents - overhead
+            var itemsTotal = correctedItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+            if itemsTotal > expectedItemsTotal && expectedItemsTotal > 0 {
+                var seenPrices: [Int: Int] = [:]  // price -> first index
+                for i in correctedItems.indices {
+                    guard let cents = correctedItems[i].cents, cents > 0 else { continue }
+                    if let _ = seenPrices[cents] {
+                        // Duplicate price — check if removing it helps
+                        let newTotal = itemsTotal - cents
+                        if abs(newTotal - expectedItemsTotal) < abs(itemsTotal - expectedItemsTotal) {
+                            correctedItems[i] = .init(label: correctedItems[i].label, qty: correctedItems[i].qty, cents: nil)
+                            itemsTotal = newTotal
+                        }
+                    } else {
+                        seenPrices[cents] = i
                     }
                 }
             }

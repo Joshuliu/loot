@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:41:38Z",
+  "capturedAt" : "2026-05-13T22:34:11Z",
   "caseID" : "img_9255",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -47,12 +47,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Surf and Turf|8400\nTAX|Tax|672\nTIP|Tip|1512\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 2.2407959699630737,
-      "phase2Seconds" : 8.192161083221436,
-      "totalWorkflowSeconds" : 11.662530064582825,
-      "transcriptSeconds" : 1.229557991027832,
-      "transcriptToPhase1Seconds" : 2.2407970428466797,
-      "transcriptToPhase2Seconds" : 10.432972073554993,
+      "phase1Seconds" : 2.2136539220809937,
+      "phase2Seconds" : 4.692325949668884,
+      "totalWorkflowSeconds" : 8.229838013648987,
+      "transcriptSeconds" : 1.323844075202942,
+      "transcriptToPhase1Seconds" : 2.2136539220809937,
+      "transcriptToPhase2Seconds" : 6.905993938446045,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "enbacker Cswy Kes Biscayne, FL TheRustyPelican.com 305.361,3818 Server: Valentine A Table 25 3\/17\/24 6:57 P $84 - 0 $84.00 $6.72 $15.12 $105.84 C (EMU Chip Read) xxxxxxxx3578 7:39 PM Sale Approved 08854D wxsbrLCpdWww\nCheck #356 Guest count: 1 Surf and Turf Input Type VISA CREDIT Transaction Type Authorization Approval Code Payment ID Application ID\nOrdered: Subtotal Tax Tip Total Time"

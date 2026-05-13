@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:39:10Z",
+  "capturedAt" : "2026-05-13T22:31:44Z",
   "caseID" : "img_5112",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -64,12 +64,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|2099\nITEM|Unknown Item|1589\nITEM|Unknown Item|3000\nTAX|CA TAX|255\nITEM|GHIRARDELLI||\nITEM|GHIRARDELLI||\nITEM|PATIO & OUTDOOR DECOR||\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.3844430446624756,
-      "phase2Seconds" : 13.81868600845337,
-      "totalWorkflowSeconds" : 16.682550072669983,
-      "transcriptSeconds" : 1.4794069528579712,
-      "transcriptToPhase1Seconds" : 1.3844430446624756,
-      "transcriptToPhase2Seconds" : 15.203142046928406,
+      "phase1Seconds" : 1.7244480848312378,
+      "phase2Seconds" : 15.735894918441772,
+      "totalWorkflowSeconds" : 19.13684594631195,
+      "transcriptSeconds" : 1.6764979362487793,
+      "transcriptToPhase1Seconds" : 1.7244480848312378,
+      "transcriptToPhase2Seconds" : 17.46034801006317,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Grossmont - 619-461-1960 5500 Grossmont Ctr Dr La Mesa, California 91942-3015 01\/30\/2026 02:00 PM $20.99 $15.89 $30.00 T = CA TAX 8.50000 on $30.00 $66.88 $2.55 $69.43 *4435 DEBIT TOTAL PAYMENT $69.43 AID: A0000000980840 US DEBIT AUTH CODE: 079603 WHEN YOU RETURN ANY ITEM, YOUR RETURN CREDIT WILL NOT INCLUDE ANY PROMOTIONAL DISCOUNT OR COUPON APPLIED TO THE ORIGINAL ORDER. JOTICE: Some furniture products can expose you to chemicals known to the State of lifornia to cause cancer, birth darects or e harm. Prease check on- armation warning 1n REC#2-6030-0997-0173-8749-7 ------. Help make your Target Run better. ake a mindy but today\nNF NF SUBTOTAL TOTAL ther reproducti product label for\nGROCERY 055070114 GHIRARDELLI 055020991 GHIRARDELLI PATIO & OUTDOOR DECOR 344020038 GLG"

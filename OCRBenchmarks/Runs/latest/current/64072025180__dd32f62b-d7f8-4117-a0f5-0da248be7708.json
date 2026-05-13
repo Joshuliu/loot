@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:26:02Z",
+  "capturedAt" : "2026-05-13T22:18:56Z",
   "caseID" : "64072025180__dd32f62b-d7f8-4117-a0f5-0da248be7708",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -52,12 +52,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Flank Steak|750\nITEM|Flank Steak Modifier|300\nITEM|Sunnyside Up Eggs|1600\nTAX|Tax|242\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.9804298877716064,
-      "phase2Seconds" : 32.46261501312256,
-      "totalWorkflowSeconds" : 35.62878894805908,
-      "transcriptSeconds" : 1.1857320070266724,
-      "transcriptToPhase1Seconds" : 1.9804298877716064,
-      "transcriptToPhase2Seconds" : 34.44305694103241,
+      "phase1Seconds" : 2.4349899291992188,
+      "phase2Seconds" : 19.896008014678955,
+      "totalWorkflowSeconds" : 23.54712402820587,
+      "transcriptSeconds" : 1.2161179780960083,
+      "transcriptToPhase1Seconds" : 2.4349910020828247,
+      "transcriptToPhase2Seconds" : 22.331006050109863,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "LOS GATOS CAFE 340 N SANTA CRUZ LOS GATOS, CA 95030 4083544647 ORDER: patio saturday S4 $7.50 $3.00 Egg Style: Scramble $0.00 $16.00 Egg Style: Sunnyside Up $0.00 Toast Options: Sourdough $0.00 $26.50 $2.42 $28.92\nDine In Cashier: Sandra 21-Apr-2021 10:18:42A S Flank Steak Santa Clara County9.125% 42BPYJV4DNEZT Order 42BPYJV4DNEZT\nTwo Eggs Flank Steak Subtotal Total"

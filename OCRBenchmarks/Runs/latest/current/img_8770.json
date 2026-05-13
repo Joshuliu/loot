@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:41:27Z",
+  "capturedAt" : "2026-05-13T22:34:02Z",
   "caseID" : "img_8770",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -53,12 +53,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|ya Udon|1675\nITEM|Unknown Item|1965\nITEM|Unknown Item|860\nITEM|Unknown Item|650\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 4.554040908813477,
-      "phase2Seconds" : 8.294624090194702,
-      "totalWorkflowSeconds" : 13.6095130443573,
-      "transcriptSeconds" : 0.7608350515365601,
-      "transcriptToPhase1Seconds" : 4.554040908813477,
-      "transcriptToPhase2Seconds" : 12.84867799282074,
+      "phase1Seconds" : 4.267781019210815,
+      "phase2Seconds" : 6.6082059144973755,
+      "totalWorkflowSeconds" : 11.63926899433136,
+      "transcriptSeconds" : 0.763267993927002,
+      "transcriptToPhase1Seconds" : 4.267781019210815,
+      "transcriptToPhase2Seconds" : 10.876001000404358,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "16796 TO GO 1\/13\/2024 7:35 PM POS $16.75 T $19.65 T $8.60 T $6.50 T\nya Udon aney Ave CA 95014 -4017 16.75 x 1 19.65 x 1 8.60 x 1 6.50 x 1"

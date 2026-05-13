@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:30:07Z",
+  "capturedAt" : "2026-05-13T22:22:43Z",
   "caseID" : "img_0259",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -82,12 +82,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Burger|2200\nITEM|Lla Damm|800\nITEM|Local Calamari|1700\nITEM|N Asado|2300\nITEM|Cheeseburger|800\nITEM|Buddha IPA|1400\nITEM|Can Js|800\nITEM|Unknown Item|2600\nTAX|Tax|2520\nTIP|Gratuity|1209\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 3.1765509843826294,
-      "phase2Seconds" : 39.979519963264465,
-      "totalWorkflowSeconds" : 44.34065496921539,
-      "transcriptSeconds" : 1.1845669746398926,
-      "transcriptToPhase1Seconds" : 3.1765520572662354,
-      "transcriptToPhase2Seconds" : 43.156087040901184,
+      "phase1Seconds" : 2.9642810821533203,
+      "phase2Seconds" : 34.198602080345154,
+      "totalWorkflowSeconds" : 38.54355704784393,
+      "transcriptSeconds" : 1.3806599378585815,
+      "transcriptToPhase1Seconds" : 2.9642810821533203,
+      "transcriptToPhase2Seconds" : 37.16289710998535,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Table 62 3\/14\/251:03 PM $22.00 $8.00 $17.00 $23.00 $8.00 $14.00 $8.00 $26.00 $126.00 $25.20 $12.09 $163.29 Book Your Party with us! RATUITY IS ADDED TO EVERY PARTY THANK YOU FOR YOU VISIT!\nLa Cañita 6844 NW 169th St. Miami, FL 33015 Javier M ount: 3 BURGER LLA DAMM LOCAL CALAMARI N ASADO ?? CHEESEBURGER BUDDHA IPA CAN JS Charge (20.00%)\n- 13"
