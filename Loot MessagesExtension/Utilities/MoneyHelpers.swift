@@ -103,43 +103,33 @@ enum SplitMath {
             var subtotals = Array(repeating: 0, count: guests.count)
 
             for it in items {
-                var attributedToSlots = 0
                 for slotIndex in guests.indices where guests[slotIndex].inc {
                     let pid = guests.personID(forSlot: slotIndex)
                     let cents = it.partition.centsClaimed(by: pid, priceCents: it.priceCents)
                     subtotals[slotIndex] += cents
-                    attributedToSlots += cents
                 }
-
-                let unattributed = max(0, it.priceCents - attributedToSlots)
-                if unattributed > 0 && !included.isEmpty && !claimMode {
-                    // Non-claim mode: distribute unclaimed cents evenly among
-                    // included guests so owed.sum == totalCents.
-                    let shares = splitCentsEvenly(total: unattributed, count: included.count)
-                    for (i, slotIndex) in included.enumerated() {
-                        subtotals[slotIndex] += shares[i]
-                    }
-                }
-                // Claim mode: unclaimed stays unattributed. Recipients will
-                // claim it later via the recipient claim UI (Phase 8).
-                // owed.sum < totalCents until everything's claimed.
+                // Unclaimed item cents stay UNATTRIBUTED. Same rule for both
+                // claim-mode and non-claim-mode byItems: nobody automatically
+                // owes for what hasn't been explicitly claimed. The payer
+                // effectively absorbs the unclaimed portion (they paid the
+                // bill; they're only reimbursed for what claimers picked up).
+                // owed.sum will be < totalCents until everything's claimed.
             }
 
-            // Extras = tax + tip + fees − discount. In non-claim mode we
-            // anchor on `totalCents - itemsTotal` so any subtotal/items gap
-            // gets distributed (handles partial OCR capture). In claim mode
-            // that gap and the unclaimed item cents need to STAY unattributed,
-            // so use the explicit breakdown.
-            let itemsTotal = subtotals.reduce(0, +)
-            let extras: Int = claimMode
-                ? max(0, feesCents - discountCents + taxCents + tipCents)
-                : max(0, totalCents - itemsTotal)
+            // Extras = tax + tip + fees − discount, distributed proportionally
+            // to claimed subtotals. Unclaimed item cents are NOT folded into
+            // extras here (the anchor-on-totalCents formula did that, which
+            // forced unclaimed cents onto claimers). Subtotal/items capture
+            // gaps remain unattributed under this model — acceptable trade-off
+            // for the "you only owe what you claim" guarantee.
+            let extras = max(0, feesCents - discountCents + taxCents + tipCents)
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {
                 owed[idx] = max(0, subtotals[idx] + extrasAlloc[idx])
             }
 
+            _ = claimMode  // kept on the signature for downstream API stability
             return owed
         }
     }
