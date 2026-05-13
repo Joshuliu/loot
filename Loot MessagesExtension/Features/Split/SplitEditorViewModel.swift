@@ -106,13 +106,15 @@ final class SplitEditorViewModel: ObservableObject {
     }
 
     func byItemsGuestCents(for guestId: PersonID) -> Int {
-        byItemsGuestSubtotalCents(
-            guestID: guestId,
-            guestOrder: guests.map(\.id),
-            items: byItemItems.map { item in
-                (priceCents: item.priceCents, assignedGuestIDs: Array(item.assignedGuestIds))
-            }
-        )
+        // Sum each item's actual claimed cents for this guest. Reads the
+        // partition directly so partial claims (e.g. shares(2, [Me, nil]))
+        // give Me half the item's price, not the full price. The legacy
+        // `byItemsGuestSubtotalCents` path went through the deduped Set view,
+        // which misses partition denominators and produced a "full item per
+        // claimer" miscount.
+        byItemItems.reduce(0) { acc, item in
+            acc + item.partition.centsClaimed(by: guestId, priceCents: item.priceCents)
+        }
     }
 
     func ensureGuestArrays() {
