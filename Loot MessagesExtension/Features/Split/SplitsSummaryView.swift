@@ -39,6 +39,11 @@ struct SplitsSummaryView: View {
     /// Item ID currently presenting the Tap-to-Claim split picker (recipient
     /// side), or nil if hidden.
     @State private var claimPickerItemId: String? = nil
+    /// True when the recipient has made claim changes that haven't been
+    /// committed yet. Enables the Save button and gates the Firestore-
+    /// listener overwrite so other recipients' updates don't clobber local
+    /// pending claims mid-edit.
+    @State private var hasUnsavedClaims: Bool = false
 
     private enum MyBillState { case choosing, joined, notInBill }
     @State private var billState: MyBillState = .choosing
@@ -832,6 +837,18 @@ struct SplitsSummaryView: View {
     private var receiptDetailsSection: some View {
         if let receipt {
             VStack(alignment: .leading, spacing: 14) {
+                if isClaimModeForMe {
+                    HStack(spacing: 6) {
+                        Image(systemName: "hand.tap")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.blue)
+                        Text("Tap to claim your items")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
                 VStack(spacing: 0) {
                         if receiptDraftVM.itemsLoadingState.isLoading {
                             VStack(spacing: 12) {
@@ -869,6 +886,26 @@ struct SplitsSummaryView: View {
 
                     TotalsBox(receipt: receipt)
                         .padding(.horizontal, 16)
+
+                    if isClaimModeForMe {
+                        Button {
+                            commitClaimChanges()
+                        } label: {
+                            Label(
+                                hasUnsavedClaims ? "Save Claims" : "All Claims Saved",
+                                systemImage: hasUnsavedClaims ? "checkmark.circle.fill" : "checkmark.circle"
+                            )
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(hasUnsavedClaims ? Color.white : Color.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(hasUnsavedClaims ? Color.blue : Color(.tertiarySystemFill))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!hasUnsavedClaims)
+                        .padding(.horizontal, 16)
+                    }
 
                     VStack(spacing: 10) {
                         if canEdit {
@@ -1289,6 +1326,12 @@ struct SplitsSummaryView: View {
             guard initializedClaimStateBillId != initBillId else { return }
             initializedClaimStateBillId = initBillId
             reconcileClaimState(shouldAutoJoin: true)
+            // Tap-to-Claim recipients land on the receipt items section so
+            // they can start claiming immediately. The donut/per-person area
+            // doesn't tell them much before they've claimed anything.
+            if isClaimModeForMe {
+                selectedSection = .receipt
+            }
         }
         .onChange(of: messageReceiptVM.openedMessagePayload?.s) { _, latestSplit in
             guard let latestSplit, latestSplit != split else { return }
@@ -1300,8 +1343,11 @@ struct SplitsSummaryView: View {
             // viewer claims an item via the Firestore listener, refresh the
             // local @State `items` so the partition widget rerenders. Equality
             // guard avoids re-firing on our own writes (the listener bounces
-            // them back through openedMessagePayload).
+            // them back through openedMessagePayload). Pending-claims guard
+            // prevents a remote update from clobbering the user's uncommitted
+            // local edits — they'd lose what they've tapped between Save events.
             guard let latestItems, latestItems != items else { return }
+            guard !hasUnsavedClaims else { return }
             items = latestItems
         }
         .task {
@@ -1671,18 +1717,18 @@ struct SplitsSummaryView: View {
 
     @ViewBuilder
     private func hollowClaimCircle() -> some View {
+        // Dashed border (vs. solid + pulsing `+`) signals "this slot is open
+        // for claiming" without competing with other UI animations. Filled
+        // interior keeps the entire 28×28 area hit-testable.
         Circle()
-            .fill(Color.gray.opacity(0.12))
+            .fill(Color.gray.opacity(0.08))
             .frame(width: 28, height: 28)
             .overlay(
                 Circle()
-                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
-            )
-            .overlay(
-                Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.secondary.opacity(0.7))
-                    .symbolEffect(.pulse, options: .repeating)
+                    .strokeBorder(
+                        Color.blue.opacity(0.65),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
             )
             .contentShape(Circle())
     }
@@ -1762,17 +1808,17 @@ struct SplitsSummaryView: View {
         applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
     }
 
-    /// Write the new partition into `items[itemIndex]` as wire fields, recompute
-    /// `split.o`, and persist both via `messageReceiptVM.persist(split:items:...)`.
-    /// State-before-broadcast: the persist call updates `openedMessagePayload`
-    /// before firing the bus, so the iMessage bubble retracts in place.
+    /// Write the new partition into `items[itemIndex]` as wire fields and
+    /// recompute `split.o`, but DON'T persist yet — accumulates as an
+    /// unsaved local change so the recipient can claim multiple items
+    /// without each tap firing a bubble retract. Committed via
+    /// `commitClaimChanges()` when the user taps Save.
     private func applyPartitionUpdate(itemIndex: Int, newPartition: ItemPartition) {
         let wire = newPartition.wireFields(guests: split.g)
         items[itemIndex].rs = wire.rs
         items[itemIndex].sh = wire.sh
         items[itemIndex].cu = wire.cu
 
-        // Recompute owed amounts from the freshly-updated items.
         let slotPIDs = canonicalSlotPIDs
         let mathItems = items.map { it -> (label: String, priceCents: Int, partition: ItemPartition) in
             (label: it.l,
@@ -1793,10 +1839,20 @@ struct SplitsSummaryView: View {
             claimMode: split.cl ?? false
         )
 
+        hasUnsavedClaims = true
+    }
+
+    /// Commits all pending claim changes — single bubble retract + Firestore
+    /// write. Replaces the per-tap broadcast that used to spam the chat with
+    /// updates on every claim toggle.
+    private func commitClaimChanges() {
+        guard hasUnsavedClaims else { return }
         messageReceiptVM.persist(
             split: split, items: items,
-            broadcast: true, action: .edited, via: bus
+            broadcast: true, action: .claimed, via: bus
         )
+        hasUnsavedClaims = false
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     /// Binds the local user to a slot if they aren't yet. Returns true on
