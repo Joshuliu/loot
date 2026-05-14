@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:25:26Z",
+  "capturedAt" : "2026-05-13T22:18:32Z",
   "caseID" : "64014511608__aa6c8059-9c18-493e-8e85-e2ec305e1969",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -36,12 +36,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Kale Caesar|\nTAX|Sales Tax|\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 2.806648015975952,
-      "phase2Seconds" : 17.312410950660706,
-      "totalWorkflowSeconds" : 20.9876149892807,
-      "transcriptSeconds" : 0.8685430288314819,
-      "transcriptToPhase1Seconds" : 2.806648015975952,
-      "transcriptToPhase2Seconds" : 20.11907196044922,
+      "phase1Seconds" : 3.275362014770508,
+      "phase2Seconds" : 18.15651500225067,
+      "totalWorkflowSeconds" : 22.31587302684784,
+      "transcriptSeconds" : 0.8839859962463379,
+      "transcriptToPhase1Seconds" : 3.275362968444824,
+      "transcriptToPhase2Seconds" : 21.4318870306015,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Duplicate Recei 4\/14\/2021 Order Id: AAAZG 391 - In Store Employee: Arnol 1 Kale Caesar Sub Total Sales Tax Order Total Visa Card#: **** Authorizati CARD NAME: CARD APPROVAL: 16475 POS REF: 2 CCT REF: 2 AID: A000000003 TVR: TSI: APP LABEL: BATCH #: 104001 ENTRY METHOD: NI"

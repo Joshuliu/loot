@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:41:13Z",
+  "capturedAt" : "2026-05-13T22:33:51Z",
   "caseID" : "img_5139",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -76,12 +76,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|9196\nITEM|Unknown Item|2299\nITEM|Unknown Item|899\nITEM|Unknown Item|800\nITEM|White Rice & Salad|\nITEM|Lamb Shank|\nITEM|Mustard Mousier|\nITEM|Shams Persian Beer|\nITEM|Koobideh|\nTAX|Tax|1286\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 8.166544914245605,
-      "phase2Seconds" : 30.00450301170349,
-      "totalWorkflowSeconds" : 39.517948031425476,
-      "transcriptSeconds" : 1.346885085105896,
-      "transcriptToPhase1Seconds" : 8.166544914245605,
-      "transcriptToPhase2Seconds" : 38.171061992645264,
+      "phase1Seconds" : 7.173393964767456,
+      "phase2Seconds" : 25.204874992370605,
+      "totalWorkflowSeconds" : 33.77007603645325,
+      "transcriptSeconds" : 1.391787052154541,
+      "transcriptToPhase1Seconds" : 7.173393964767456,
+      "transcriptToPhase2Seconds" : 32.378288984298706,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Table B1 2\/1\/26 7:07 PM $91.96 $22.99 $8.99 $8.00 $131.94 $12.86 $144.80 Suggested Tip: 18%: (Tip $23.75 Total $168.55) Total $171.19) 22%: (Tip $29.03 Total $173.83) Tip percentages are based on the check\nDISCOVER\nVISA Server: Pasha T Guest Count: 5 White Rice & Salad 1 Lamb Shank (Mahicheh) 1 Must 0 Mousier 1 Shams Persian Beer 20%: (Tip $26.39\nG Pay\n•Pay Check #71 Ordered: 4 Koobideh Subtotal Tax Total"

@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:28:23Z",
+  "capturedAt" : "2026-05-13T22:21:17Z",
   "caseID" : "img_9b8dba8a-75c2-4166-8827-c1478e42910c",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -103,12 +103,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Apple|100\nITEM|Banana|150\nITEM|Orange|120\nITEM|Pear|75\nITEM|Grapes|300\nITEM|Strawberry|250\nITEM|Blueberry|200\nITEM|Kiwi|180\nITEM|Watermelon|450\nITEM|Lemon|60\nITEM|Raspberry|300\nITEM|Milk|150\nITEM|Cheese|280\nITEM|Yogurt|120\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 17.567790031433105,
-      "phase2Seconds" : 4.608428001403809,
-      "totalWorkflowSeconds" : 23.2360600233078,
-      "transcriptSeconds" : 1.0598289966583252,
-      "transcriptToPhase1Seconds" : 17.567790031433105,
-      "transcriptToPhase2Seconds" : 22.176231026649475,
+      "phase1Seconds" : 6.460605025291443,
+      "phase2Seconds" : 5.326243042945862,
+      "totalWorkflowSeconds" : 12.877102017402649,
+      "transcriptSeconds" : 1.0902400016784668,
+      "transcriptToPhase1Seconds" : 6.460605025291443,
+      "transcriptToPhase2Seconds" : 11.786862015724182,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "Green Supermarket 1.00 1.50 1.20 0.75 3.00 2.50 2.00 1.80 4.50 0.60 3.00 1.50 2.80 1.20 27.35 30.00 2.65\nAPPLE BANANA ORANGE PEAR GRAPES STRAWBERRY BLUEBERRY KIWI WATERMELON LEMON RASPBERRY MILK CHEESE YOGURT OTAL SH HANGE"

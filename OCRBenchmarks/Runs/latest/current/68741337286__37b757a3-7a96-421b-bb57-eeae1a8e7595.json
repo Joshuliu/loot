@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:26:19Z",
+  "capturedAt" : "2026-05-13T22:19:12Z",
   "caseID" : "68741337286__37b757a3-7a96-421b-bb57-eeae1a8e7595",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -28,7 +28,7 @@
       ],
       "items" : [
         {
-          "label" : "Steak & Cheese Footlong",
+          "label" : "Steak & Cheese Footlong Pro",
           "qty" : 1
         },
         {
@@ -38,14 +38,14 @@
       ],
       "subtotal_cents" : 0
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Steak & Cheese Footlong|\nITEM|Meatball Sub|\nTAX|Sales Tax|\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Steak & Cheese Footlong Pro|\nITEM|Meatball Sub|\nTAX|Sales Tax|\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.9286201000213623,
-      "phase2Seconds" : 14.336337089538574,
-      "totalWorkflowSeconds" : 17.29366707801819,
-      "transcriptSeconds" : 1.028694987297058,
-      "transcriptToPhase1Seconds" : 1.9286201000213623,
-      "transcriptToPhase2Seconds" : 16.26497209072113,
+      "phase1Seconds" : 2.377313017845154,
+      "phase2Seconds" : 12.799118995666504,
+      "totalWorkflowSeconds" : 16.256026029586792,
+      "transcriptSeconds" : 1.0795810222625732,
+      "transcriptToPhase1Seconds" : 2.37731397151947,
+      "transcriptToPhase2Seconds" : 15.176445007324219,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "ubway#64183-0 Phone 3158027726 syracuse, ny, 13206 erved by: 10 10\/14\/2022 12:08:14: Term ID-Trans# 1\/A-134463 Pr Steak & Chse FtPro Reference No: 5YZW001665720483 ************593 Account No: ******* -d. Cantantloce hi\n452 grant blvd Size Item S MI 12\" Meatball Sub ) Total neral Sales Tax (8%) tal (Take Out) edit Card Approval No: 04235D ange Card Issuer: Visa"

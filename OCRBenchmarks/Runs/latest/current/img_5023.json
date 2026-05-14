@@ -1,33 +1,33 @@
 {
-  "capturedAt" : "2026-05-12T07:38:08Z",
+  "capturedAt" : "2026-05-13T22:30:36Z",
   "caseID" : "img_5023",
   "expectedReviewStatus" : "needsReview",
   "score" : {
-    "actualComputedTotalCents" : 9993,
-    "breakdown" : 0.6,
+    "actualComputedTotalCents" : 10020,
+    "breakdown" : 0.4,
     "expectedTotalCents" : 10632,
-    "itemValues" : 0.7222222222222222,
+    "itemValues" : 0.8333333333333334,
     "lineItemValues" : 0.3333333333333333,
     "merchant" : 0,
-    "overall" : 0.33499999999999996,
+    "overall" : 0.33166666666666667,
     "passesTotalReconciliation" : false,
     "reconciliation" : 0,
-    "reconciliationDifferenceCents" : -639,
+    "reconciliationDifferenceCents" : -612,
     "total" : 1
   },
   "snapshot" : {
     "lineItems" : [
       {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      },
+      {
         "cents" : 18,
-        "label" : "Fee"
+        "label" : "Tax"
       },
       {
         "cents" : 99,
-        "label" : "Fee"
-      },
-      {
-        "cents" : 10,
-        "label" : "Bottle Sales"
+        "label" : "Tax"
       }
     ],
     "phase1" : {
@@ -35,17 +35,27 @@
       "total_cents" : 10632
     },
     "phase2" : {
-      "fees_cents" : 127,
+      "fees_cents" : 10,
       "issues" : [
         "Ignored discount row: Markdown",
         "Ignored discount row: Markdown",
         "Ignored discount row: Markdown",
-        "Resolved rows differ from known total by 639 cents"
+        "Resolved rows differ from known total by 612 cents"
       ],
       "items" : [
         {
+          "cents" : 299,
+          "label" : "Mary Farms Brownie",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
           "cents" : 99,
-          "label" : "Mary Farms Brown Egg",
+          "label" : "Unknown Item",
           "qty" : 1
         },
         {
@@ -55,36 +65,32 @@
         },
         {
           "cents" : 1578,
-          "label" : "Spicy Marinated Natural Chic",
+          "label" : "Spicy Marinated Chicken",
           "qty" : 1
         },
         {
           "cents" : 1131,
-          "label" : "Marinated Angus Beef Bnls S",
+          "label" : "Marinated Angus Beef Boneless",
           "qty" : 1
         },
         {
+          "cents" : 1299,
           "label" : "Marinated Angus Beef Finger",
           "qty" : 1
         },
         {
           "cents" : 671,
-          "label" : "Marinated Natural Chicken Th",
-          "qty" : 1
-        },
-        {
-          "cents" : 1299,
-          "label" : "Unknown Item",
+          "label" : "Marinated Natural Chicken Thighs",
           "qty" : 1
         },
         {
           "cents" : 899,
-          "label" : "Marinated Beef Rib Eye Bulg",
+          "label" : "Marinated Beef Rib Eye Bulgogi",
           "qty" : 1
         },
         {
           "cents" : 399,
-          "label" : "Jimmy Dean Sausage, Egg, &am",
+          "label" : "Jimmy Dean Sausage, Egg, & Bacon",
           "qty" : 1
         },
         {
@@ -99,7 +105,7 @@
         },
         {
           "cents" : 599,
-          "label" : "Pmo Juicy Dumpling W\/ Pork &",
+          "label" : "PMO Juicy Dumpling w\/ Pork",
           "qty" : 1
         },
         {
@@ -108,21 +114,19 @@
           "qty" : 1
         },
         {
-          "label" : "Pulmuone Mini Wontons 600 G",
+          "label" : "Pulmuone Mini Wontons",
           "qty" : 1
         },
         {
           "cents" : 399,
-          "label" : "Simply Mango Juice 1.53 L",
+          "label" : "Simply Mango Juice",
           "qty" : 1
         },
         {
-          "cents" : 297,
-          "label" : "Ghai Bokchoy",
+          "label" : "Ghai Bok Choy",
           "qty" : 1
         },
         {
-          "cents" : 50,
           "label" : "Enleaf Lettuce",
           "qty" : 1
         },
@@ -131,7 +135,7 @@
           "qty" : 1
         },
         {
-          "label" : "Rrots",
+          "label" : "Carrots",
           "qty" : 1
         },
         {
@@ -141,18 +145,23 @@
         {
           "label" : "Nongshim Mupama",
           "qty" : 1
+        },
+        {
+          "label" : "Garlic",
+          "qty" : 1
         }
       ],
-      "subtotal_cents" : 10505
+      "subtotal_cents" : 10505,
+      "tax_cents" : 117
     },
-    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Mary Farms Brown Egg|99\nITEM|Marinated All Natural Pork|548\nITEM|Spicy Marinated Natural Chic|1578\nITEM|Marinated Angus Beef Bnls S|1131\nITEM|Marinated Angus Beef Finger|\nITEM|Marinated Natural Chicken Th|671\nITEM|Unknown Item|1299\nITEM|Marinated Beef Rib Eye Bulg|899\nITEM|Jimmy Dean Sausage, Egg, &am|399\nITEM|Unknown Item|699\nITEM|Tang Myun|199\nITEM|Pmo Juicy Dumpling W\/ Pork &|599\nITEM|Unknown Item|999\nITEM|Pulmuone Mini Wontons 600 G|\nITEM|Simply Mango Juice 1.53 L|399\nDISCOUNT|Markdown|100\nITEM|Ghai Bokchoy|297\nITEM|Enleaf Lettuce|50\nITEM|Low Onion|\nITEM|Rrots|\nITEM|Chocolate Chip Waffles|\nITEM|Nongshim Mupama|\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nFEE|Fee|18\nFEE|Fee|99\nFEE|Bottle Sales|10\nEND_ROWS",
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Mary Farms Brownie|299\nITEM|Unknown Item|75\nITEM|Unknown Item|99\nITEM|Marinated All Natural Pork|548\nITEM|Spicy Marinated Chicken|1578\nITEM|Marinated Angus Beef Boneless|1131\nITEM|Marinated Angus Beef Finger|1299\nITEM|Marinated Natural Chicken Thighs|671\nITEM|Marinated Beef Rib Eye Bulgogi|899\nITEM|Jimmy Dean Sausage, Egg, & Bacon|399\nITEM|Unknown Item|699\nITEM|Tang Myun|199\nITEM|PMO Juicy Dumpling w\/ Pork|599\nITEM|Unknown Item|999\nITEM|Pulmuone Mini Wontons|\nITEM|Simply Mango Juice|399\nDISCOUNT|Markdown|100\nITEM|Ghai Bok Choy|\nITEM|Enleaf Lettuce|\nITEM|Low Onion|\nITEM|Carrots|\nITEM|Chocolate Chip Waffles|\nITEM|Nongshim Mupama|\nDISCOUNT|Markdown|200\nDISCOUNT|Markdown|350\nFEE|Bottle sales|10\nITEM|Garlic|\nTAX|Tax|18\nTAX|Tax|99\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 3.5171409845352173,
-      "phase2Seconds" : 25.80733609199524,
-      "totalWorkflowSeconds" : 30.813935041427612,
-      "transcriptSeconds" : 1.4894449710845947,
-      "transcriptToPhase1Seconds" : 3.5171409845352173,
-      "transcriptToPhase2Seconds" : 29.324490070343018,
+      "phase1Seconds" : 3.9636698961257935,
+      "phase2Seconds" : 64.09568893909454,
+      "totalWorkflowSeconds" : 69.5751039981842,
+      "transcriptSeconds" : 1.5157300233840942,
+      "transcriptToPhase1Seconds" : 3.9636698961257935,
+      "transcriptToPhase2Seconds" : 68.0593729019165,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "0071\/19\/2026 19:27:02 Young Mi 00137387 Trs#: 138073 MARY FARMS MED A BROWN E $2.99 F $0.75 F $0.99 F RINATED ALL NATURAL PORK B $6.12 F $5.48 F PICY MARINATED NATURAL CHIC $15.78 F ARINATED ANGUS BEEF BNLS S $11.31 F • MARINATED ANGUS BEEF FINGER MARINATED NATURAL CHICKEN TH $6.71 F $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F $6.99 F TANG MYUN - $1.99 F PMO JUICY DUMPLING W\/ PORK & $5.99 F $9.99 F PULMUONE MINI WONTONS 600 G SIMPLY MANGO JUICE 1.53 L $3.99| $106.22 $0.10 $106.32 $106.3 $106.3 $0.0\n$0.18 F $0.99 F\nkdown: $1.00 3 1b @ $0.99\/1b GHAI BOKCHOY LB ENLEAF LETTUCE 1 1b @ $0.99\/21b _LOW ONION LB RROTS 1LB CHOCOLATE CHIP WAFFLES NONGSHIM MUPAMA Markdown: $2.00 #7985* Markdown: $3.50 +Bottle sales: $0.10 Bottle sales TOTAL SALES **1407\n17 Z 1LB GARLIC PK ul# PK Net Sales SUB TOTAL Visa #*****> Balance"

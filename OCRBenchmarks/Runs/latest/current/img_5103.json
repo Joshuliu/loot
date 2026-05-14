@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:38:53Z",
+  "capturedAt" : "2026-05-13T22:31:25Z",
   "caseID" : "img_5103",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -125,12 +125,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Rosemary Farms Med A Brown E|299\nFEE|Fee|18\nFEE|Fee|99\nFEE|Fee|75\nFEE|Fee|99\nITEM|Marinated All Natural Pork B|612\nFEE|Fee|548\nITEM|Spicy Marinated Natural Chic|1578\nITEM|Marinated Angus Beef Bns S|1131\nITEM|Marinated Natural Chicken Th|671\nITEM|Marinated Angus Beef Finger|1299\nITEM|Marinated Beef Rib Eye Bulg|899\nITEM|Jimmy Dean Sausage, Egg, &am|399\nITEM|Chocolate Chip Waffles|699\nITEM|Nongshim Mupama Tang Myun|199\nFEE|Fee|599\nITEM|Pmo Juicy Dumpling W\/ Pork &|999\nITEM|Pulmuone Mini Wontons 600 G|399\nITEM|Simply Mango Juice 1.53 L|10622\nFEE|Bottle Deposit|10\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 2.944427967071533,
-      "phase2Seconds" : 28.05776298046112,
-      "totalWorkflowSeconds" : 32.69108295440674,
-      "transcriptSeconds" : 1.6888790130615234,
-      "transcriptToPhase1Seconds" : 2.944427967071533,
-      "transcriptToPhase2Seconds" : 31.002203941345215,
+      "phase1Seconds" : 2.14483106136322,
+      "phase2Seconds" : 34.71529197692871,
+      "totalWorkflowSeconds" : 38.69876992702484,
+      "transcriptSeconds" : 1.8386409282684326,
+      "transcriptToPhase1Seconds" : 2.14483106136322,
+      "transcriptToPhase2Seconds" : 36.86012899875641,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "#001-007 1\/19\/2026 19:27:02 Young Mi Inv#: 00137387 Trs#: 138073 ROSEMARY FARMS MED A BROWN E $2.99 F $0.18 F $0.99 F $0.75 F $0.99 F MARINATED ALL NATURAL PORK B $6.12 F $5.48 F SPICY MARINATED NATURAL CHIC $15.78 F MARINATED ANGUS BEEF BNS S $11.31 F : MARINATED ANGUS BEEF FINGER MARINATED NATURAL CHICKEN TH $6.71 F $12.99 F MARINATED BEEF RIB EYE BULG $8.99 F JIMMY DEAN SAUSAGE, EGG, &am $3.99 F CHOCOLATE CHIP WAFFLES $6.99 F NONGSHIM MUPAMA TANG MYUN - $1.99 F $5.99 F PMO JUICY DUMPLING W\/ PORK & $9.99 F PULMUONE MINI WONTONS 600 G $3.99 F SIMPLY MANGO JUICE 1.53 L $106.22 $0.10 $106.32 $106.32 $106.32\nMarkdown: $1,00 # 99\/1b 0.18 lb 6° SHANGHAI BUKCHOY LB GREENLEAF LETTUCE 1.51 1b @ $0.99\/21b YELLOW ONION LB CARROTS 1LB 521LB Markdown: $2.00 GARLIC PK Markdown: $3.50 +Bottle sales: $0.10 Net Sales Bottle sales TOTAL SALES SUB TOTAL Vica"

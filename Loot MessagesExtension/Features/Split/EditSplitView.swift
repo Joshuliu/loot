@@ -34,6 +34,8 @@ struct EditSplitView: View {
     @State private var editingGuestNameID: PersonID? = nil
     @FocusState private var guestNameFocusedID: PersonID?
     @State private var uidDisplayNames: [String: String] = [:]
+    /// Item ID currently presenting the split-denominator picker, or nil.
+    @State private var splitPickerItemId: UUID? = nil
 
     private var localUserId: String { KeychainHelper.getOrCreateUserId() }
 
@@ -397,9 +399,12 @@ struct EditSplitView: View {
 
     private func byItemsPanel() -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Tap items to assign to the selected guest")
+            Text((payload.s.cl ?? false)
+                 ? "Edit splits. Recipients can also claim from chat."
+                 : "Tap items to assign. Unassigned items split evenly between guests.")
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 0) {
                 let completeItems = byItemItems.filter { $0.isComplete }
@@ -407,33 +412,32 @@ struct EditSplitView: View {
                     let itemIdx = byItemItems.firstIndex(where: { $0.id == completeItems[idx].id })!
                     let item = byItemItems[itemIdx]
 
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(item.label)
-                                .font(.system(size: 16, weight: .semibold))
-                                .lineLimit(1)
-                            Text(ReceiptDisplay.money(item.priceCents))
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        HStack(spacing: 6) {
-                            ForEach(item.assignedGuestIds.sorted { $0.rawValue < $1.rawValue }, id: \.self) { gid in
-                                let fallbackIndex = guests.firstIndex(where: { $0.id == gid }) ?? 0
-                                let name = guests.first(where: { $0.id == gid }).map { displayName(for: $0) } ?? "Guest"
-                                ColoredCircleBadge(
-                                    text: BadgeColors.initials(from: name, fallback: fallbackIndex),
-                                    color: colorForGuestId(gid)
-                                )
+                    HStack(spacing: 0) {
+                        Button {
+                            handleItemRowTap(item: item)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.label)
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .lineLimit(1)
+                                        .foregroundStyle(.primary)
+                                    Text(ReceiptDisplay.money(item.priceCents))
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 8)
                             }
+                            .padding(.leading, 14)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+
+                        partitionRightWidget(for: item)
+                            .padding(.trailing, 14)
+                            .padding(.vertical, 12)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                    .onTapGesture { toggleAssignment(itemId: item.id) }
 
                     if idx < completeItems.count - 1 {
                         Divider().padding(.leading, 14)
@@ -442,6 +446,177 @@ struct EditSplitView: View {
             }
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .confirmationDialog(
+            "Split into how many?",
+            isPresented: Binding(
+                get: { splitPickerItemId != nil },
+                set: { presented in if !presented { splitPickerItemId = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: splitPickerItemId
+        ) { itemId in
+            let inlineMax = max(2, min(9, activeCount))
+            ForEach(2...max(inlineMax, 2), id: \.self) { n in
+                Button("Split \(n) ways") {
+                    setItemDenominator(itemId: itemId, denominator: n)
+                    splitPickerItemId = nil
+                }
+            }
+            Button("Cancel", role: .cancel) { splitPickerItemId = nil }
+        }
+    }
+
+    // MARK: - Partition widget (post-send edit)
+
+    @ViewBuilder
+    private func partitionRightWidget(for item: LineItemForm) -> some View {
+        switch item.partition {
+        case .unclaimed:
+            Button {
+                splitPickerItemId = item.id
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "rectangle.split.3x1")
+                        .font(.system(size: 11, weight: .semibold))
+                    Text("Split")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.15))
+                .foregroundStyle(Color.blue)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+        case .shares(let denom, let slots):
+            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
+                guestBadge(for: pid)
+            } else {
+                HStack(spacing: 4) {
+                    ForEach(0..<denom, id: \.self) { i in
+                        let claimer = slots.indices.contains(i) ? slots[i] : nil
+                        Button {
+                            togglePartitionShare(itemId: item.id, shareIndex: i)
+                        } label: {
+                            if let pid = claimer {
+                                guestBadge(for: pid)
+                            } else {
+                                hollowCircleBadge()
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+        case .custom(let claims):
+            HStack(spacing: 4) {
+                ForEach(claims, id: \.personID) { c in
+                    guestBadge(for: c.personID)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func guestBadge(for pid: PersonID) -> some View {
+        let fallbackIndex = guests.firstIndex(where: { $0.id == pid }) ?? 0
+        let name = guests.first(where: { $0.id == pid }).map { displayName(for: $0) } ?? "Guest"
+        ColoredCircleBadge(
+            text: BadgeColors.initials(from: name, fallback: fallbackIndex),
+            color: colorForGuestId(pid)
+        )
+    }
+
+    @ViewBuilder
+    private func hollowCircleBadge() -> some View {
+        Circle()
+            .fill(Color.gray.opacity(0.12))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+            )
+            .overlay(
+                Image(systemName: "plus")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.secondary.opacity(0.7))
+                    .symbolEffect(.pulse, options: .repeating)
+            )
+            .contentShape(Circle())
+    }
+
+    // MARK: - Partition mutators
+
+    /// Row-tap handler — same semantics as compose's byItemPanel:
+    ///   - `.unclaimed` → claim active full (`shares(1, [active])`)
+    ///   - `.shares(1, [active])` → unclaim
+    ///   - `.shares(1, [other])` → no-op
+    ///   - `.shares(N>1, ...)` → unclaim active's slot if held; else fill next empty
+    ///   - `.custom` → no-op
+    private func handleItemRowTap(item: LineItemForm) {
+        let activeID = byItemSelectedGuestID
+        guard activeGuests.contains(where: { $0.id == activeID }) else { return }
+        guard let idx = byItemItems.firstIndex(where: { $0.id == item.id }) else { return }
+
+        switch byItemItems[idx].partition {
+        case .unclaimed:
+            byItemItems[idx].partition = .shares(denominator: 1, slots: [activeID])
+        case .shares(let denom, let slots) where denom == 1:
+            if slots.first == activeID {
+                byItemItems[idx].partition = .unclaimed
+            }
+        case .shares(_, let slots):
+            if let myIdx = slots.firstIndex(of: activeID) {
+                togglePartitionShare(itemId: item.id, shareIndex: myIdx)
+            } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
+                togglePartitionShare(itemId: item.id, shareIndex: emptyIdx)
+            }
+        case .custom:
+            break
+        }
+    }
+
+    /// Picker-confirmed denominator — sets shares(N, [active, nil, …]).
+    private func setItemDenominator(itemId: UUID, denominator: Int) {
+        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
+        guard denominator >= 1 else { return }
+        let activeID = byItemSelectedGuestID
+        guard activeGuests.contains(where: { $0.id == activeID }) else { return }
+
+        var slots: [PersonID?] = Array(repeating: nil, count: denominator)
+        slots[0] = activeID
+        byItemItems[idx].partition = .shares(denominator: denominator, slots: slots)
+    }
+
+    /// Per-circle toggle. Tap a filled slot to unclaim it; tap an empty slot
+    /// to claim for active (auto-rotating to the next un-placed active guest
+    /// if active is already in another slot — same model as compose).
+    private func togglePartitionShare(itemId: UUID, shareIndex: Int) {
+        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
+        guard case .shares(let denom, var slots) = byItemItems[idx].partition else { return }
+        guard slots.indices.contains(shareIndex) else { return }
+
+        let activeID = byItemSelectedGuestID
+        guard activeGuests.contains(where: { $0.id == activeID }) else { return }
+
+        if slots[shareIndex] != nil {
+            slots[shareIndex] = nil
+        } else {
+            let claimer: PersonID? = {
+                if !slots.contains(activeID) { return activeID }
+                return activeGuests.first(where: { !slots.contains($0.id) })?.id
+            }()
+            guard let claimer else { return }
+            slots[shareIndex] = claimer
+        }
+
+        if slots.allSatisfy({ $0 == nil }) {
+            byItemItems[idx].partition = .unclaimed
+        } else {
+            byItemItems[idx].partition = .shares(denominator: denom, slots: slots)
         }
     }
 
@@ -714,19 +889,7 @@ struct EditSplitView: View {
         guestAmountsCents[guestIndex] = min(max(newCents, 0), maxAllowed)
     }
 
-    // MARK: - By Items
-
-    private func toggleAssignment(itemId: UUID) {
-        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
-        guard byItemItems[idx].isComplete else { return }
-
-        let guestId = byItemSelectedGuestID
-        guard activeGuests.contains(where: { $0.id == guestId }) else { return }
-
-        if byItemItems[idx].assignedGuestIds.contains(guestId) {
-            byItemItems[idx].assignedGuestIds.remove(guestId)
-        } else {
-            byItemItems[idx].assignedGuestIds.insert(guestId)
-        }
-    }
+    // Note: legacy `toggleAssignment` (flat Set-based tap-toggle) replaced by
+    // the partition-aware `handleItemRowTap` / `togglePartitionShare` flow
+    // higher up in this file. Compose-side parity for byItems editing.
 }

@@ -356,8 +356,13 @@ public final class ReceiptOCRBenchmarkRunner {
         let itemTotal = snapshot.phase2.items.reduce(0) { partial, item in
             partial + max(0, item.cents ?? 0)
         }
-        let lineItemTotal = snapshot.lineItems.reduce(0) { $0 + $1.cents }
-        return itemTotal + lineItemTotal
+        // Use phase2's own tax/tip/fees/discount fields rather than recomputing from lineItems,
+        // since the resolver may account for rows (e.g., UNKNOWN fees) that don't appear in lineItems.
+        let tax = snapshot.phase2.tax_cents ?? 0
+        let tip = snapshot.phase2.tip_cents ?? 0
+        let fees = snapshot.phase2.fees_cents ?? 0
+        let discount = snapshot.phase2.discount_cents ?? 0
+        return itemTotal + tax + tip + fees - discount
     }
 
     private static func labelSimilarity(_ lhs: String?, _ rhs: String?) -> Double {

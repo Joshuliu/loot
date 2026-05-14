@@ -1,5 +1,5 @@
 {
-  "capturedAt" : "2026-05-12T07:31:43Z",
+  "capturedAt" : "2026-05-13T22:24:06Z",
   "caseID" : "img_1231",
   "expectedReviewStatus" : "needsReview",
   "score" : {
@@ -182,12 +182,12 @@
     },
     "rawPhase2Response" : "BEGIN_ROWS\nITEM|Chard|17800\nITEM|San Pellegrino, Large|1300\nITEM|Latte|1300\nITEM|Soup of Day|3626\nITEM|Artichokes Soup Mignon Cab Large|10426\nITEM|Steak Tartare 4oz|4200\nITEM|Wagyu NY Strip|2800\nITEM|Chocolate Souffle|6400\nITEM|Wagyu Burger|2600\nITEM|Chocolate Souffle|4500\nITEM|Soup of Day|2600\nITEM|Seabass|2100\nITEM|SD Fries|5600\nITEM|Filet Mignon|1600\nITEM|Seabass|6600\nITEM|Tuna Tartare|5600\nITEM|Tomahawk|3600\nITEM|Steak Tartare 4oz|13500\nITEM|Filet Mignon|4200\nITEM|SD Fries|6600\nITEM|Artichokes|1600\nITEM|Filet Mignon|3200\nITEM|Steak Tartare 4oz|6600\nITEM|Unknown Item|4200\nITEM|Open Food|6000\nITEM|Half Dozen Oysters|3200\nITEM|Filet Mignon|6600\nITEM|SD Fries|1600\nTIP|Gratuity|61275\nTAX|Tax|30638\nEND_ROWS",
     "timings" : {
-      "phase1Seconds" : 1.5572739839553833,
-      "phase2Seconds" : 39.63005006313324,
-      "totalWorkflowSeconds" : 43.30716300010681,
-      "transcriptSeconds" : 2.1198209524154663,
-      "transcriptToPhase1Seconds" : 1.5572770833969116,
-      "transcriptToPhase2Seconds" : 41.187342047691345,
+      "phase1Seconds" : 1.5886609554290771,
+      "phase2Seconds" : 33.136268973350525,
+      "totalWorkflowSeconds" : 37.1160169839859,
+      "transcriptSeconds" : 2.3910800218582153,
+      "transcriptToPhase1Seconds" : 1.5886609554290771,
+      "transcriptToPhase2Seconds" : 34.724936962127686,
       "usedPrefetchedTranscript" : false
     },
     "transcript" : "1:14\nLTE\nDone\nPhoto\nBeverly H111s. CA 90210 The Beveriy 9171g Hotel Tel: (310) 887-2777 9641 Sunset 1 Pole Laur Boulevard\niten borte Appet1zer CHK 1017632 18000109 Randy V 18 Ju1:21 ------. TBL 50\/1 15:46 PM GST 13\nTruffle Seabass Souffle of WHOLE CAKE Whole\n2 for gente Chard a 178.00 2 San Pellegrino, Large ® 1 Latte 13.00 souffle the Day 36 26 • GO *00\nCoke\nGenerosity Lemonade 0 8 Far Ginger Niente 9 8 •0O • OO\nArtichokes Soup Mignon Cab Large .00 @ 375.00 300:00 104 26 -00 -0O\nWagyu Steak Day\n1 1 Steak Tartare 4oz Truffle Fries 56.00\n42.00\n1 Wagyu NY Strip 28.00\nChocolate Souffle 64.00\nWagyu Burger 26.00\n1 Chocolate Souffle 45.00\n1 Soup of Day 26.00\n1 Seabass 21.00\n1 SD Fries 56.00\n1 Filet Mignon 16.00\n1 Seabass 66.00\n1 Tuna Tartare 56.00\n1 Tomahawk 36.00\n1 Steak Tartare 4oz 135.00\n1 Filet Mignon 42.00\n1 SD Fries 66.00\n1 Artichokes 16.00\n1 Filet Mignon 32.00\n1 Steak Tartare 4oz 66.00\n42.00\n1 Open Food 60.00\nHALF LAMB \/WTH WHIP POT\/ BROCC\n1 Half Dozen Oysters 32.00\n1 Filet Mignon 66.00\n1 SD Fries 16.00\nGratuity % 612.75\n19.00%\n19.00%\nSubtotal $3225.00\nGratuity $612.75\nTax $306.38\nTotal Due $4144.13\nFOR HOTEL GUEST ONLY\nGratuity:_\nTotal:\nRoom Number:_\nPrint Name:"

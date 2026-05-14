@@ -20,7 +20,7 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
         let observations = try await detectTextBlocksDualPass(in: enhancedImage)
         let lines = buildTranscriptLines(from: observations)
         // Pass correctedImage (not enhancedImage) so each chunk is enhanced exactly once
-        // inside prepareChunkForOCR. Passing the already-enhanced image causes double
+        // inside prepagit reChunkForOCR. Passing the already-enhanced image causes double
         // enhancement which corrupts Vision bounding boxes and collapses the transcript
         // into 2–3 mega-lines instead of one line per receipt row.
         let chunkTranscripts = await analyzeChunks(in: correctedImage, from: lines)
@@ -97,12 +97,80 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
     }
 
     private static func straightenImage(in image: ReceiptImage) async -> ReceiptImage {
+        // Try rectangle-based straightening first (uses receipt edges),
+        // fall back to text-based if no rectangle found.
+        let rectAngle = await detectReceiptAngle(in: image)
+        let textAngle = await detectTextAngle(in: image)
+
+        // Prefer rectangle angle (receipt edges) when available, as it's more stable
+        // than individual character angles. Use text angle as fallback.
+        let angle: Double
+        if let rectAngle, abs(rectAngle) > 0.1 {
+            angle = rectAngle
+        } else if let textAngle, abs(textAngle) > 0.15 {
+            angle = textAngle
+        } else {
+            return image
+        }
+
+        // Cap correction at 15° — beyond that it's probably not a tilt issue
+        guard abs(angle) < 15 else { return image }
+        return rotate(image: image, radians: CGFloat(angle * .pi / 180.0)) ?? image
+    }
+
+    /// Detect tilt angle from receipt edges using rectangle detection.
+    private static func detectReceiptAngle(in image: ReceiptImage) async -> Double? {
+        await withCheckedContinuation { continuation in
+            let request = VNDetectRectanglesRequest { req, error in
+                guard error == nil,
+                      let results = req.results as? [VNRectangleObservation],
+                      let rect = results.first else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                // Use the left edge of the detected rectangle to measure tilt from vertical.
+                // In Vision coordinates, a perfectly vertical left edge has topLeft.x == bottomLeft.x.
+                let leftDx = Double(rect.topLeft.x - rect.bottomLeft.x)
+                let leftDy = Double(rect.topLeft.y - rect.bottomLeft.y)
+                let leftAngle = atan2(leftDx, leftDy) * 180.0 / .pi  // angle from vertical
+
+                // Also check right edge for robustness
+                let rightDx = Double(rect.topRight.x - rect.bottomRight.x)
+                let rightDy = Double(rect.topRight.y - rect.bottomRight.y)
+                let rightAngle = atan2(rightDx, rightDy) * 180.0 / .pi
+
+                // Average the two edges; if they disagree significantly, the detection is unreliable
+                guard abs(leftAngle - rightAngle) < 3 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                let avgAngle = (leftAngle + rightAngle) / 2.0
+                continuation.resume(returning: avgAngle)
+            }
+
+            request.minimumAspectRatio = 0.2
+            request.maximumAspectRatio = 0.9
+            request.minimumSize = 0.3
+            request.maximumObservations = 1
+            request.minimumConfidence = 0.5
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                let handler = VNImageRequestHandler(cgImage: image.cgImage, options: [:])
+                try? handler.perform([request])
+            }
+        }
+    }
+
+    /// Detect tilt angle from text character boxes (original method, lower threshold).
+    private static func detectTextAngle(in image: ReceiptImage) async -> Double? {
         await withCheckedContinuation { continuation in
             let request = VNDetectTextRectanglesRequest { req, error in
                 guard error == nil,
                       let results = req.results as? [VNTextObservation],
                       !results.isEmpty else {
-                    continuation.resume(returning: image)
+                    continuation.resume(returning: nil)
                     return
                 }
 
@@ -118,18 +186,13 @@ public struct VisionReceiptTranscriptGenerator: ReceiptTranscriptGenerating {
                 }
 
                 guard !angles.isEmpty else {
-                    continuation.resume(returning: image)
+                    continuation.resume(returning: nil)
                     return
                 }
 
                 let sorted = angles.sorted()
                 let median = sorted[sorted.count / 2]
-                guard abs(median) > 0.5 else {
-                    continuation.resume(returning: image)
-                    return
-                }
-
-                continuation.resume(returning: rotate(image: image, radians: CGFloat(median * .pi / 180.0)) ?? image)
+                continuation.resume(returning: median)
             }
 
             request.reportCharacterBoxes = true
