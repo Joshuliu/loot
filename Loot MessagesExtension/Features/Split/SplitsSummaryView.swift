@@ -36,9 +36,6 @@ struct SplitsSummaryView: View {
     private var isTabReceipt: Bool { messageReceiptVM.openedMessagePayload?.tid != nil }
 
     @State private var selectedIndex: Int? = nil
-    /// Item ID currently presenting the Tap-to-Claim split picker (recipient
-    /// side), or nil if hidden.
-    @State private var claimPickerItemId: String? = nil
     /// True when the recipient has made claim changes that haven't been
     /// committed yet. Enables the Save button and gates the Firestore-
     /// listener overwrite so other recipients' updates don't clobber local
@@ -1493,24 +1490,8 @@ struct SplitsSummaryView: View {
         .onAppear {
             presentPendingRequestIfPossible()
         }
-        .confirmationDialog(
-            "Split into how many?",
-            isPresented: Binding(
-                get: { claimPickerItemId != nil },
-                set: { presented in if !presented { claimPickerItemId = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: claimPickerItemId
-        ) { itemId in
-            let inlineMax = max(2, min(9, split.g.count))
-            ForEach(2...max(inlineMax, 2), id: \.self) { n in
-                Button("Split \(n) ways") {
-                    handleSplitPickerSelection(itemId: itemId, denominator: n)
-                    claimPickerItemId = nil
-                }
-            }
-            Button("Cancel", role: .cancel) { claimPickerItemId = nil }
-        }
+        // Picker dialog removed — the inline `+` button grows the split
+        // iteratively.
     }
 
     // MARK: - Item row (tap-to-claim aware)
@@ -1627,69 +1608,93 @@ struct SplitsSummaryView: View {
     @ViewBuilder
     private func claimWidget(displayItem: ReceiptDisplay.Item, wireItem: ReceiptItemPayload) -> some View {
         let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
 
-        switch partition {
-        case .unclaimed:
-            if isClaimModeForMe {
+        HStack(spacing: 4) {
+            // Leading `+` to grow the split. Recipient can iteratively add
+            // slots up to the guest count; sender's read-only view hides it.
+            if isClaimModeForMe && denom < split.g.count {
                 Button {
-                    claimPickerItemId = wireItem.id
+                    increaseClaimDenominator(itemId: wireItem.id)
                 } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "rectangle.split.3x1")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Split")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.15))
-                    .foregroundStyle(Color.blue)
-                    .clipShape(Capsule())
+                    dottedPlusBadge()
                 }
                 .buttonStyle(.plain)
-            } else {
-                // Sender's read-only view: single hollow circle indicating an
-                // open slot — no Split button (Edit Splits is the only edit
-                // path for the sender) and no `+` invitation icon.
-                staticHollowCircle()
             }
 
-        case .shares(let denom, let slots):
-            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
-                claimerBadge(for: pid)
-            } else {
-                HStack(spacing: 4) {
-                    ForEach(0..<denom, id: \.self) { i in
-                        let claimer = slots.indices.contains(i) ? slots[i] : nil
-                        if isClaimModeForMe {
-                            Button {
-                                handleCircleTap(itemId: wireItem.id, shareIndex: i)
-                            } label: {
-                                if let pid = claimer {
-                                    claimerBadge(for: pid)
-                                } else {
-                                    hollowClaimCircle()
-                                }
-                            }
-                            .buttonStyle(.plain)
+            ForEach(0..<denom, id: \.self) { i in
+                let claimer = slots.indices.contains(i) ? slots[i] : nil
+                if isClaimModeForMe {
+                    Button {
+                        handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                    } label: {
+                        if let pid = claimer {
+                            claimerBadge(for: pid)
                         } else {
-                            if let pid = claimer {
-                                claimerBadge(for: pid)
-                            } else {
-                                staticHollowCircle()
-                            }
+                            dottedClaimSlotBadge()
                         }
                     }
-                }
-            }
-
-        case .custom(let claims):
-            HStack(spacing: 4) {
-                ForEach(claims, id: \.personID) { c in
-                    claimerBadge(for: c.personID)
+                    .buttonStyle(.plain)
+                } else {
+                    if let pid = claimer {
+                        claimerBadge(for: pid)
+                    } else {
+                        staticHollowCircle()
+                    }
                 }
             }
         }
+    }
+
+    /// Grows the claim widget's denominator by one. Recipient-side analogue
+    /// of `SplitEditorViewModel.increaseDenominator`. Capped at `split.g.count`
+    /// so the `+` can never exceed the chat's guest list.
+    private func increaseClaimDenominator(itemId: String) {
+        guard ensureMySlotBound(),
+              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
+        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let (currentDenom, currentSlots) = SplitEditorViewModel.normalizedPartition(partition)
+        guard currentDenom < split.g.count else { return }
+        let newPartition = ItemPartition.shares(
+            denominator: currentDenom + 1,
+            slots: currentSlots + [nil]
+        )
+        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
+    }
+
+    @ViewBuilder
+    private func dottedPlusBadge() -> some View {
+        Circle()
+            .fill(Color.blue.opacity(0.08))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(
+                        Color.blue.opacity(0.65),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
+            )
+            .overlay(
+                Image(systemName: "plus")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.blue.opacity(0.85))
+            )
+            .contentShape(Circle())
+    }
+
+    @ViewBuilder
+    private func dottedClaimSlotBadge() -> some View {
+        Circle()
+            .fill(Color.gray.opacity(0.06))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(
+                        Color.secondary.opacity(0.55),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
+            )
+            .contentShape(Circle())
     }
 
     /// Non-interactive hollow circle used in the sender's read-only view of a
@@ -1775,16 +1780,16 @@ struct SplitsSummaryView: View {
               let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
 
         let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        guard case .shares(let denom, var slots) = partition,
-              slots.indices.contains(shareIndex) else { return }
+        let (denom, originalSlots) = SplitEditorViewModel.normalizedPartition(partition)
+        guard originalSlots.indices.contains(shareIndex) else { return }
 
         let myPID = myCanonicalPID
+        var slots = originalSlots
         if slots[shareIndex] != nil {
-            // Permissive deselect — recipient can clear any slot.
             slots[shareIndex] = nil
         } else {
             // Claim, sender-locked: only the local user can claim, no
-            // auto-rotate to other guests.
+            // auto-rotate to other guests in the recipient flow.
             if slots.contains(myPID) { return }
             slots[shareIndex] = myPID
         }
@@ -1792,18 +1797,6 @@ struct SplitsSummaryView: View {
         let newPartition: ItemPartition = slots.allSatisfy({ $0 == nil })
             ? .unclaimed
             : .shares(denominator: denom, slots: slots)
-
-        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
-    }
-
-    private func handleSplitPickerSelection(itemId: String, denominator: Int) {
-        guard ensureMySlotBound(),
-              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
-
-        let myPID = myCanonicalPID
-        var slots: [PersonID?] = Array(repeating: nil, count: denominator)
-        slots[0] = myPID
-        let newPartition: ItemPartition = .shares(denominator: denominator, slots: slots)
 
         applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
     }

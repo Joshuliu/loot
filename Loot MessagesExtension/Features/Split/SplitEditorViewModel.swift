@@ -434,32 +434,26 @@ final class SplitEditorViewModel: ObservableObject {
         syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
     }
 
-    /// Tap rules on `shareIndex` of `itemId`'s shares partition:
-    ///   - Tap a filled slot (own or someone else's) → unclaim it.
-    ///   - Tap an empty slot → claim. In normal compose, claims the active
-    ///     guest, falling back to the next active guest who isn't yet placed
-    ///     (so the second/third tap on empty circles fills with the next
-    ///     person automatically). In Tap-to-Claim mode, claims for the
-    ///     sender only — never auto-rotates to other guests.
-    ///   - The active-guest selector (`byItemSelectedGuestID`) is never
-    ///     auto-mutated by this — slot changes don't change who's active.
-    ///   - All slots empty → collapse to `.unclaimed` (Split button reappears).
+    /// Tap rules on `shareIndex` of `itemId`'s partition. Treats `.unclaimed`
+    /// as `shares(1, [nil])` so the always-circles UI works at every state.
+    ///   - Tap a filled slot → unclaim it.
+    ///   - Tap an empty slot → claim for active (auto-rotate to next un-placed
+    ///     active guest if active is already in another slot). In claim mode,
+    ///     only the sender can claim — no auto-rotate.
+    ///   - All slots empty → collapse to `.unclaimed` (still renders as
+    ///     `[+][○]` so the UI shape is the same).
     func togglePartitionShare(itemId: UUID, shareIndex: Int, totalCents: Int, tipAmount: String) {
         guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
-        guard case .shares(let denom, var slots) = byItemItems[idx].partition else { return }
-        guard slots.indices.contains(shareIndex) else { return }
+        let (denom, originalSlots) = Self.normalizedPartition(byItemItems[idx].partition)
+        guard originalSlots.indices.contains(shareIndex) else { return }
 
         let activeID = claimMode ? senderPersonID : byItemSelectedGuestID
         guard activeGuests.contains(where: { $0.id == activeID }) else { return }
 
+        var slots = originalSlots
         if slots[shareIndex] != nil {
-            // Permissive deselect — any filled slot can be unclaimed,
-            // regardless of who's active. Lets the user tap a circle to
-            // remove that person without first switching the active selector.
             slots[shareIndex] = nil
         } else {
-            // Claim. In normal mode: active if free, else next un-placed
-            // active guest. In claim mode: sender-only, no auto-rotate.
             let claimer: PersonID? = {
                 if !slots.contains(activeID) { return activeID }
                 if claimMode { return nil }
@@ -476,6 +470,29 @@ final class SplitEditorViewModel: ObservableObject {
         }
 
         syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Grows the item's partition by one slot, capped at `activeCount` so the
+    /// `+` button can never overshoot the chat's guest count. `.unclaimed`
+    /// normalizes to `shares(1, [nil])` first, then becomes `shares(2, [nil, nil])`.
+    func increaseDenominator(itemId: UUID, totalCents: Int, tipAmount: String) {
+        guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
+        let (currentDenom, currentSlots) = Self.normalizedPartition(byItemItems[idx].partition)
+        guard currentDenom < activeCount else { return }
+        let newSlots = currentSlots + [nil]
+        byItemItems[idx].partition = .shares(denominator: currentDenom + 1, slots: newSlots)
+        syncByItemsToSplitDraft(totalCents: totalCents, tipAmount: tipAmount)
+    }
+
+    /// Normalizes any partition to a `(denominator, slots)` tuple for UI
+    /// rendering in the always-circles widget. `.unclaimed` and `.custom`
+    /// both fall back to a single empty slot for display purposes.
+    static func normalizedPartition(_ partition: ItemPartition) -> (Int, [PersonID?]) {
+        switch partition {
+        case .unclaimed: return (1, [nil])
+        case .shares(let d, let s): return (d, s)
+        case .custom: return (1, [nil])
+        }
     }
 
     /// Removes PersonIDs from every byItemItem's partition that no longer

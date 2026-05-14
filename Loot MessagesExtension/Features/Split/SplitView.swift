@@ -249,30 +249,8 @@ extension ConfirmationView {
                 .padding(.top, 7)
                 .padding(.horizontal, 30)
         }
-        .confirmationDialog(
-            "Split into how many?",
-            isPresented: Binding(
-                get: { splitPickerItemId != nil },
-                set: { presented in if !presented { splitPickerItemId = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: splitPickerItemId
-        ) { itemId in
-            // 1-way / single full claim is reachable via row-tap; picker is
-            // multi-way only. Capped at min(9, group size); Phase 9 may add
-            // a "More…" custom number entry later.
-            let inlineMax = max(2, min(9, splitEditorVM.activeCount))
-            ForEach(2...max(inlineMax, 2), id: \.self) { n in
-                Button("Split \(n) ways") {
-                    splitEditorVM.setItemDenominator(
-                        itemId: itemId, denominator: n,
-                        totalCents: totalCents, tipAmount: tipAmount
-                    )
-                    splitPickerItemId = nil
-                }
-            }
-            Button("Cancel", role: .cancel) { splitPickerItemId = nil }
-        }
+        // Picker dialog removed — the always-visible `+` button on each row
+        // grows the split incrementally, so no hidden popup is needed.
     }
 
     // MARK: - Split panel toolbar (Back / Save)
@@ -486,65 +464,47 @@ extension ConfirmationView {
 
     // MARK: - Partition-aware right-side widget
 
-    /// Right-side widget for a single by-items row. Renders one of three
-    /// shapes depending on the item's partition state:
-    ///  - `.unclaimed` → "Split" pill button (taps open the denominator picker)
-    ///  - `.shares(1, [pid])` → single avatar (full claim)
-    ///  - `.shares(N>1, [...])` → row of N circles (filled with claimer avatars,
-    ///    hollow for unclaimed slots)
-    ///  - `.custom([...])` → stacked avatars (Phase 9 polish: $X / $Y indicator)
+    /// Right-side widget — always shows the slot circles plus a leading `+`
+    /// dotted circle (when more slots can be added). The `+` grows the split
+    /// one denominator at a time, capped at the active guest count. Each
+    /// circle is tappable: empty → claim, filled → unclaim. No Split picker
+    /// — the always-visible shape makes "this item is split N ways" legible
+    /// without a hidden dialog.
     @ViewBuilder
     func partitionRightWidget(for item: LineItemForm) -> some View {
-        switch item.partition {
-        case .unclaimed:
-            Button {
-                splitPickerItemId = item.id
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "rectangle.split.3x1")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Split")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.15))
-                .foregroundStyle(Color.blue)
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
+        let (denom, slots) = SplitEditorViewModel.normalizedPartition(item.partition)
 
-        case .shares(let denom, let slots):
-            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
-                guestBadge(for: pid)
-            } else {
-                HStack(spacing: 4) {
-                    ForEach(0..<denom, id: \.self) { i in
-                        let claimer = slots.indices.contains(i) ? slots[i] : nil
-                        Button {
-                            splitEditorVM.togglePartitionShare(
-                                itemId: item.id,
-                                shareIndex: i,
-                                totalCents: totalCents,
-                                tipAmount: tipAmount
-                            )
-                        } label: {
-                            if let pid = claimer {
-                                guestBadge(for: pid)
-                            } else {
-                                hollowCircleBadge()
-                            }
-                        }
-                        .buttonStyle(.plain)
+        HStack(spacing: 4) {
+            if denom < splitEditorVM.activeCount {
+                Button {
+                    splitEditorVM.increaseDenominator(
+                        itemId: item.id,
+                        totalCents: totalCents,
+                        tipAmount: tipAmount
+                    )
+                } label: {
+                    dottedPlusBadge()
+                }
+                .buttonStyle(.plain)
+            }
+
+            ForEach(0..<denom, id: \.self) { i in
+                let claimer = slots.indices.contains(i) ? slots[i] : nil
+                Button {
+                    splitEditorVM.togglePartitionShare(
+                        itemId: item.id,
+                        shareIndex: i,
+                        totalCents: totalCents,
+                        tipAmount: tipAmount
+                    )
+                } label: {
+                    if let pid = claimer {
+                        guestBadge(for: pid)
+                    } else {
+                        dottedSlotBadge()
                     }
                 }
-            }
-
-        case .custom(let claims):
-            HStack(spacing: 4) {
-                ForEach(claims, id: \.personID) { c in
-                    guestBadge(for: c.personID)
-                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -561,75 +521,66 @@ extension ConfirmationView {
         )
     }
 
-    /// Row-tap handler. Default model: row tap is the "natural next action"
-    /// for each partition state — claim/unclaim 1-way for the simple cases,
-    /// or fill the next empty slot for multi-way (so users don't have to
-    /// hunt for the hollow circles).
-    ///
-    ///   - `.unclaimed` → claim active full → `shares(1, [active])`
-    ///   - `.shares(1, [active])` → unclaim → `.unclaimed`
-    ///   - `.shares(1, [other])` → no-op (switch active to them to deselect)
-    ///   - `.shares(N>1, slots)`:
-    ///       - if there's an empty slot, fill it (auto-rotate via
-    ///         `togglePartitionShare`) — preserves denom
-    ///       - otherwise no-op
-    ///   - `.custom` → no-op (Phase 9)
+    /// Row-tap handler. Reads the normalized `(denom, slots)` so the same
+    /// logic works whether the item is `.unclaimed` or `.shares(N, ...)`:
+    ///   - Active has a slot → unclaim it.
+    ///   - Active doesn't → fill the next empty slot.
+    /// Tapping individual circles still gives finer control; the row tap is
+    /// just a quick alternative.
     func handleItemRowTap(item: LineItemForm) {
         let activeID = splitEditorVM.byItemSelectedGuestID
         guard splitEditorVM.activeGuests.contains(where: { $0.id == activeID }) else { return }
 
-        switch item.partition {
-        case .unclaimed:
-            splitEditorVM.setItemDenominator(
-                itemId: item.id, denominator: 1,
+        let (_, slots) = SplitEditorViewModel.normalizedPartition(item.partition)
+        if let myIdx = slots.firstIndex(of: activeID) {
+            splitEditorVM.togglePartitionShare(
+                itemId: item.id, shareIndex: myIdx,
                 totalCents: totalCents, tipAmount: tipAmount
             )
-        case .shares(let denom, let slots) where denom == 1:
-            if slots.first == activeID {
-                splitEditorVM.clearItemPartition(
-                    itemId: item.id,
-                    totalCents: totalCents, tipAmount: tipAmount
-                )
-            }
-        case .shares(_, let slots):
-            // Row tap = toggle the active guest's slot:
-            //   - active has a slot → unclaim it (so tapping row with only
-            //     one person left deselects them and the Split button
-            //     returns once all slots are empty)
-            //   - active doesn't have a slot → fill an empty one (claim)
-            // To fill other slots in a multi-way item without switching
-            // active, tap the `+` circle directly — auto-fills the next
-            // un-placed guest.
-            if let myIdx = slots.firstIndex(of: activeID) {
-                splitEditorVM.togglePartitionShare(
-                    itemId: item.id, shareIndex: myIdx,
-                    totalCents: totalCents, tipAmount: tipAmount
-                )
-            } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
-                splitEditorVM.togglePartitionShare(
-                    itemId: item.id, shareIndex: emptyIdx,
-                    totalCents: totalCents, tipAmount: tipAmount
-                )
-            }
-        case .custom:
-            break
+        } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
+            splitEditorVM.togglePartitionShare(
+                itemId: item.id, shareIndex: emptyIdx,
+                totalCents: totalCents, tipAmount: tipAmount
+            )
         }
     }
 
+    /// Empty slot — dashed border, no `+` icon. Signals "claim me" without
+    /// the pulse / `+` competing for attention next to the leading `+` button.
     @ViewBuilder
-    private func hollowCircleBadge() -> some View {
+    private func dottedSlotBadge() -> some View {
         Circle()
-            .fill(Color.gray.opacity(0.12))
+            .fill(Color.gray.opacity(0.06))
             .frame(width: 28, height: 28)
             .overlay(
                 Circle()
-                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+                    .strokeBorder(
+                        Color.secondary.opacity(0.55),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
+            )
+            .contentShape(Circle())
+    }
+
+    /// Leading `+` badge — dashed border with a `+` glyph inside. Grows the
+    /// item's split by one slot per tap; hidden when the denominator already
+    /// equals the active guest count.
+    @ViewBuilder
+    private func dottedPlusBadge() -> some View {
+        Circle()
+            .fill(Color.blue.opacity(0.08))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(
+                        Color.blue.opacity(0.65),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
             )
             .overlay(
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.secondary.opacity(0.7))
-                    .symbolEffect(.pulse, options: .repeating)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.blue.opacity(0.85))
             )
             .contentShape(Circle())
     }

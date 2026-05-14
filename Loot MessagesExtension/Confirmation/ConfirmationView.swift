@@ -107,8 +107,6 @@ struct ConfirmationView: View {
     @State private var billCardBounceToken: Int = 0
     @State var introAnimationDone: Bool = false
     @State var showEditReceipt: Bool = false
-    /// Item ID currently presenting the split-denominator picker, or nil if hidden.
-    @State var splitPickerItemId: UUID? = nil
     /// Non-obstructive toast shown after Save when there are still unclaimed
     /// item cents in non-claim byItems mode — surfaces the "remaining items
     /// split evenly" rule that the bill card will apply.

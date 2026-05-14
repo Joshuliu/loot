@@ -34,8 +34,6 @@ struct EditSplitView: View {
     @State private var editingGuestNameID: PersonID? = nil
     @FocusState private var guestNameFocusedID: PersonID?
     @State private var uidDisplayNames: [String: String] = [:]
-    /// Item ID currently presenting the split-denominator picker, or nil.
-    @State private var splitPickerItemId: UUID? = nil
 
     private var localUserId: String { KeychainHelper.getOrCreateUserId() }
 
@@ -447,75 +445,38 @@ struct EditSplitView: View {
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
-        .confirmationDialog(
-            "Split into how many?",
-            isPresented: Binding(
-                get: { splitPickerItemId != nil },
-                set: { presented in if !presented { splitPickerItemId = nil } }
-            ),
-            titleVisibility: .visible,
-            presenting: splitPickerItemId
-        ) { itemId in
-            let inlineMax = max(2, min(9, activeCount))
-            ForEach(2...max(inlineMax, 2), id: \.self) { n in
-                Button("Split \(n) ways") {
-                    setItemDenominator(itemId: itemId, denominator: n)
-                    splitPickerItemId = nil
-                }
-            }
-            Button("Cancel", role: .cancel) { splitPickerItemId = nil }
-        }
+        // Picker dialog removed — the inline `+` button grows the split
+        // one slot at a time, capped at the active guest count.
     }
 
     // MARK: - Partition widget (post-send edit)
 
     @ViewBuilder
     private func partitionRightWidget(for item: LineItemForm) -> some View {
-        switch item.partition {
-        case .unclaimed:
-            Button {
-                splitPickerItemId = item.id
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "rectangle.split.3x1")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Split")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.15))
-                .foregroundStyle(Color.blue)
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
+        let (denom, slots) = SplitEditorViewModel.normalizedPartition(item.partition)
 
-        case .shares(let denom, let slots):
-            if denom == 1, slots.indices.contains(0), let pid = slots[0] {
-                guestBadge(for: pid)
-            } else {
-                HStack(spacing: 4) {
-                    ForEach(0..<denom, id: \.self) { i in
-                        let claimer = slots.indices.contains(i) ? slots[i] : nil
-                        Button {
-                            togglePartitionShare(itemId: item.id, shareIndex: i)
-                        } label: {
-                            if let pid = claimer {
-                                guestBadge(for: pid)
-                            } else {
-                                hollowCircleBadge()
-                            }
-                        }
-                        .buttonStyle(.plain)
+        HStack(spacing: 4) {
+            if denom < activeCount {
+                Button {
+                    increaseDenominator(itemId: item.id)
+                } label: {
+                    dottedPlusBadge()
+                }
+                .buttonStyle(.plain)
+            }
+
+            ForEach(0..<denom, id: \.self) { i in
+                let claimer = slots.indices.contains(i) ? slots[i] : nil
+                Button {
+                    togglePartitionShare(itemId: item.id, shareIndex: i)
+                } label: {
+                    if let pid = claimer {
+                        guestBadge(for: pid)
+                    } else {
+                        dottedSlotBadge()
                     }
                 }
-            }
-
-        case .custom(let claims):
-            HStack(spacing: 4) {
-                ForEach(claims, id: \.personID) { c in
-                    guestBadge(for: c.personID)
-                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -531,19 +492,36 @@ struct EditSplitView: View {
     }
 
     @ViewBuilder
-    private func hollowCircleBadge() -> some View {
+    private func dottedSlotBadge() -> some View {
         Circle()
-            .fill(Color.gray.opacity(0.12))
+            .fill(Color.gray.opacity(0.06))
             .frame(width: 28, height: 28)
             .overlay(
                 Circle()
-                    .strokeBorder(Color.secondary.opacity(0.5), lineWidth: 1.5)
+                    .strokeBorder(
+                        Color.secondary.opacity(0.55),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
+            )
+            .contentShape(Circle())
+    }
+
+    @ViewBuilder
+    private func dottedPlusBadge() -> some View {
+        Circle()
+            .fill(Color.blue.opacity(0.08))
+            .frame(width: 28, height: 28)
+            .overlay(
+                Circle()
+                    .strokeBorder(
+                        Color.blue.opacity(0.65),
+                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
+                    )
             )
             .overlay(
                 Image(systemName: "plus")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(Color.secondary.opacity(0.7))
-                    .symbolEffect(.pulse, options: .repeating)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.blue.opacity(0.85))
             )
             .contentShape(Circle())
     }
@@ -561,47 +539,37 @@ struct EditSplitView: View {
         guard activeGuests.contains(where: { $0.id == activeID }) else { return }
         guard let idx = byItemItems.firstIndex(where: { $0.id == item.id }) else { return }
 
-        switch byItemItems[idx].partition {
-        case .unclaimed:
-            byItemItems[idx].partition = .shares(denominator: 1, slots: [activeID])
-        case .shares(let denom, let slots) where denom == 1:
-            if slots.first == activeID {
-                byItemItems[idx].partition = .unclaimed
-            }
-        case .shares(_, let slots):
-            if let myIdx = slots.firstIndex(of: activeID) {
-                togglePartitionShare(itemId: item.id, shareIndex: myIdx)
-            } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
-                togglePartitionShare(itemId: item.id, shareIndex: emptyIdx)
-            }
-        case .custom:
-            break
+        let (_, slots) = SplitEditorViewModel.normalizedPartition(byItemItems[idx].partition)
+        if let myIdx = slots.firstIndex(of: activeID) {
+            togglePartitionShare(itemId: item.id, shareIndex: myIdx)
+        } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
+            togglePartitionShare(itemId: item.id, shareIndex: emptyIdx)
         }
     }
 
-    /// Picker-confirmed denominator — sets shares(N, [active, nil, …]).
-    private func setItemDenominator(itemId: UUID, denominator: Int) {
+    /// Grows the item's partition by one slot — capped at activeCount.
+    private func increaseDenominator(itemId: UUID) {
         guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
-        guard denominator >= 1 else { return }
-        let activeID = byItemSelectedGuestID
-        guard activeGuests.contains(where: { $0.id == activeID }) else { return }
-
-        var slots: [PersonID?] = Array(repeating: nil, count: denominator)
-        slots[0] = activeID
-        byItemItems[idx].partition = .shares(denominator: denominator, slots: slots)
+        let (currentDenom, currentSlots) = SplitEditorViewModel.normalizedPartition(byItemItems[idx].partition)
+        guard currentDenom < activeCount else { return }
+        byItemItems[idx].partition = .shares(
+            denominator: currentDenom + 1,
+            slots: currentSlots + [nil]
+        )
     }
 
-    /// Per-circle toggle. Tap a filled slot to unclaim it; tap an empty slot
-    /// to claim for active (auto-rotating to the next un-placed active guest
-    /// if active is already in another slot — same model as compose).
+    /// Per-circle toggle. Treats `.unclaimed` as `shares(1, [nil])` so taps
+    /// work on every partition state. Tap filled → unclaim; tap empty →
+    /// claim for active (auto-rotate to next un-placed if active is placed).
     private func togglePartitionShare(itemId: UUID, shareIndex: Int) {
         guard let idx = byItemItems.firstIndex(where: { $0.id == itemId }) else { return }
-        guard case .shares(let denom, var slots) = byItemItems[idx].partition else { return }
-        guard slots.indices.contains(shareIndex) else { return }
+        let (denom, originalSlots) = SplitEditorViewModel.normalizedPartition(byItemItems[idx].partition)
+        guard originalSlots.indices.contains(shareIndex) else { return }
 
         let activeID = byItemSelectedGuestID
         guard activeGuests.contains(where: { $0.id == activeID }) else { return }
 
+        var slots = originalSlots
         if slots[shareIndex] != nil {
             slots[shareIndex] = nil
         } else {
