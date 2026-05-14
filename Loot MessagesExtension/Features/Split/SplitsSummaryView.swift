@@ -122,7 +122,14 @@ struct SplitsSummaryView: View {
     }
 
     private var hasClaimableSlots: Bool {
-        includedIndices.contains { split.g.indices.contains($0) && split.g[$0].uid == nil }
+        // Tap-to-Claim bills start with everyone at $0 owed, so the regular
+        // `includedIndices` filter (which requires owed > 0) finds nothing.
+        // Treat any slot without a uid as claimable in that mode — recipients
+        // pick up an owed balance only after they claim an item.
+        if split.cl == true {
+            return split.g.contains { $0.uid == nil }
+        }
+        return includedIndices.contains { split.g.indices.contains($0) && split.g[$0].uid == nil }
     }
 
     private func addCurrentUserToIgnored() {
@@ -764,6 +771,15 @@ struct SplitsSummaryView: View {
     /// the user in the choosing state. Skipped when reconciling from a live
     /// Firestore update so a remote change doesn't trigger an auto-claim.
     private func attemptAutoJoinOrChoose(shouldAutoJoin: Bool) {
+        // Tap-to-Claim bills implicitly auto-bind the recipient to a free
+        // slot on view load — they claim items directly, no opt-in/out
+        // prompt. Skips the `shouldAutoJoin` gate (which exists for the
+        // listener-fed reconcile path) since cl=true always wants auto-bind.
+        if split.cl == true, let i = split.g.firstIndex(where: { $0.uid == nil }) {
+            autoClaimSlotAfterViewLoad(at: i)
+            return
+        }
+
         guard shouldAutoJoin else {
             billState = .choosing
             return
