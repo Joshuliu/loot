@@ -562,9 +562,10 @@ extension ConfirmationView {
             .contentShape(Circle())
     }
 
-    /// Leading `+` badge — dashed border with a `+` glyph inside. Grows the
-    /// item's split by one slot per tap; hidden when the denominator already
-    /// equals the active guest count.
+    /// Leading `+` badge — solid blue border with a `+` glyph inside. Grows
+    /// the item's split by one slot per tap; hidden when the denominator
+    /// already equals the active guest count. Solid border distinguishes
+    /// the action from the dashed "empty slot" indicators.
     @ViewBuilder
     private func dottedPlusBadge() -> some View {
         Circle()
@@ -572,10 +573,7 @@ extension ConfirmationView {
             .frame(width: 28, height: 28)
             .overlay(
                 Circle()
-                    .strokeBorder(
-                        Color.blue.opacity(0.65),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
-                    )
+                    .strokeBorder(Color.blue.opacity(0.65), lineWidth: 1.5)
             )
             .overlay(
                 Image(systemName: "plus")
