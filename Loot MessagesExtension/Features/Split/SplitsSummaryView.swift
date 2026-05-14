@@ -835,14 +835,16 @@ struct SplitsSummaryView: View {
         if let receipt {
             VStack(alignment: .leading, spacing: 14) {
                 if isClaimModeForMe {
-                    HStack(spacing: 6) {
+                    HStack(alignment: .top, spacing: 6) {
                         Image(systemName: "hand.tap")
                             .font(.system(size: 13))
                             .foregroundStyle(.blue)
-                        Text("Tap to claim your items")
-                            .font(.system(size: 14, weight: .medium))
+                        Text("Tap dotted circles to claim your shares. Items claimed by someone else are locked — only the original splitter can change how they're divided.")
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(.primary)
-                        Spacer()
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 16)
                 }
@@ -1532,15 +1534,57 @@ struct SplitsSummaryView: View {
 
     @ViewBuilder
     private func itemLabelBlock(item: ReceiptDisplay.Item) -> some View {
+        let locked = isItemLockedForLocalUser(itemId: item.id)
         VStack(alignment: .leading, spacing: 2) {
-            Text(item.label)
-                .font(.system(size: 16, weight: .semibold))
-                .lineLimit(1)
-                .foregroundStyle(.primary)
+            HStack(spacing: 6) {
+                if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+                if let frac = localUserFractionLabel(for: item.id) {
+                    Text(frac)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.blue)
+                }
+                Text(item.label)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(locked ? .secondary : .primary)
+            }
             Text(ReceiptDisplay.money(item.priceCents))
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(.secondary)
         }
+        .opacity(locked ? 0.75 : 1.0)
+    }
+
+    /// "M/N" fraction prefix shown before the item label when the local user
+    /// owns a partial share of a multi-way split (e.g. "1/2 Burger" when Me
+    /// has 1 of 2 shares). Returns nil for full claims, items the local user
+    /// hasn't touched, and 1-way items — no fraction is informative there.
+    private func localUserFractionLabel(for itemId: String) -> String? {
+        guard let wireItem = items.first(where: { $0.id == itemId }) else { return nil }
+        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
+        let myShares = slots.filter { $0 == myCanonicalPID }.count
+        guard myShares > 0, myShares < denom else { return nil }
+        return "\(myShares)/\(denom)"
+    }
+
+    /// True when the local user can't meaningfully interact with this item:
+    /// someone else has claimed at least one share, the local user has
+    /// none, AND there are no empty slots left to fill. Drives the lock
+    /// icon + dimmed label in `itemLabelBlock`.
+    private func isItemLockedForLocalUser(itemId: String) -> Bool {
+        guard isClaimModeForMe else { return false }
+        guard let wireItem = items.first(where: { $0.id == itemId }) else { return false }
+        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let (_, slots) = SplitEditorViewModel.normalizedPartition(partition)
+        let claimedPIDs = Set(slots.compactMap { $0 })
+        guard !claimedPIDs.isEmpty else { return false }
+        if claimedPIDs.contains(myCanonicalPID) { return false }
+        return !slots.contains(nil)
     }
 
     /// Picks between the existing read-only assignee badges and the
@@ -1610,10 +1654,17 @@ struct SplitsSummaryView: View {
         let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
         let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
 
+        let myPID = myCanonicalPID
+
         HStack(spacing: 4) {
-            // Leading `+` to grow the split. Recipient can iteratively add
-            // slots up to the guest count; sender's read-only view hides it.
-            if isClaimModeForMe && denom < split.g.count {
+            // Leading `+` to grow the split. The structure of an item is
+            // owned by whoever has already claimed a share — outsiders can
+            // fill open slots but can't change the denominator. So show `+`
+            // only when nobody has claimed yet (the item is still up for
+            // grabs) OR the local user is already one of the claimers.
+            if isClaimModeForMe
+                && denom < split.g.count
+                && localUserCanChangeStructure(slots: slots) {
                 Button {
                     increaseClaimDenominator(itemId: wireItem.id)
                 } label: {
@@ -1625,16 +1676,25 @@ struct SplitsSummaryView: View {
             ForEach(0..<denom, id: \.self) { i in
                 let claimer = slots.indices.contains(i) ? slots[i] : nil
                 if isClaimModeForMe {
-                    Button {
-                        handleCircleTap(itemId: wireItem.id, shareIndex: i)
-                    } label: {
-                        if let pid = claimer {
-                            claimerBadge(for: pid)
-                        } else {
-                            dottedClaimSlotBadge()
+                    // Tappable when: the slot is empty (anyone can claim it)
+                    // OR the slot belongs to the local user (they can
+                    // unclaim themselves). Other people's filled slots are
+                    // static — only the owner can undo their own claim.
+                    let isInteractive = (claimer == nil) || (claimer == myPID)
+                    if isInteractive {
+                        Button {
+                            handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                        } label: {
+                            if let pid = claimer {
+                                claimerBadge(for: pid)
+                            } else {
+                                dottedClaimSlotBadge()
+                            }
                         }
+                        .buttonStyle(.plain)
+                    } else if let pid = claimer {
+                        claimerBadge(for: pid)
                     }
-                    .buttonStyle(.plain)
                 } else {
                     if let pid = claimer {
                         claimerBadge(for: pid)
@@ -1646,18 +1706,51 @@ struct SplitsSummaryView: View {
         }
     }
 
+    /// Returns true when the local user is allowed to grow the item's
+    /// structure (press `+`). Only the structure owner — the person who
+    /// first established the split — can change the denominator. Outsiders
+    /// (and even later joiners filling empty slots) can't widen or shrink
+    /// the pie behind the original splitter's back.
+    ///
+    /// Structure owner is computed as the earliest-indexed non-nil slot's
+    /// claimer. `+` appends to the end and auto-claim fills the lowest nil
+    /// slot, so the original splitter stays in slot 0 unless they
+    /// explicitly unclaim. If they do unclaim, ownership naturally
+    /// transfers to whoever's left in the earliest filled slot.
+    private func localUserCanChangeStructure(slots: [PersonID?]) -> Bool {
+        let firstClaimer = slots.compactMap { $0 }.first
+        guard let owner = firstClaimer else { return true }
+        return owner == myCanonicalPID
+    }
+
     /// Grows the claim widget's denominator by one. Recipient-side analogue
     /// of `SplitEditorViewModel.increaseDenominator`. Capped at `split.g.count`
     /// so the `+` can never exceed the chat's guest list.
+    ///
+    /// Auto-joins the local user: pressing `+` is the act of splitting, and
+    /// the splitter is implicitly part of their own split. If the user
+    /// already has a share, the new slot is left open for someone else.
     private func increaseClaimDenominator(itemId: String) {
         guard ensureMySlotBound(),
               let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
         let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
         let (currentDenom, currentSlots) = SplitEditorViewModel.normalizedPartition(partition)
         guard currentDenom < split.g.count else { return }
+
+        let myPID = myCanonicalPID
+        var newSlots = currentSlots
+        if !newSlots.contains(myPID), let nilIdx = newSlots.firstIndex(where: { $0 == nil }) {
+            // Take the lowest empty slot so the splitter lands in slot 0 of
+            // a fresh structure — keeps structure-owner stable as `+` grows.
+            newSlots[nilIdx] = myPID
+            newSlots.append(nil)
+        } else {
+            newSlots.append(nil)
+        }
+
         let newPartition = ItemPartition.shares(
             denominator: currentDenom + 1,
-            slots: currentSlots + [nil]
+            slots: newSlots
         )
         applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
     }
@@ -1782,7 +1875,11 @@ struct SplitsSummaryView: View {
 
         let myPID = myCanonicalPID
         var slots = originalSlots
-        if slots[shareIndex] != nil {
+        if let existing = slots[shareIndex] {
+            // Only the slot's owner can unclaim it — outsiders can't undo
+            // someone else's claim. Safety net for callers that bypass the
+            // view's interactivity guard.
+            guard existing == myPID else { return }
             slots[shareIndex] = nil
         } else {
             // Claim, sender-locked: only the local user can claim, no
