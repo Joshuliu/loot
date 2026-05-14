@@ -1630,16 +1630,17 @@ struct SplitsSummaryView: View {
         let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
         let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
 
+        let myPID = myCanonicalPID
+
         HStack(spacing: 4) {
-            // Leading `+` to grow the split. Recipient can iteratively add
-            // slots up to the guest count; sender's read-only view hides it.
-            // Also hide once the local user has claimed at least one share
-            // AND there's ≤ 1 unbound guest left — adding a slot wouldn't
-            // give it to a meaningful claimer (sender doesn't claim via this
-            // flow), and claimed items are treated as effectively final.
+            // Leading `+` to grow the split. The structure of an item is
+            // owned by whoever has already claimed a share — outsiders can
+            // fill open slots but can't change the denominator. So show `+`
+            // only when nobody has claimed yet (the item is still up for
+            // grabs) OR the local user is already one of the claimers.
             if isClaimModeForMe
                 && denom < split.g.count
-                && !plusWouldBeWastedFinalClaim(denom: denom, slots: slots) {
+                && localUserCanChangeStructure(slots: slots) {
                 Button {
                     increaseClaimDenominator(itemId: wireItem.id)
                 } label: {
@@ -1651,16 +1652,25 @@ struct SplitsSummaryView: View {
             ForEach(0..<denom, id: \.self) { i in
                 let claimer = slots.indices.contains(i) ? slots[i] : nil
                 if isClaimModeForMe {
-                    Button {
-                        handleCircleTap(itemId: wireItem.id, shareIndex: i)
-                    } label: {
-                        if let pid = claimer {
-                            claimerBadge(for: pid)
-                        } else {
-                            dottedClaimSlotBadge()
+                    // Tappable when: the slot is empty (anyone can claim it)
+                    // OR the slot belongs to the local user (they can
+                    // unclaim themselves). Other people's filled slots are
+                    // static — only the owner can undo their own claim.
+                    let isInteractive = (claimer == nil) || (claimer == myPID)
+                    if isInteractive {
+                        Button {
+                            handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                        } label: {
+                            if let pid = claimer {
+                                claimerBadge(for: pid)
+                            } else {
+                                dottedClaimSlotBadge()
+                            }
                         }
+                        .buttonStyle(.plain)
+                    } else if let pid = claimer {
+                        claimerBadge(for: pid)
                     }
-                    .buttonStyle(.plain)
                 } else {
                     if let pid = claimer {
                         claimerBadge(for: pid)
@@ -1672,22 +1682,15 @@ struct SplitsSummaryView: View {
         }
     }
 
-    /// Returns true when offering the `+` would be wasteful: the local user
-    /// has already claimed at least one share AND there's at most one active
-    /// guest who hasn't claimed anything. Reasoning: claimed items are
-    /// effectively final, and the sender doesn't claim via this flow, so a
-    /// new slot would just sit unbound forever. Two-person bills hit this
-    /// fast — the sender is the only "other" guest and they never claim, so
-    /// once the recipient has a share, no future claim is plausible.
-    private func plusWouldBeWastedFinalClaim(denom: Int, slots: [PersonID?]) -> Bool {
-        let myPID = myCanonicalPID
-        guard slots.contains(myPID) else { return false }
+    /// Returns true when the local user is allowed to grow the item's
+    /// structure (press `+`). They can if the item is fully unclaimed (no
+    /// shares assigned yet) or if they're already one of the claimers.
+    /// Outsiders looking at an item someone else has claimed are locked
+    /// out — they can only fill empty slots within the existing denom.
+    private func localUserCanChangeStructure(slots: [PersonID?]) -> Bool {
         let claimedPIDs = Set(slots.compactMap { $0 })
-        let unboundActive = split.g.indices.reduce(0) { acc, idx in
-            let pid = split.g.personID(forSlot: idx)
-            return claimedPIDs.contains(pid) ? acc : acc + 1
-        }
-        return unboundActive <= 1
+        if claimedPIDs.isEmpty { return true }
+        return claimedPIDs.contains(myCanonicalPID)
     }
 
     /// Grows the claim widget's denominator by one. Recipient-side analogue
@@ -1826,7 +1829,11 @@ struct SplitsSummaryView: View {
 
         let myPID = myCanonicalPID
         var slots = originalSlots
-        if slots[shareIndex] != nil {
+        if let existing = slots[shareIndex] {
+            // Only the slot's owner can unclaim it — outsiders can't undo
+            // someone else's claim. Safety net for callers that bypass the
+            // view's interactivity guard.
+            guard existing == myPID else { return }
             slots[shareIndex] = nil
         } else {
             // Claim, sender-locked: only the local user can claim, no
