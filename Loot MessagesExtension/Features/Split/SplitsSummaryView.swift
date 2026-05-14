@@ -1663,9 +1663,15 @@ struct SplitsSummaryView: View {
             // fill open slots but can't change the denominator. So show `+`
             // only when nobody has claimed yet (the item is still up for
             // grabs) OR the local user is already one of the claimers.
+            //
+            // Also hide when the local user is the sole recipient in the
+            // bill (2-person bills, recipient viewing): the only other
+            // guest is the sender, who can't claim via this flow, so any
+            // new slot would sit unbound forever. No one to split with.
             if isClaimModeForMe
                 && denom < split.g.count
-                && localUserCanChangeStructure(slots: slots) {
+                && localUserCanChangeStructure(slots: slots)
+                && hasAnotherPotentialClaimer {
                 Button {
                     increaseClaimDenominator(itemId: wireItem.id)
                 } label: {
@@ -1705,6 +1711,25 @@ struct SplitsSummaryView: View {
                 }
             }
         }
+    }
+
+    /// True when there's at least one guest besides the local user and the
+    /// sender — meaning a new partition slot could plausibly be filled by
+    /// someone else. False in the common 2-person case (just sender + me),
+    /// where pressing `+` would only create an unfillable slot since the
+    /// sender doesn't claim via this flow.
+    private var hasAnotherPotentialClaimer: Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let senderUid = messageReceiptVM.openedMessagePayload?.su
+        for g in split.g {
+            // Anonymous slot (uid == nil) counts: it represents a potential
+            // future claimer who hasn't bound yet.
+            guard let uid = g.uid else { return true }
+            if uid == myUid { continue }
+            if uid == senderUid { continue }
+            return true
+        }
+        return false
     }
 
     /// Returns true when the local user is allowed to grow the item's
