@@ -67,10 +67,13 @@ struct BillCardView: View {
             }
             .frame(width: 90, alignment: .leading)
 
-            // Right side - Ring
+            // Right side - Ring. participantCount drives the "Split N ways"
+            // label in the ring center; uses the full slot count so byItems
+            // compose still reads correctly when only some guests have
+            // claimed something (and others sit at $0).
             if let owedAmounts = owedAmounts, let totalCents = totalCents, !owedAmounts.isEmpty {
                 SplitRingView(
-                    participantCount: owedAmounts.filter { $0 != 0}.count,
+                    participantCount: owedAmounts.count,
                     owedAmounts: owedAmounts,
                     totalCents: totalCents,
                     displayAmount: displayAmount,
