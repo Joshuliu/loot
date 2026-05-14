@@ -1533,14 +1533,34 @@ struct SplitsSummaryView: View {
     @ViewBuilder
     private func itemLabelBlock(item: ReceiptDisplay.Item) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(item.label)
-                .font(.system(size: 16, weight: .semibold))
-                .lineLimit(1)
-                .foregroundStyle(.primary)
+            HStack(spacing: 6) {
+                if let frac = localUserFractionLabel(for: item.id) {
+                    Text(frac)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.blue)
+                }
+                Text(item.label)
+                    .font(.system(size: 16, weight: .semibold))
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+            }
             Text(ReceiptDisplay.money(item.priceCents))
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// "M/N" fraction prefix shown before the item label when the local user
+    /// owns a partial share of a multi-way split (e.g. "1/2 Burger" when Me
+    /// has 1 of 2 shares). Returns nil for full claims, items the local user
+    /// hasn't touched, and 1-way items — no fraction is informative there.
+    private func localUserFractionLabel(for itemId: String) -> String? {
+        guard let wireItem = items.first(where: { $0.id == itemId }) else { return nil }
+        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
+        let myShares = slots.filter { $0 == myCanonicalPID }.count
+        guard myShares > 0, myShares < denom else { return nil }
+        return "\(myShares)/\(denom)"
     }
 
     /// Picks between the existing read-only assignee badges and the
