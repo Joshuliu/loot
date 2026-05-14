@@ -259,7 +259,13 @@ struct SplitRingView: View {
                     }
                 }
 
-                // Highlighted slot endpoint dots
+                // Highlighted slot endpoint dots — visible markers for where
+                // the viewer's slice starts and ends. The start dot is
+                // suppressed when the arc starts at the top of the ring
+                // (every prior slot has $0), so a viewer who's the only
+                // claimer doesn't see a misleading dot at 12 o'clock — they
+                // just see the arc + end dot where their portion ends.
+                // The end dot is similarly suppressed at full-circle completion.
                 if let hl = highlightedSlot, owedAmounts.indices.contains(hl) {
                     let start = Double(sumBefore(hl)) / Double(safeTotal)
                     let end = Double(sumThrough(hl)) / Double(safeTotal)
@@ -269,22 +275,26 @@ struct SplitRingView: View {
                         let dotSize: CGFloat = pulsePhase ? lineW : lineW + 2
                         let startAng = -(.pi / 2) + (start * 2 * .pi) + nudge
                         let endAng = -(.pi / 2) + (end * 2 * .pi) - nudge
-                        Circle()
-                            .fill(BadgeColors.color(for: hl))
-                            .colorMultiply(dotTint)
-                            .frame(width: dotSize, height: dotSize)
-                            .position(
-                                x: center.x + handleRadius * cos(startAng),
-                                y: center.y + handleRadius * sin(startAng)
-                            )
-                        Circle()
-                            .fill(BadgeColors.color(for: hl))
-                            .colorMultiply(dotTint)
-                            .frame(width: dotSize, height: dotSize)
-                            .position(
-                                x: center.x + handleRadius * cos(endAng),
-                                y: center.y + handleRadius * sin(endAng)
-                            )
+                        if start > 0 {
+                            Circle()
+                                .fill(BadgeColors.color(for: hl))
+                                .colorMultiply(dotTint)
+                                .frame(width: dotSize, height: dotSize)
+                                .position(
+                                    x: center.x + handleRadius * cos(startAng),
+                                    y: center.y + handleRadius * sin(startAng)
+                                )
+                        }
+                        if end < 1 {
+                            Circle()
+                                .fill(BadgeColors.color(for: hl))
+                                .colorMultiply(dotTint)
+                                .frame(width: dotSize, height: dotSize)
+                                .position(
+                                    x: center.x + handleRadius * cos(endAng),
+                                    y: center.y + handleRadius * sin(endAng)
+                                )
+                        }
                     }
                 }
 
