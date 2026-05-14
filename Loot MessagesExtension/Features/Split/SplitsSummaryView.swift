@@ -1633,7 +1633,13 @@ struct SplitsSummaryView: View {
         HStack(spacing: 4) {
             // Leading `+` to grow the split. Recipient can iteratively add
             // slots up to the guest count; sender's read-only view hides it.
-            if isClaimModeForMe && denom < split.g.count {
+            // Also hide once the local user has claimed at least one share
+            // AND there's ≤ 1 unbound guest left — adding a slot wouldn't
+            // give it to a meaningful claimer (sender doesn't claim via this
+            // flow), and claimed items are treated as effectively final.
+            if isClaimModeForMe
+                && denom < split.g.count
+                && !plusWouldBeWastedFinalClaim(denom: denom, slots: slots) {
                 Button {
                     increaseClaimDenominator(itemId: wireItem.id)
                 } label: {
@@ -1664,6 +1670,24 @@ struct SplitsSummaryView: View {
                 }
             }
         }
+    }
+
+    /// Returns true when offering the `+` would be wasteful: the local user
+    /// has already claimed at least one share AND there's at most one active
+    /// guest who hasn't claimed anything. Reasoning: claimed items are
+    /// effectively final, and the sender doesn't claim via this flow, so a
+    /// new slot would just sit unbound forever. Two-person bills hit this
+    /// fast — the sender is the only "other" guest and they never claim, so
+    /// once the recipient has a share, no future claim is plausible.
+    private func plusWouldBeWastedFinalClaim(denom: Int, slots: [PersonID?]) -> Bool {
+        let myPID = myCanonicalPID
+        guard slots.contains(myPID) else { return false }
+        let claimedPIDs = Set(slots.compactMap { $0 })
+        let unboundActive = split.g.indices.reduce(0) { acc, idx in
+            let pid = split.g.personID(forSlot: idx)
+            return claimedPIDs.contains(pid) ? acc : acc + 1
+        }
+        return unboundActive <= 1
     }
 
     /// Grows the claim widget's denominator by one. Recipient-side analogue
