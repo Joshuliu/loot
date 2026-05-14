@@ -1669,10 +1669,7 @@ struct SplitsSummaryView: View {
             .frame(width: 28, height: 28)
             .overlay(
                 Circle()
-                    .strokeBorder(
-                        Color.blue.opacity(0.65),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
-                    )
+                    .strokeBorder(Color.blue.opacity(0.65), lineWidth: 1.5)
             )
             .overlay(
                 Image(systemName: "plus")
