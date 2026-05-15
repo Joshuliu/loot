@@ -129,12 +129,26 @@ enum SplitMath {
             }
 
             // Non-claim mode anchors extras on totalCents so the subtotal gap
-            // is absorbed; claim mode uses the explicit breakdown so the
-            // unattributed portion truly stays unowed.
+            // is absorbed; claim mode scales overhead to the claimed fraction
+            // of the receipt so unclaimed items' tax/tip stays unowed.
             let itemsTotal = subtotals.reduce(0, +)
-            let extras: Int = claimMode
-                ? max(0, feesCents - discountCents + taxCents + tipCents)
-                : max(0, totalCents - itemsTotal)
+            let extras: Int
+            if claimMode {
+                let fullOverhead = max(0, feesCents - discountCents + taxCents + tipCents)
+                let fullItemSubtotal = items.reduce(0) { $0 + max(0, $1.priceCents) }
+                // Each claimer bears overhead proportional to their claimed
+                // items vs. the WHOLE receipt subtotal — not vs. the
+                // claimed-so-far total. Allocating fullOverhead over only the
+                // claimed subtotal made one claimer's tax/tip depend on how
+                // much everyone else had claimed (bug: $40.51 vs $24.70).
+                extras = fullItemSubtotal > 0
+                    ? min(fullOverhead,
+                          Int((Double(fullOverhead) * Double(itemsTotal)
+                               / Double(fullItemSubtotal)).rounded()))
+                    : 0
+            } else {
+                extras = max(0, totalCents - itemsTotal)
+            }
             let extrasAlloc = allocateProportional(total: extras, base: subtotals, included: included)
 
             for idx in included {
