@@ -887,23 +887,39 @@ struct SplitsSummaryView: View {
                         .padding(.horizontal, 16)
 
                     if isClaimModeForMe {
-                        Button {
-                            commitClaimChanges()
-                        } label: {
-                            Label(
-                                hasUnsavedClaims ? "Save Claims" : "All Claims Saved",
-                                systemImage: hasUnsavedClaims ? "checkmark.circle.fill" : "checkmark.circle"
-                            )
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(hasUnsavedClaims ? Color.white : Color.secondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(hasUnsavedClaims ? Color.blue : Color(.tertiarySystemFill))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                        if claimWidgetLocked {
+                            Button {
+                                onClose?()
+                            } label: {
+                                Label("Edit your splits", systemImage: "pencil")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color.blue)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.tertiarySystemFill))
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 16)
+                        } else {
+                            Button {
+                                commitClaimChanges()
+                            } label: {
+                                Label(
+                                    hasUnsavedClaims ? "Save Claims" : "All Claims Saved",
+                                    systemImage: hasUnsavedClaims ? "checkmark.circle.fill" : "checkmark.circle"
+                                )
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(hasUnsavedClaims ? Color.white : Color.secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(hasUnsavedClaims ? Color.blue : Color(.tertiarySystemFill))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(!hasUnsavedClaims)
+                            .padding(.horizontal, 16)
                         }
-                        .buttonStyle(.plain)
-                        .disabled(!hasUnsavedClaims)
-                        .padding(.horizontal, 16)
                     }
 
                     VStack(spacing: 10) {
@@ -1638,6 +1654,28 @@ struct SplitsSummaryView: View {
         return true
     }
 
+    /// True once the local user owns at least one claimed share anywhere
+    /// in the bill's current item partitions.
+    private var localUserHasClaimedShare: Bool {
+        let myPID = myCanonicalPID
+        let slotPIDs = canonicalSlotPIDs
+        return items.contains { item in
+            let p = item.itemPartition(slotPersonIDs: slotPIDs)
+            let (_, slots) = SplitEditorViewModel.normalizedPartition(p)
+            return slots.contains(myPID)
+        }
+    }
+
+    /// The recipient's claim is committed and frozen. The recipient gets
+    /// one open editing session; once they Save, the split locks so a
+    /// later tap can't re-cut a bill others may have already paid against
+    /// (the decided "first claimer owns structure, locked after first
+    /// save" model). Drives hiding `+`/empty slots and the
+    /// "Edit your splits" action button.
+    private var claimWidgetLocked: Bool {
+        isClaimModeForMe && localUserHasClaimedShare && !hasUnsavedClaims
+    }
+
     /// Wire-canonical PersonID list, one per slot — uid for identified
     /// guests, `"slot-N"` for anonymous ones. Used to translate between
     /// item partitions (PersonID-keyed) and the wire format.
@@ -1669,6 +1707,7 @@ struct SplitsSummaryView: View {
             // guest is the sender, who can't claim via this flow, so any
             // new slot would sit unbound forever. No one to split with.
             if isClaimModeForMe
+                && !claimWidgetLocked
                 && denom < split.g.count
                 && localUserCanChangeStructure(slots: slots)
                 && hasAnotherPotentialClaimer {
@@ -1680,33 +1719,42 @@ struct SplitsSummaryView: View {
                 .buttonStyle(.plain)
             }
 
-            ForEach(0..<denom, id: \.self) { i in
-                let claimer = slots.indices.contains(i) ? slots[i] : nil
-                if isClaimModeForMe {
-                    // Tappable when: the slot is empty (anyone can claim it)
-                    // OR the slot belongs to the local user (they can
-                    // unclaim themselves). Other people's filled slots are
-                    // static — only the owner can undo their own claim.
-                    let isInteractive = (claimer == nil) || (claimer == myPID)
-                    if isInteractive {
-                        Button {
-                            handleCircleTap(itemId: wireItem.id, shareIndex: i)
-                        } label: {
-                            if let pid = claimer {
-                                claimerBadge(for: pid)
-                            } else {
-                                dottedClaimSlotBadge()
+            if claimWidgetLocked {
+                // First claim committed — split is frozen. Show only the
+                // filled claimer badges: no `+`, no empty dotted slots to
+                // re-cut a bill others may have already paid against.
+                ForEach(Array(slots.compactMap { $0 }.enumerated()), id: \.offset) { _, pid in
+                    claimerBadge(for: pid)
+                }
+            } else {
+                ForEach(0..<denom, id: \.self) { i in
+                    let claimer = slots.indices.contains(i) ? slots[i] : nil
+                    if isClaimModeForMe {
+                        // Tappable when: the slot is empty (anyone can claim it)
+                        // OR the slot belongs to the local user (they can
+                        // unclaim themselves). Other people's filled slots are
+                        // static — only the owner can undo their own claim.
+                        let isInteractive = (claimer == nil) || (claimer == myPID)
+                        if isInteractive {
+                            Button {
+                                handleCircleTap(itemId: wireItem.id, shareIndex: i)
+                            } label: {
+                                if let pid = claimer {
+                                    claimerBadge(for: pid)
+                                } else {
+                                    dottedClaimSlotBadge()
+                                }
                             }
+                            .buttonStyle(.plain)
+                        } else if let pid = claimer {
+                            claimerBadge(for: pid)
                         }
-                        .buttonStyle(.plain)
-                    } else if let pid = claimer {
-                        claimerBadge(for: pid)
-                    }
-                } else {
-                    if let pid = claimer {
-                        claimerBadge(for: pid)
                     } else {
-                        staticHollowCircle()
+                        if let pid = claimer {
+                            claimerBadge(for: pid)
+                        } else {
+                            staticHollowCircle()
+                        }
                     }
                 }
             }
