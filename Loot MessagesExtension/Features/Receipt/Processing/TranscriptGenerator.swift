@@ -17,6 +17,8 @@ import CoreImage
 /// unnecessary for transcript-only output.
 enum TranscriptGenerator {
 
+    private static let ciContext = CIContext(options: [.useSoftwareRenderer: false])
+
     // Debug: chunk images from the most recent generate() call (native resolution, pre-upscale).
     // Populated always; only transferred to uiModel when DEBUG_SHOW_CHUNKS is true.
     static var lastDebugChunks: [UIImage] = []
@@ -41,18 +43,27 @@ enum TranscriptGenerator {
         let textBounds = await detectTextBoundingBox(in: image)
         let tightImage = cropToNormalizedRect(image, rect: textBounds)
 
-        // Step 2: Straighten text skew on the already-cropped image.
+        // Step 2: Straighten text skew on the already-cropped image. Tries
+        // rectangle-edge detection (more stable) first, falling back to text-angle.
         let correctedImage = await straightenImage(in: tightImage)
 
-        // Step 3: Detect all recognized text observations on the
-        // full corrected image (dual-pass for best coverage).
-        let observations = try await detectTextBlocksDualPass(in: correctedImage)
+        // Step 3a: Apply OCR enhancement (grayscale luminance normalization +
+        // contrast + sharpening) for the full-image detection pass.
+        let enhancedImage = enhanceForOCR(correctedImage)
+
+        // Step 3b: Detect all recognized text observations on the
+        // enhanced image (dual-pass for best coverage).
+        let observations = try await detectTextBlocksDualPass(in: enhancedImage)
 
         // Step 4: Group observations into lines ordered top-to-bottom.
         // Each line records its vertical extent for chunk splitting.
         let lines = buildTranscriptLines(from: observations)
 
-        // Step 5–7: Split, crop, OCR chunks, then merge.
+        // Step 5–7: Split, crop, OCR chunks, then merge. Pass `correctedImage`
+        // (NOT `enhancedImage`) so each chunk is enhanced exactly once inside
+        // prepareChunkForOCR. Double-enhancement corrupts Vision bounding boxes
+        // and collapses the transcript into 2–3 mega-lines instead of one line
+        // per receipt row.
         let chunkTranscripts = await analyzeChunks(in: correctedImage, from: lines)
         let joined = chunkTranscripts
             .filter { !$0.isEmpty }
@@ -138,24 +149,95 @@ enum TranscriptGenerator {
 
     // MARK: - Image straightening
 
-    /// Detects text skew via `VNDetectTextRectanglesRequest` (which returns corner
-    /// points) and rotates the image to compensate. Returns the original image if
-    /// no significant tilt is found.
+    /// Detects receipt tilt and rotates to compensate. Tries rectangle-edge
+    /// detection first (more stable, uses receipt borders) and falls back to
+    /// text-character-angle detection if no rectangle is found. Caps correction
+    /// at 15° since anything beyond that is probably not a tilt issue.
     private static func straightenImage(in image: UIImage) async -> UIImage {
-        guard let cgImage = image.cgImage else { return image }
+        let rectAngle = await detectReceiptAngle(in: image)
+        let textAngle = await detectTextAngle(in: image)
+
+        let angle: Double
+        if let rectAngle, abs(rectAngle) > 0.1 {
+            angle = rectAngle
+        } else if let textAngle, abs(textAngle) > 0.15 {
+            angle = textAngle
+        } else {
+            return image
+        }
+
+        guard abs(angle) < 15 else { return image }
+        return rotate(image: image, radians: CGFloat(angle * .pi / 180.0)) ?? image
+    }
+
+    /// Detects tilt angle from receipt edges using `VNDetectRectanglesRequest`.
+    /// Returns the average of left and right edge angles (from vertical), or
+    /// nil if the two edges disagree (unreliable detection).
+    private static func detectReceiptAngle(in image: UIImage) async -> Double? {
+        guard let cgImage = image.cgImage else { return nil }
+
+        return await withCheckedContinuation { continuation in
+            let request = VNDetectRectanglesRequest { req, error in
+                guard error == nil,
+                      let results = req.results as? [VNRectangleObservation],
+                      let rect = results.first else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                // Measure tilt from vertical using each side edge.
+                // In Vision coordinates (Y=0 at bottom), a perfectly vertical
+                // left edge has topLeft.x == bottomLeft.x.
+                let leftDx = Double(rect.topLeft.x - rect.bottomLeft.x)
+                let leftDy = Double(rect.topLeft.y - rect.bottomLeft.y)
+                let leftAngle = atan2(leftDx, leftDy) * 180.0 / .pi
+
+                let rightDx = Double(rect.topRight.x - rect.bottomRight.x)
+                let rightDy = Double(rect.topRight.y - rect.bottomRight.y)
+                let rightAngle = atan2(rightDx, rightDy) * 180.0 / .pi
+
+                // Edges that disagree by >3° mean the detected rectangle isn't
+                // a clean perspective view — reject and let text-angle take over.
+                guard abs(leftAngle - rightAngle) < 3 else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                continuation.resume(returning: (leftAngle + rightAngle) / 2.0)
+            }
+
+            request.minimumAspectRatio = 0.2
+            request.maximumAspectRatio = 0.9
+            request.minimumSize = 0.3
+            request.maximumObservations = 1
+            request.minimumConfidence = 0.5
+
+            DispatchQueue.global(qos: .userInitiated).async {
+                let handler = VNImageRequestHandler(
+                    cgImage: cgImage,
+                    orientation: image.imageOrientation.cgImagePropertyOrientation,
+                    options: [:]
+                )
+                try? handler.perform([request])
+            }
+        }
+    }
+
+    /// Detects tilt angle from text character bounding boxes. Used as a fallback
+    /// when rectangle detection fails (e.g., the receipt is photographed without
+    /// clear edges in frame).
+    private static func detectTextAngle(in image: UIImage) async -> Double? {
+        guard let cgImage = image.cgImage else { return nil }
 
         return await withCheckedContinuation { continuation in
             let request = VNDetectTextRectanglesRequest { req, error in
                 guard error == nil,
                       let results = req.results as? [VNTextObservation],
                       !results.isEmpty else {
-                    continuation.resume(returning: image)
+                    continuation.resume(returning: nil)
                     return
                 }
 
-                // Collect per-character angles from corner points.
-                // Vision uses bottom-left origin so dy > 0 means the baseline
-                // rises to the right (counter-clockwise tilt).
                 var angles: [Double] = []
                 for obs in results {
                     guard let boxes = obs.characterBoxes else { continue }
@@ -168,34 +250,12 @@ enum TranscriptGenerator {
                 }
 
                 guard !angles.isEmpty else {
-                    continuation.resume(returning: image)
+                    continuation.resume(returning: nil)
                     return
                 }
 
                 let sorted = angles.sorted()
-                let median = sorted[sorted.count / 2]
-
-                guard abs(median) > 0.5 else {
-                    continuation.resume(returning: image)
-                    return
-                }
-
-                let radians = CGFloat(median * .pi / 180.0)
-                let originalSize = image.size
-                let rotatedRect = CGRect(origin: .zero, size: originalSize)
-                    .applying(CGAffineTransform(rotationAngle: radians))
-                let newSize = CGSize(width: abs(rotatedRect.width), height: abs(rotatedRect.height))
-
-                let renderer = UIGraphicsImageRenderer(size: newSize)
-                let rotated = renderer.image { ctx in
-                    let cg = ctx.cgContext
-                    cg.translateBy(x: newSize.width / 2, y: newSize.height / 2)
-                    cg.rotate(by: radians)
-                    cg.translateBy(x: -originalSize.width / 2, y: -originalSize.height / 2)
-                    image.draw(at: .zero)
-                }
-
-                continuation.resume(returning: rotated)
+                continuation.resume(returning: sorted[sorted.count / 2])
             }
             request.reportCharacterBoxes = true
 
@@ -208,6 +268,126 @@ enum TranscriptGenerator {
                 try? handler.perform([request])
             }
         }
+    }
+
+    /// Rotates a UIImage by the given radians using a direct CGContext draw.
+    /// Returns nil only if the bitmap context can't be created.
+    private static func rotate(image: UIImage, radians: CGFloat) -> UIImage? {
+        guard let cgImage = image.cgImage else { return nil }
+        let originalSize = CGSize(width: cgImage.width, height: cgImage.height)
+        let rotatedRect = CGRect(origin: .zero, size: originalSize)
+            .applying(CGAffineTransform(rotationAngle: radians))
+        let newSize = CGSize(width: abs(rotatedRect.width), height: abs(rotatedRect.height))
+
+        guard let context = CGContext(
+            data: nil,
+            width: Int(newSize.width),
+            height: Int(newSize.height),
+            bitsPerComponent: cgImage.bitsPerComponent,
+            bytesPerRow: 0,
+            space: cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: cgImage.bitmapInfo.rawValue
+        ) else { return nil }
+
+        context.interpolationQuality = .high
+        context.translateBy(x: newSize.width / 2, y: newSize.height / 2)
+        context.rotate(by: radians)
+        context.draw(cgImage, in: CGRect(
+            x: -originalSize.width / 2,
+            y: -originalSize.height / 2,
+            width: originalSize.width,
+            height: originalSize.height
+        ))
+        guard let rotatedCG = context.makeImage() else { return nil }
+        return UIImage(cgImage: rotatedCG, scale: image.scale, orientation: .up)
+    }
+
+    // MARK: - OCR enhancement
+
+    /// Normalizes luminance + applies contrast and sharpening to make faint
+    /// receipt text easier for Vision to separate.
+    private static func enhanceForOCR(_ image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else { return image }
+        let normalized = normalizeImageForOCR(cgImage) ?? cgImage
+        let ciImage = CIImage(cgImage: normalized)
+        let contrasted = ciImage.applyingFilter("CIColorControls", parameters: [
+            kCIInputContrastKey: 1.12
+        ])
+        let sharpened = contrasted.applyingFilter("CISharpenLuminance", parameters: [
+            kCIInputSharpnessKey: 0.35
+        ])
+
+        guard let outputCG = ciContext.createCGImage(sharpened, from: sharpened.extent) else {
+            return UIImage(cgImage: normalized, scale: image.scale, orientation: .up)
+        }
+        return UIImage(cgImage: outputCG, scale: image.scale, orientation: .up)
+    }
+
+    /// Converts the image to grayscale and stretches the luminance range so
+    /// faint print is easier to separate from background. Returns the rendered
+    /// CGImage so callers can chain additional CI filters efficiently.
+    private static func normalizeImageForOCR(_ cgImage: CGImage) -> CGImage? {
+        let ciImage = CIImage(cgImage: cgImage)
+        let grayscale = ciImage.applyingFilter("CIColorControls", parameters: [
+            kCIInputSaturationKey: 0
+        ])
+        let normalized = normalizeLuminance(in: grayscale) ?? grayscale
+        return ciContext.createCGImage(normalized, from: normalized.extent)
+    }
+
+    private static func normalizeLuminance(in image: CIImage) -> CIImage? {
+        let extent = image.extent.integral
+        guard !extent.isEmpty else { return nil }
+
+        let extentVector = CIVector(cgRect: extent)
+        let minimumImage = image.applyingFilter("CIAreaMinimum", parameters: [
+            kCIInputExtentKey: extentVector
+        ])
+        let maximumImage = image.applyingFilter("CIAreaMaximum", parameters: [
+            kCIInputExtentKey: extentVector
+        ])
+
+        guard let minimumLuminance = sampleLuminance(from: minimumImage),
+              let maximumLuminance = sampleLuminance(from: maximumImage) else {
+            return nil
+        }
+
+        let clampedMinimum = max(0, min(minimumLuminance, 1))
+        let clampedMaximum = max(clampedMinimum + 0.01, min(maximumLuminance, 1))
+        let dynamicRange = max(0.25, clampedMaximum - clampedMinimum)
+        let scale = 1 / dynamicRange
+        let bias = -clampedMinimum * scale
+
+        return image
+            .applyingFilter("CIColorMatrix", parameters: [
+                "inputRVector": CIVector(x: scale, y: 0, z: 0, w: 0),
+                "inputGVector": CIVector(x: 0, y: scale, z: 0, w: 0),
+                "inputBVector": CIVector(x: 0, y: 0, z: scale, w: 0),
+                "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 1),
+                "inputBiasVector": CIVector(x: bias, y: bias, z: bias, w: 0)
+            ])
+            .applyingFilter("CIColorClamp", parameters: [
+                "inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0),
+                "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1)
+            ])
+    }
+
+    private static func sampleLuminance(from image: CIImage) -> CGFloat? {
+        guard let cgImage = ciContext.createCGImage(image, from: image.extent) else { return nil }
+
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let bitmapContext = CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        bitmapContext.draw(cgImage, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return CGFloat(pixel[0]) / 255
     }
 
     // MARK: - Line metadata
@@ -263,6 +443,12 @@ enum TranscriptGenerator {
             return lhs.boundingBox.minX < rhs.boundingBox.minX
         }
 
+        // Seed the per-line fit with a global slope estimate so a freshly-seeded
+        // anchor doesn't behave as if the receipt is perfectly horizontal — that
+        // produces spurious merges on tilted receipts where the price column is
+        // displaced from the item column by (slope × ΔX).
+        let globalSlope = estimateGlobalSlope(from: sortedObservations)
+
         var usedIndices = Set<Int>()
         var lines: [TranscriptLine] = []
 
@@ -273,10 +459,15 @@ enum TranscriptGenerator {
             var lineObservations: [VNRecognizedTextObservation] = [anchor]
             usedIndices.insert(anchorIndex)
 
+            let globalFit = (
+                slope: globalSlope,
+                intercept: anchor.boundingBox.midY - globalSlope * anchor.boundingBox.midX
+            )
+
             var didGrow = true
             while didGrow {
                 didGrow = false
-                let fit = fitLine(to: lineObservations)
+                let fit = lineObservations.count >= 2 ? fitLine(to: lineObservations) : globalFit
                 let meanHeight = lineObservations.map(\.boundingBox.height).reduce(0, +) / CGFloat(lineObservations.count)
 
                 for candidateIndex in sortedObservations.indices where !usedIndices.contains(candidateIndex) {
@@ -476,18 +667,30 @@ enum TranscriptGenerator {
 
     // MARK: - Chunk preparation
 
-    /// Upscales a chunk before OCR. The rectified chunk crop is already
-    /// geometrically normalized, so we avoid additional sharpening here to
-    /// reduce OCR regressions on otherwise clear text.
+    /// Upscales 1.5× and applies the OCR enhancement pipeline. The caller must
+    /// pass the corrected (un-enhanced) image — passing an already-enhanced
+    /// image causes double-enhancement which corrupts Vision bounding boxes
+    /// and collapses the transcript into 2–3 mega-lines.
     private static func prepareChunkForOCR(_ image: UIImage) -> UIImage {
+        guard let cgImage = image.cgImage else { return image }
         let scale: CGFloat = 1.5
-        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let newSize = CGSize(width: CGFloat(cgImage.width) * scale, height: CGFloat(cgImage.height) * scale)
 
-        UIGraphicsBeginImageContextWithOptions(newSize, true, 1.0)
-        image.draw(in: CGRect(origin: .zero, size: newSize))
-        let upscaled = UIGraphicsGetImageFromCurrentImageContext() ?? image
-        UIGraphicsEndImageContext()
-        return upscaled
+        guard let context = CGContext(
+            data: nil,
+            width: Int(newSize.width),
+            height: Int(newSize.height),
+            bitsPerComponent: cgImage.bitsPerComponent,
+            bytesPerRow: 0,
+            space: cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: cgImage.bitmapInfo.rawValue
+        ) else { return image }
+
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(origin: .zero, size: newSize))
+        guard let upscaledCG = context.makeImage() else { return image }
+        let upscaled = UIImage(cgImage: upscaledCG, scale: 1.0, orientation: .up)
+        return enhanceForOCR(upscaled)
     }
 
     // MARK: - OCR
@@ -625,18 +828,62 @@ enum TranscriptGenerator {
         let candidateBox = candidate.boundingBox
         let anchorBox = anchor.boundingBox
 
-        if verticalOverlapRatio(of: anchorBox, with: candidateBox) >= 0.45 {
+        // Use the anchor's original height as the reference — not the growing
+        // meanHeight — so absorbing a taller/shorter observation doesn't
+        // snowball the thresholds and start pulling in items from adjacent rows.
+        let referenceHeight = min(anchorBox.height, meanHeight)
+
+        // Overlap check: require substantial overlap (≥60%) so densely-packed
+        // receipt lines (where adjacent rows barely touch) don't get merged.
+        if verticalOverlapRatio(of: anchorBox, with: candidateBox) >= 0.60 {
             return true
         }
 
         let predictedMidY = fit.slope * candidateBox.midX + fit.intercept
         let baselineDistance = abs(candidateBox.midY - predictedMidY)
-        let distanceThreshold = max(meanHeight, candidateBox.height) * 0.65
+        let distanceThreshold = max(referenceHeight, candidateBox.height) * 0.65
 
-        let anchorDistance = abs(candidateBox.midY - anchorBox.midY)
-        let verticalWindow = max(max(meanHeight, candidateBox.height), anchorBox.height) * 1.4
+        // De-tilt both midY values using the current fit slope before comparing.
+        // Without this, a price observation at the far-right edge of a tilted
+        // receipt is displaced from its anchor (item name) by (slope × ΔX),
+        // which can exceed verticalWindow even when the two observations are
+        // genuinely on the same row.
+        let anchorDeTiltedY = anchorBox.midY - fit.slope * anchorBox.midX
+        let candidateDeTiltedY = candidateBox.midY - fit.slope * candidateBox.midX
+        let anchorDistance = abs(candidateDeTiltedY - anchorDeTiltedY)
+        // Tighten the vertical window multiplier from 1.4 → 1.0 so adjacent
+        // lines (center-to-center ≈ 1× text height) are no longer absorbed
+        // into the same line.
+        let verticalWindow = max(max(referenceHeight, candidateBox.height), anchorBox.height) * 1.0
 
         return baselineDistance <= distanceThreshold && anchorDistance <= verticalWindow
+    }
+
+    /// Estimates the median per-row slope by sampling pairs of observations that
+    /// are vertically close enough to plausibly belong to the same receipt row.
+    /// Used as the initial fit for newly-seeded lines (before they have a
+    /// second observation to fit against). Capped at 0.2 to reject pathological
+    /// tilts that would be rejected by the 15° straighten cap anyway.
+    private static func estimateGlobalSlope(from observations: [VNRecognizedTextObservation]) -> CGFloat {
+        var estimates: [CGFloat] = []
+        let n = min(observations.count, 40)
+        for i in 0..<n {
+            for j in (i + 1)..<n {
+                let a = observations[i].boundingBox
+                let b = observations[j].boundingBox
+                let dx = b.midX - a.midX
+                guard abs(dx) > 0.15 else { continue }
+                let dy = b.midY - a.midY
+                let heightRef = max(a.height, b.height)
+                guard abs(dy) < heightRef * 0.6 else { continue }
+                let slope = dy / dx
+                guard abs(slope) < 0.2 else { continue }
+                estimates.append(slope)
+            }
+        }
+        guard !estimates.isEmpty else { return 0 }
+        let sorted = estimates.sorted()
+        return sorted[sorted.count / 2]
     }
 
     // MARK: - Helpers

@@ -506,8 +506,21 @@ final class LLMClient {
 
     func analyzeReceiptPhase1(transcript: String) async throws -> Phase1Result {
         let developerMessage = """
+        Extract the merchant name and the final total from a receipt transcript.
         Return ONLY minified JSON: {"merchant":string|null,"total_cents":int}
         No extra keys. No markdown. No text.
+
+        Rules for total_cents:
+        - Use the final "Total" amount the customer paid, in integer cents (e.g., $48.32 → 4832).
+        - If the receipt shows both a Subtotal and a Tax line but no explicit Total, add them: total = subtotal + tax.
+        - If no Total line is visible, sum all individual item prices plus any visible tax.
+        - Prefer the largest "Total" labeled amount over partial totals like "Subtotal" or "Balance".
+        - Ignore card approval codes, reference numbers, POS IDs, and other non-monetary numbers.
+        - If multiple total-like amounts appear, prefer the one labeled "Total", "Grand Total", "Amount Due", or "Balance Due".
+        - The total should include tax but exclude tip unless tip is explicitly included in a "Total" line.
+
+        Rules for merchant:
+        - Extract the store or restaurant name. Use the most prominent business name, not addresses or slogans.
         """
 
         let userMessage = "Extract merchant and total from this receipt transcript:\n\n\(transcript)"
@@ -524,10 +537,10 @@ final class LLMClient {
             contents: [userContent],
             systemInstruction: systemInstruction,
             generationConfig: .init(
-                maxOutputTokens: 128,
-                responseMimeType: "application/json",
-                temperature: 0.1,
-                thinkingConfig: .init(thinkingBudget: 0)
+                maxOutputTokens: 2048,
+                responseMimeType: nil,
+                temperature: 0,
+                thinkingConfig: .init(thinkingBudget: -1)
             )
         )
 
@@ -537,14 +550,19 @@ final class LLMClient {
             throw LLMError.emptyText
         }
 
-        let repaired = repairJSON(text)
-        do {
-            return try JSONDecoder().decode(Phase1Result.self, from: Data(repaired.utf8))
-        } catch {
-            print("[LLM] Phase1 transcript decode error: \(error)")
-            print("[LLM] Text: \(repaired)")
-            throw LLMError.decodeFailed
+        // The model may include reasoning text around the JSON object; extract
+        // the first {…} block before decoding.
+        let jsonString = extractJSON(from: text)
+        let repaired = repairJSON(jsonString)
+        if let data = repaired.data(using: .utf8),
+           let result = try? JSONDecoder().decode(Phase1Result.self, from: data) {
+            return result
         }
+        // Fallback: pull merchant/total via regex from the raw response.
+        return Phase1Result(
+            merchant: extractMerchantFallback(from: text),
+            total_cents: extractTotalCentsFallback(from: text)
+        )
     }
 
     // MARK: - Transcript-based Phase 2
@@ -552,6 +570,90 @@ final class LLMClient {
     func analyzeReceiptPhase2(transcript: String, knownTotalCents: Int) async throws -> Phase2Result {
         lastPhase2LineItems = []
         lastRawPhase2Response = nil
+
+        let primaryText = try await sendPhase2Request(
+            transcript: transcript,
+            knownTotalCents: knownTotalCents,
+            rescueReason: nil
+        )
+
+        let resolvedPrimary = decodeAndResolvePhase2(
+            from: primaryText,
+            knownTotalCents: knownTotalCents
+        )
+
+        if let resolvedPrimary, !shouldRescuePhase2(resolvedPrimary, knownTotalCents: knownTotalCents) {
+            lastRawPhase2Response = primaryText
+            lastPhase2LineItems = resolvedPrimary.lineItems
+            return resolvedPrimary.phase2
+        }
+
+        // Primary attempt was poor — issue a second pass with a tailored reason
+        // so the model knows what to fix.
+        let rescueReason = phase2RescueReason(
+            primaryResponse: primaryText,
+            knownTotalCents: knownTotalCents
+        )
+        print("[LLM] Phase2 rescue retry: \(rescueReason)")
+        let rescueText = try await sendPhase2Request(
+            transcript: transcript,
+            knownTotalCents: knownTotalCents,
+            rescueReason: rescueReason
+        )
+
+        let resolvedRescue = decodeAndResolvePhase2(
+            from: rescueText,
+            knownTotalCents: knownTotalCents
+        )
+
+        // Pick the better result: whichever reconciles closer to knownTotal.
+        if let resolvedRescue, let resolvedPrimary {
+            let primaryGap = abs(knownTotalCents - computedAccountedTotal(for: resolvedPrimary))
+            let rescueGap = abs(knownTotalCents - computedAccountedTotal(for: resolvedRescue))
+            if primaryGap <= rescueGap {
+                lastRawPhase2Response = primaryText
+                lastPhase2LineItems = resolvedPrimary.lineItems
+                return resolvedPrimary.phase2
+            }
+            lastRawPhase2Response = rescueText
+            lastPhase2LineItems = resolvedRescue.lineItems
+            return resolvedRescue.phase2
+        } else if let resolvedRescue {
+            lastRawPhase2Response = rescueText
+            lastPhase2LineItems = resolvedRescue.lineItems
+            return resolvedRescue.phase2
+        } else if let resolvedPrimary {
+            lastRawPhase2Response = primaryText
+            lastPhase2LineItems = resolvedPrimary.lineItems
+            return resolvedPrimary.phase2
+        }
+
+        lastRawPhase2Response = primaryText
+        print("[LLM] Phase2 transcript decode failed. Raw text:\n\(primaryText)")
+        throw LLMError.decodeFailed
+    }
+
+    private func sendPhase2Request(
+        transcript: String,
+        knownTotalCents: Int,
+        rescueReason: String?
+    ) async throws -> String {
+        let rescueInstructions: String
+        if let rescueReason {
+            rescueInstructions = """
+
+            Additional rescue instructions:
+            - The previous attempt was not usable: \(rescueReason)
+            - Be exhaustive. Missing rows are worse than slightly noisy labels.
+            - Include every purchasable item row with a visible or inferable local amount.
+            - Do not stop after the footer; include the body line items first, then footer rows.
+            - The known receipt total is \(knownTotalCents) cents. Do not output that total as an ITEM unless it is literally a purchasable line item.
+            - If output would otherwise be empty, output UNKNOWN rows for the visible priced rows instead of returning nothing.
+            """
+        } else {
+            rescueInstructions = ""
+        }
+
         let developerMessage = """
         You are extracting ordered receipt rows for a bill-splitting app.
         Output ONLY this exact format. No markdown, no code fences, no extra text.
@@ -576,7 +678,14 @@ final class LLMClient {
         - cents must be the most likely locally-correct amount for that row, in integer cents.
         - Only fix obvious OCR noise locally, such as misplaced spaces or characters in the amount. Do not use receipt-wide math.
         - If a row has no readable amount, leave cents empty.
-        - Decimal plausibility: if an item price appears unreasonably large for a single dish or product (e.g., $500+ at a restaurant, $200+ at a grocery store), it likely has a misplaced decimal point from OCR noise. Output the most plausible corrected value (e.g., OCR "5176" for a $51.76 duck dish → output 5176, not 517600).
+        - Decimal plausibility: if an item price appears unreasonably large for a single dish or product (e.g., $500+ at a restaurant, $50+ at a grocery or convenience store), it likely has a misplaced decimal point or the receipt total was merged onto the item line by OCR. Output the most plausible corrected value (e.g., OCR "5176" for a $51.76 duck dish → output 5176, not 517600).
+        - Exhaustiveness: include every row that represents a distinct purchasable product or charge, even when the item name is garbled, missing, or unreadable. Use "Unknown Item" as the label rather than omitting the row. Only skip a small amount if it is explicitly labeled as a per-item surcharge (e.g., "CRV", "Bottle Dep") — otherwise include it as a separate ITEM or FEE row.
+        - Suggested tips: do NOT output a TIP row for printed suggested/calculated tip amounts (e.g., "Suggested 18%: $23.75", "20%: (Tip $26.39)", "Tip percentages are based on..."). Only output TIP if the receipt shows a specific gratuity the customer actually paid — typically a single line labeled "Tip", "Gratuity", or "Service Charge" with an amount.
+        - You Pay vs. regular price: some grocery receipts show both a regular "Price" column and a lower "You Pay" / sale price column. Always use the "You Pay" / final discounted price, not the higher regular price. When using the "You Pay" price, do NOT also output a separate DISCOUNT row for the savings — the discount is already reflected in the "You Pay" price.
+        - Never output Subtotal, Sub Total, or Grand Total as an ITEM row. Never output the receipt's overall Total as an ITEM row unless a subtotal clearly shows the items don't add up to it (i.e., it represents something purchasable). If a price amount matches or nearly matches the receipt's known total or subtotal, it is almost certainly not an individual item price.
+        - Split-line prices: some receipts show an item with $0.00 and its real price on the next line (or vice versa). Assign the non-zero price to the item rather than outputting $0.00. Similarly, if a standalone price line follows an item with no price, it belongs to that item.
+        - Footer exclusion: Do NOT output rows for Total, Cash, Change, Balance Due, Amount Tendered, or Payment lines. These are transaction summary lines, not purchasable items or charges.
+        \(rescueInstructions)
         """
 
         let userMessage = "Extract the ordered receipt rows from this receipt transcript:\n\n\(transcript)"
@@ -601,20 +710,94 @@ final class LLMClient {
         )
 
         let (text, _, _, _) = try await send(req)
-        lastRawPhase2Response = text
 
         guard !text.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines).isEmpty else {
             throw LLMError.emptyText
         }
+        return text
+    }
 
-        if let rows = tryDecodePhase2Rows(from: text) {
-            let resolved = resolveExtractedRows(rows, knownTotalCents: knownTotalCents)
-            lastPhase2LineItems = resolved.lineItems
-            return resolved.phase2
+    private func decodeAndResolvePhase2(from text: String, knownTotalCents: Int) -> ResolvedPhase2? {
+        guard let rows = tryDecodePhase2Rows(from: text) else { return nil }
+        return resolveExtractedRows(rows, knownTotalCents: knownTotalCents)
+    }
+
+    private func phase2RescueReason(primaryResponse: String, knownTotalCents: Int) -> String {
+        guard let resolved = decodeAndResolvePhase2(from: primaryResponse, knownTotalCents: knownTotalCents) else {
+            return "the response did not follow the required BEGIN_ROWS/END_ROWS protocol"
         }
 
-        print("[LLM] Phase2 transcript decode failed. Raw text:\n\(text)")
-        throw LLMError.decodeFailed
+        let itemCount = resolved.phase2.items.count
+        let lineItemCount = resolved.lineItems.count
+        let pricedRowCount = resolved.phase2.items.filter { $0.cents != nil }.count + lineItemCount
+        let accountedTotal = computedAccountedTotal(for: resolved)
+        let missingBy = max(0, knownTotalCents - accountedTotal)
+        let excessBy = max(0, accountedTotal - knownTotalCents)
+
+        if pricedRowCount == 0 {
+            return "the response contained no usable priced rows"
+        }
+        if itemCount == 0 && lineItemCount <= 2 && knownTotalCents >= 1000 {
+            return "the response found footer rows but missed the purchasable body items"
+        }
+        if knownTotalCents >= 500 && Double(accountedTotal) > Double(knownTotalCents) * 1.9 {
+            return "the response heavily over-accounted the receipt (computed \(accountedTotal) cents vs known \(knownTotalCents) cents) — one or more item prices likely has a misplaced decimal point (e.g., OCR read $5176.00 but the correct price is $51.76), or the receipt subtotal/total was mistakenly merged onto the last item's price by OCR"
+        }
+        if missingBy > max(1500, Int(Double(knownTotalCents) * 0.4)) {
+            return "the response under-accounted the receipt by \(missingBy) cents and likely missed several rows"
+        }
+        if knownTotalCents >= 1000 && excessBy > Int(Double(knownTotalCents) * 0.4) {
+            return "the response over-accounted the receipt by \(excessBy) cents — check for duplicate rows or decimal errors in item prices"
+        }
+        let unpricedCount = resolved.phase2.items.filter { $0.cents == nil }.count
+        if unpricedCount >= 3 {
+            return "the response left \(unpricedCount) items without prices — look more carefully at the transcript for dollar amounts near those item names, even if the amounts appear on adjacent lines or in a separate column"
+        }
+        return "the response was too sparse and likely omitted visible priced rows"
+    }
+
+    private func shouldRescuePhase2(_ resolved: ResolvedPhase2, knownTotalCents: Int) -> Bool {
+        let itemCount = resolved.phase2.items.count
+        let lineItemCount = resolved.lineItems.count
+        let pricedRowCount = resolved.phase2.items.filter { $0.cents != nil }.count + lineItemCount
+        let accountedTotal = computedAccountedTotal(for: resolved)
+        let totalGap = abs(knownTotalCents - accountedTotal)
+
+        if pricedRowCount == 0 {
+            return true
+        }
+        if knownTotalCents >= 1000 && pricedRowCount <= 1 {
+            return true
+        }
+        if knownTotalCents >= 1000 && itemCount == 0 && lineItemCount <= 2 {
+            return true
+        }
+        if totalGap > max(1500, Int(Double(knownTotalCents) * 0.4)) && pricedRowCount <= 4 {
+            return true
+        }
+        // Over-accounting by 1.9× or more almost always means a decimal-point
+        // error or the receipt total was merged onto an item — rescue.
+        if knownTotalCents >= 500 && Double(accountedTotal) > Double(knownTotalCents) * 1.9 {
+            return true
+        }
+        // Large gap (>50%) regardless of row count — the rows we have are wrong.
+        if knownTotalCents >= 1000 && Double(totalGap) / Double(knownTotalCents) > 0.5 && pricedRowCount <= 8 {
+            return true
+        }
+        // Many unpriced items with a meaningful gap — the LLM missed prices.
+        let unpricedCount = resolved.phase2.items.filter { $0.cents == nil }.count
+        if unpricedCount >= 3 && totalGap > max(500, Int(Double(knownTotalCents) * 0.05)) {
+            return true
+        }
+        return false
+    }
+
+    private func computedAccountedTotal(for resolved: ResolvedPhase2) -> Int {
+        let itemTotal = resolved.phase2.items.reduce(0) { partial, item in
+            partial + max(0, item.cents ?? 0)
+        }
+        let lineItemTotal = resolved.lineItems.reduce(0) { $0 + $1.cents }
+        return itemTotal + lineItemTotal
     }
 
     private func tryDecodePhase2Rows(from text: String) -> [ExtractedRow]? {
@@ -651,9 +834,19 @@ final class LLMClient {
             let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
             guard parts.count >= 3, let kind = ExtractedRow.Kind(tag: parts[0]) else { continue }
 
-            let label = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
+            var label = parts[1].trimmingCharacters(in: .whitespacesAndNewlines)
             let cents = parseOptionalInt(parts[2])
-            guard !label.isEmpty else { continue }
+            if label.isEmpty {
+                // Only keep empty-label rows for discounts and items — these
+                // are worth preserving even without a name. Tax/tip/fee with
+                // no label are likely misclassified rows (e.g., a grocery item
+                // tagged as TAX).
+                if kind == .discount || kind == .item {
+                    label = kind.rawValue.capitalized
+                } else {
+                    continue
+                }
+            }
 
             rows.append(.init(kind: kind, label: label, cents: cents, index: rows.count))
         }
@@ -831,34 +1024,123 @@ final class LLMClient {
         )
 
         let resolved = resolveDiscounts(0, state: initial)
-        let filteredItems = resolved.items.filter { item in
+
+        // Post-resolution fix #1: if one item's price is suspiciously close to
+        // knownTotal (suggesting OCR merged the receipt total onto that item
+        // line), drop that item's price so it doesn't blow up the total.
+        var correctedItems = resolved.items
+        if knownTotalCents > 0 {
+            let itemsTotal = correctedItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+            let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+            let expectedItemsTotal = knownTotalCents - overhead
+            if itemsTotal > 0 && expectedItemsTotal > 0 {
+                let currentGap = abs(itemsTotal - expectedItemsTotal)
+                if currentGap > 1000 {
+                    for i in correctedItems.indices {
+                        guard let cents = correctedItems[i].cents, cents > 0 else { continue }
+                        let otherItemsTotal = itemsTotal - cents
+                        let gapWithout = abs(otherItemsTotal - expectedItemsTotal)
+                        if Double(cents) >= Double(knownTotalCents) * 0.8
+                            && gapWithout < currentGap {
+                            correctedItems[i] = .init(label: correctedItems[i].label, qty: correctedItems[i].qty, cents: nil)
+                            break
+                        }
+                    }
+                }
+            }
+        }
+
+        // Post-resolution fix #2: if items overshoot the expected total and
+        // there are items with duplicate prices, OCR likely read the same
+        // price column twice. Greedily strip duplicate-priced items while it
+        // improves reconciliation.
+        if knownTotalCents > 0 {
+            let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+            let expectedItemsTotal = knownTotalCents - overhead
+            var itemsTotal = correctedItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+            if itemsTotal > expectedItemsTotal && expectedItemsTotal > 0 {
+                var seenPrices: [Int: Int] = [:]
+                for i in correctedItems.indices {
+                    guard let cents = correctedItems[i].cents, cents > 0 else { continue }
+                    if seenPrices[cents] != nil {
+                        let newTotal = itemsTotal - cents
+                        if abs(newTotal - expectedItemsTotal) < abs(itemsTotal - expectedItemsTotal) {
+                            correctedItems[i] = .init(label: correctedItems[i].label, qty: correctedItems[i].qty, cents: nil)
+                            itemsTotal = newTotal
+                        }
+                    } else {
+                        seenPrices[cents] = i
+                    }
+                }
+            }
+        }
+
+        let filteredItems = correctedItems.filter { item in
             guard let cents = item.cents else { return true }
             return cents != 0
         }
-        let subtotalFromRows = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
-        let totalFromRows = subtotalFromRows + resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
-        let derivedSubtotalFromKnownTotal = knownTotalCents - resolved.taxCents - resolved.tipCents - resolved.feesCents + resolved.discountCents
 
-        // Prefer what phase 2 actually extracted from rows so the projected total can differ
-        // from phase 1 when the detailed pass finds better values.
-        let shouldUseRowProjection = totalFromRows > 0
-        let subtotal = shouldUseRowProjection ? max(0, subtotalFromRows) : max(0, derivedSubtotalFromKnownTotal)
+        // Post-resolution fix #3: if items (+/− fees) already reconcile to
+        // knownTotal exactly, the remaining tax/tip/discount rows are likely
+        // misclassified footer lines (Total, Cash, Change) — zero them out.
+        let itemsSumAfterCorrection = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+        let overhead = resolved.taxCents + resolved.tipCents + resolved.feesCents - resolved.discountCents
+        var finalTaxCents = resolved.taxCents
+        var finalTipCents = resolved.tipCents
+        var finalFeesCents = resolved.feesCents
+        var finalDiscountCents = resolved.discountCents
+        if overhead != 0 && itemsSumAfterCorrection == knownTotalCents {
+            finalTaxCents = 0
+            finalTipCents = 0
+            finalFeesCents = 0
+            finalDiscountCents = 0
+        } else if (itemsSumAfterCorrection + finalFeesCents) == knownTotalCents
+                    && (resolved.taxCents != 0 || resolved.tipCents != 0 || resolved.discountCents != 0) {
+            finalTaxCents = 0
+            finalTipCents = 0
+            finalDiscountCents = 0
+        }
+
+        // Post-resolution fix #4: tip flexibility — delivery apps show Total
+        // pre-tip, restaurants post-tip. Test both and pick the one that
+        // reconciles closer to knownTotal.
+        if finalTipCents > 0 {
+            let totalWithTip = itemsSumAfterCorrection + finalTaxCents + finalTipCents + finalFeesCents - finalDiscountCents
+            let totalWithoutTip = itemsSumAfterCorrection + finalTaxCents + finalFeesCents - finalDiscountCents
+            if abs(totalWithoutTip - knownTotalCents) < abs(totalWithTip - knownTotalCents) {
+                finalTipCents = 0
+            }
+        }
+
+        let derivedSubtotal = knownTotalCents - finalTaxCents - finalTipCents - finalFeesCents + finalDiscountCents
+        let subtotal = max(0, derivedSubtotal)
 
         var finalIssues = resolved.issues
-        if !shouldUseRowProjection && derivedSubtotalFromKnownTotal < 0 {
+        if derivedSubtotal < 0 {
             finalIssues.append("Derived subtotal was negative; clamped to zero")
         }
-        if totalFromRows != knownTotalCents {
-            finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - totalFromRows)) cents")
+
+        let resolvedTotal = filteredItems.reduce(0) { $0 + max(0, $1.cents ?? 0) }
+            + finalTaxCents + finalTipCents + finalFeesCents - finalDiscountCents
+        if resolvedTotal != knownTotalCents {
+            finalIssues.append("Resolved rows differ from known total by \(abs(knownTotalCents - resolvedTotal)) cents")
         }
 
         let finalLineItems = cleanedRows.compactMap { row -> ReceiptDisplay.LineItem? in
             switch row.kind {
-            case .tax, .tip, .fee:
-                guard let cents = row.cents else { return nil }
+            case .tax:
+                guard finalTaxCents > 0, let cents = row.cents else { return nil }
+                return .init(label: row.label, cents: cents)
+            case .tip:
+                guard finalTipCents > 0, let cents = row.cents else { return nil }
+                return .init(label: row.label, cents: cents)
+            case .fee:
+                guard finalFeesCents > 0, let cents = row.cents else { return nil }
                 return .init(label: row.label, cents: cents)
             case .discount:
-                guard case .billWide? = resolved.discountModes[row.index], let cents = row.cents else { return nil }
+                guard finalDiscountCents > 0,
+                      case .billWide? = resolved.discountModes[row.index],
+                      let cents = row.cents else { return nil }
                 return .init(label: row.label, cents: cents)
             case .item, .unknown:
                 return nil
@@ -868,10 +1150,10 @@ final class LLMClient {
         return ResolvedPhase2(
             phase2: Phase2Result(
                 subtotal_cents: subtotal,
-                tax_cents: resolved.taxCents == 0 ? nil : resolved.taxCents,
-                tip_cents: resolved.tipCents == 0 ? nil : resolved.tipCents,
-                fees_cents: resolved.feesCents == 0 ? nil : resolved.feesCents,
-                discount_cents: resolved.discountCents == 0 ? nil : resolved.discountCents,
+                tax_cents: finalTaxCents == 0 ? nil : finalTaxCents,
+                tip_cents: finalTipCents == 0 ? nil : finalTipCents,
+                fees_cents: finalFeesCents == 0 ? nil : finalFeesCents,
+                discount_cents: finalDiscountCents == 0 ? nil : finalDiscountCents,
                 items: filteredItems,
                 issues: finalIssues
             ),
@@ -909,6 +1191,47 @@ final class LLMClient {
         return cleaned
     }
 
+    /// Returns the first complete `{...}` block from the text, or the whole
+    /// text if no braces are present. Tolerates surrounding reasoning text.
+    private func extractJSON(from text: String) -> String {
+        guard let openBrace = text.firstIndex(of: "{"),
+              let closeBrace = text.lastIndex(of: "}") else {
+            return text
+        }
+        return String(text[openBrace...closeBrace])
+    }
+
+    /// Regex fallback used when JSON parsing fails on Phase 1 output.
+    private func extractTotalCentsFallback(from text: String) -> Int? {
+        let patterns = [
+            try? NSRegularExpression(pattern: "\"total_cents\"\\s*:\\s*(\\d+)"),
+            try? NSRegularExpression(pattern: "\\$(\\d+\\.\\d{2})")
+        ]
+        for pattern in patterns.compactMap({ $0 }) {
+            let range = NSRange(text.startIndex..., in: text)
+            if let match = pattern.firstMatch(in: text, range: range),
+               let group = Range(match.range(at: 1), in: text) {
+                let value = String(text[group])
+                if value.contains(".") {
+                    if let dollars = Double(value) { return Int(dollars * 100) }
+                } else {
+                    return Int(value)
+                }
+            }
+        }
+        return nil
+    }
+
+    private func extractMerchantFallback(from text: String) -> String? {
+        let pattern = try? NSRegularExpression(pattern: "\"merchant\"\\s*:\\s*\"([^\"]+)\"")
+        let range = NSRange(text.startIndex..., in: text)
+        if let pattern, let match = pattern.firstMatch(in: text, range: range),
+           let group = Range(match.range(at: 1), in: text) {
+            return String(text[group])
+        }
+        return nil
+    }
+
     private func extractFirstJSONObject(from text: String) -> String? {
         let cleaned = text
             .replacingOccurrences(of: "```json", with: "")
@@ -940,45 +1263,78 @@ final class LLMClient {
 
     // MARK: - Internal network helper with diagnostics
 
+    private static let retryableStatusCodes: Set<Int> = [408, 425, 429, 500, 502, 503, 504]
+
     private func send(_ req: GenerateContentRequest) async throws -> (text: String, rawJSON: String?, status: Int, finishReasons: [String]) {
-        var request = URLRequest(url: baseURL)
-        request.httpMethod = "POST"
-        request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONEncoder().encode(req)
+        var attempt = 0
 
-        let (data, resp) = try await session.data(for: request)
+        while true {
+            attempt += 1
 
-        guard let http = resp as? HTTPURLResponse else {
-            print("[LLM] No HTTPURLResponse")
-            throw LLMError.badResponse(status: -1, body: "No HTTPURLResponse")
+            do {
+                var request = URLRequest(url: baseURL)
+                request.httpMethod = "POST"
+                request.setValue(apiKey, forHTTPHeaderField: "x-goog-api-key")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.httpBody = try JSONEncoder().encode(req)
+
+                let (data, resp) = try await session.data(for: request)
+
+                guard let http = resp as? HTTPURLResponse else {
+                    print("[LLM] No HTTPURLResponse")
+                    throw LLMError.badResponse(status: -1, body: "No HTTPURLResponse")
+                }
+
+                let status = http.statusCode
+                let raw = String(data: data, encoding: .utf8)
+
+                if !(200..<300).contains(status) {
+                    if Self.retryableStatusCodes.contains(status) {
+                        let delay = retryDelaySeconds(forAttempt: attempt)
+                        print(String(format: "[LLM] Transient HTTP %d. Retrying in %.1fs (attempt %d).", status, delay, attempt))
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                        continue
+                    }
+                    print("[LLM] Non-2xx response, status: \(status)")
+                    print("[LLM] Body: \(raw ?? "<empty>")")
+                    throw LLMError.badResponse(status: status, body: raw)
+                }
+
+                let decoded: GenerateContentResponse
+                do {
+                    decoded = try JSONDecoder().decode(GenerateContentResponse.self, from: data)
+                } catch {
+                    print("[LLM] Decode GenerateContentResponse failed. Raw body:\n\(raw ?? "<nil>")")
+                    throw LLMError.decodeFailed
+                }
+
+                let candidates = decoded.candidates ?? []
+                let first = candidates.first
+                let parts = first?.content?.parts ?? []
+                let text = parts.compactMap { $0.text }.joined()
+                let reasons = candidates.compactMap { $0.finishReason }
+
+                return (text, raw, status, reasons)
+            } catch let error as LLMError {
+                throw error
+            } catch {
+                // Transport error (no HTTP response received) — retry with backoff.
+                let delay = retryDelaySeconds(forAttempt: attempt)
+                print(String(format: "[LLM] Transport failure: %@. Retrying in %.1fs (attempt %d).", String(describing: error), delay, attempt))
+                if attempt >= 8 {
+                    throw error
+                }
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                continue
+            }
         }
+    }
 
-        let status = http.statusCode
-        let raw = String(data: data, encoding: .utf8)
-
-        if !(200..<300).contains(status) {
-            print("[LLM] Non-2xx response, status: \(status)")
-            print("[LLM] Body: \(raw ?? "<empty>")")
-            throw LLMError.badResponse(status: status, body: raw)
-        }
-
-        let decoded: GenerateContentResponse
-        do {
-            decoded = try JSONDecoder().decode(GenerateContentResponse.self, from: data)
-        } catch {
-            print("[LLM] Decode GenerateContentResponse failed. Raw body:\n\(raw ?? "<nil>")")
-            throw LLMError.decodeFailed
-        }
-
-        let candidates = decoded.candidates ?? []
-        let first = candidates.first
-
-        let parts = first?.content?.parts ?? []
-        let text = parts.compactMap { $0.text }.joined()
-        let reasons = candidates.compactMap { $0.finishReason }
-
-        return (text, raw, status, reasons)
+    private func retryDelaySeconds(forAttempt attempt: Int) -> Double {
+        let cappedAttempt = min(attempt, 8)
+        let base = pow(2.0, Double(cappedAttempt - 1))
+        let jitter = Double.random(in: 0...0.75)
+        return min(base + jitter, 60.0)
     }
 }
 
