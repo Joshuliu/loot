@@ -1542,34 +1542,35 @@ struct SplitsSummaryView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                if let frac = localUserFractionLabel(for: item.id) {
-                    Text(frac)
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.blue)
-                }
                 Text(item.label)
                     .font(.system(size: 16, weight: .semibold))
                     .lineLimit(1)
                     .foregroundStyle(locked ? .secondary : .primary)
             }
-            Text(ReceiptDisplay.money(item.priceCents))
-                .font(.system(size: 13, weight: .regular))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text(ReceiptDisplay.money(item.priceCents))
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.secondary)
+                if let annotation = splitAnnotation(for: item.id) {
+                    Text(annotation)
+                        .font(.system(size: 13, weight: .regular))
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
         .opacity(locked ? 0.75 : 1.0)
     }
 
-    /// "M/N" fraction prefix shown before the item label when the local user
-    /// owns a partial share of a multi-way split (e.g. "1/2 Burger" when Me
-    /// has 1 of 2 shares). Returns nil for full claims, items the local user
-    /// hasn't touched, and 1-way items — no fraction is informative there.
-    private func localUserFractionLabel(for itemId: String) -> String? {
+    /// "(split N ways)" annotation shown next to an item's price when the
+    /// item's partition is multi-way (denominator > 1). Communicates the
+    /// item's structure at a glance — replaces the older "1/N" label
+    /// prefix, which conflated structure with the local user's share.
+    private func splitAnnotation(for itemId: String) -> String? {
         guard let wireItem = items.first(where: { $0.id == itemId }) else { return nil }
         let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
-        let myShares = slots.filter { $0 == myCanonicalPID }.count
-        guard myShares > 0, myShares < denom else { return nil }
-        return "\(myShares)/\(denom)"
+        let (denom, _) = SplitEditorViewModel.normalizedPartition(partition)
+        guard denom > 1 else { return nil }
+        return "(split \(denom) ways)"
     }
 
     /// True when the local user can't meaningfully interact with this item:
@@ -1662,9 +1663,15 @@ struct SplitsSummaryView: View {
             // fill open slots but can't change the denominator. So show `+`
             // only when nobody has claimed yet (the item is still up for
             // grabs) OR the local user is already one of the claimers.
+            //
+            // Also hide when the local user is the sole recipient in the
+            // bill (2-person bills, recipient viewing): the only other
+            // guest is the sender, who can't claim via this flow, so any
+            // new slot would sit unbound forever. No one to split with.
             if isClaimModeForMe
                 && denom < split.g.count
-                && localUserCanChangeStructure(slots: slots) {
+                && localUserCanChangeStructure(slots: slots)
+                && hasAnotherPotentialClaimer {
                 Button {
                     increaseClaimDenominator(itemId: wireItem.id)
                 } label: {
@@ -1704,6 +1711,25 @@ struct SplitsSummaryView: View {
                 }
             }
         }
+    }
+
+    /// True when there's at least one guest besides the local user and the
+    /// sender — meaning a new partition slot could plausibly be filled by
+    /// someone else. False in the common 2-person case (just sender + me),
+    /// where pressing `+` would only create an unfillable slot since the
+    /// sender doesn't claim via this flow.
+    private var hasAnotherPotentialClaimer: Bool {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let senderUid = messageReceiptVM.openedMessagePayload?.su
+        for g in split.g {
+            // Anonymous slot (uid == nil) counts: it represents a potential
+            // future claimer who hasn't bound yet.
+            guard let uid = g.uid else { return true }
+            if uid == myUid { continue }
+            if uid == senderUid { continue }
+            return true
+        }
+        return false
     }
 
     /// Returns true when the local user is allowed to grow the item's
