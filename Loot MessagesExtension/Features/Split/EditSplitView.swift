@@ -420,9 +420,16 @@ struct EditSplitView: View {
                                         .font(.system(size: 16, weight: .semibold))
                                         .lineLimit(1)
                                         .foregroundStyle(.primary)
-                                    Text(ReceiptDisplay.money(item.priceCents))
-                                        .font(.system(size: 13))
-                                        .foregroundStyle(.secondary)
+                                    HStack(spacing: 4) {
+                                        Text(ReceiptDisplay.money(item.priceCents))
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(.secondary)
+                                        if let annotation = splitAnnotation(for: item) {
+                                            Text(annotation)
+                                                .font(.system(size: 13))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
                                 }
                                 Spacer(minLength: 8)
                             }
@@ -447,6 +454,16 @@ struct EditSplitView: View {
         }
         // Picker dialog removed — the inline `+` button grows the split
         // one slot at a time, capped at the active guest count.
+    }
+
+    /// "(split N ways)" annotation shown next to an item's price when the
+    /// item's partition is multi-way (denominator > 1). Mirrors the
+    /// SplitsSummaryView annotation so compose, claim, and edit flows
+    /// describe item structure identically.
+    private func splitAnnotation(for item: LineItemForm) -> String? {
+        let (denom, _) = SplitEditorViewModel.normalizedPartition(item.partition)
+        guard denom > 1 else { return nil }
+        return "(split \(denom) ways)"
     }
 
     // MARK: - Partition widget (post-send edit)
