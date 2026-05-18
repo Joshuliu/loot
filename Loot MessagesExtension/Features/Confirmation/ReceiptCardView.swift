@@ -2,8 +2,9 @@
 //  ReceiptCardView.swift
 //  Loot
 //
-//  The bill card with peeking left/right arrow hints and the 4-way swipe
-//  gesture (up = send, left = delete, right = tip, down = expand split editor).
+//  The bill card and the 4-way swipe gesture (up = send, left = delete,
+//  right = tip, down = expand split editor). The directional cues now live
+//  in ConfirmationView as tappable circle buttons flanking the card.
 //  Extracted from ConfirmationView in Phase 4.
 //
 //  This view is "dumb": no model state, no business logic. Bindings carry
@@ -33,7 +34,6 @@ struct ReceiptCardView: View {
     let tabColorHex: String?
     let participantCount: Int
     let isLoadingReceipt: Bool
-    let isLoadingItems: Bool
 
     // Sizing
     let cardScale: CGFloat
@@ -41,10 +41,6 @@ struct ReceiptCardView: View {
 
     // Forces BillCardView to rebuild when receipt amount/items change
     let billCardRefreshNonce: Int
-
-    // Opacity of the surrounding peeking arrow hints (parent computes from
-    // its own dragIntent → progress logic; we just multiply).
-    let arrowHintsOpacity: Double
 
     // Bindings — parent observes for styling, animator drives offset/rotation
     @Binding var cardOffset: CGSize
@@ -64,71 +60,9 @@ struct ReceiptCardView: View {
     let onTap: () -> Void
 
     var body: some View {
-        ZStack(alignment: .center) {
-            arrowHintsLayer
-            cardLayer
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: cardHeight)
-    }
-
-    // MARK: - Arrow hints layer (peek-out trash/tip cues at the card edges)
-
-    private var arrowHintsLayer: some View {
-        ZStack {
-            // Arrow shafts: span the full side width (card covers the inner ends)
-            HStack(alignment: .center, spacing: 0) {
-                HStack(spacing: 0) {
-                    Image(systemName: "arrowtriangle.left.fill")
-                        .font(.system(size: 8))
-                    Rectangle()
-                        .frame(height: 1.5)
-                }
-                .foregroundColor(.red)
-                .padding(.leading, 54)
-                .frame(maxWidth: .infinity)
-
-                Color.clear.frame(width: 220 * cardScale)
-
-                HStack(spacing: 0) {
-                    Rectangle()
-                        .frame(height: 1.5)
-                    Image(systemName: "arrowtriangle.right.fill")
-                        .font(.system(size: 8))
-                }
-                .foregroundColor(.blue)
-                .padding(.trailing, 54)
-                .frame(maxWidth: .infinity)
-            }
+        cardLayer
             .frame(maxWidth: .infinity)
-
-            // Labels: float at screen edges on top of arrow outer ends
-            HStack(alignment: .center) {
-                VStack(spacing: 3) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Delete")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundColor(.red)
-                .padding(.leading, 20)
-                Spacer()
-                VStack(spacing: 3) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Tip")
-                        .font(.system(size: 10, weight: .medium))
-                }
-                .foregroundColor(.blue)
-                .padding(.trailing, 24)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: cardHeight)
-        .opacity(arrowHintsOpacity * 0.55)
-        .allowsHitTesting(false)
-        .zIndex(0)
+            .frame(height: cardHeight)
     }
 
     // MARK: - Card layer (loading shim or live BillCardView)
@@ -170,7 +104,7 @@ struct ReceiptCardView: View {
         .rotationEffect(.degrees(cardRotation), anchor: .bottom)
         .gesture(swipeCardGesture)
         .simultaneousGesture(TapGesture().onEnded {
-            if !isLoadingItems { onTap() }
+            onTap()
         })
         .contentShape(Rectangle())
         .zIndex(1)

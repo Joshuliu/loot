@@ -101,7 +101,11 @@ struct BillCardView: View {
         )
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
-
+        // The card is a fixed 260×160 layout with fixed-point fonts. Clamp
+        // Dynamic Type so accessibility text sizes can't overflow and clip
+        // the card left/right. No-op at normal sizes (≤ large), so already
+        // proper screens are unaffected.
+        .dynamicTypeSize(...DynamicTypeSize.large)
     }
 }
 

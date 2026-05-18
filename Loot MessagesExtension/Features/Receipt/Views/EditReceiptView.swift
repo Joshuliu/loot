@@ -23,9 +23,6 @@ struct EditReceiptView: View {
     // Capture preview
     @State private var showCapture: Bool = false
 
-    // Debug: OCR chunk viewer
-    @State private var showChunks: Bool = false
-
     // Editor state for inline add/edit
     @State private var editorMode: EditorMode = .none
     @State private var editorLabel: String = ""
@@ -490,16 +487,6 @@ struct EditReceiptView: View {
                     Spacer()
 
                     HStack(spacing: 16) {
-                        if !receiptDraftVM.debugChunkImages.isEmpty {
-                            Button {
-                                showChunks = true
-                            } label: {
-                                Image(systemName: "square.grid.3x3")
-                                    .font(.system(size: 16))
-                            }
-                            .buttonStyle(.plain)
-                        }
-
                         if captureImage != nil {
                             Button {
                                 showCapture = true
@@ -871,49 +858,6 @@ struct EditReceiptView: View {
         .sheet(isPresented: $showCapture) {
             CapturePreviewView(image: captureImage) {
                 showCapture = false
-            }
-        }
-        .sheet(isPresented: $showChunks) {
-            ChunkDebugView(chunks: receiptDraftVM.debugChunkImages)
-        }
-    }
-}
-
-// MARK: - Chunk debug sheet
-
-private struct ChunkDebugView: View {
-    let chunks: [UIImage]
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ForEach(Array(chunks.enumerated()), id: \.offset) { index, image in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Chunk \(index + 1)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 16)
-
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity)
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(8)
-                                .padding(.horizontal, 16)
-                        }
-                    }
-                }
-                .padding(.vertical, 16)
-            }
-            .navigationTitle("OCR Chunks (\(chunks.count))")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
             }
         }
     }

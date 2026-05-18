@@ -138,6 +138,26 @@ extension ItemPartition {
             })
         }
     }
+
+    /// Returns a copy with `personID` removed from every share/claim.
+    /// Shares they held become unclaimed (`nil`); if nobody is left, the
+    /// partition collapses to `.unclaimed`. Used when a user leaves a
+    /// bill — their item claims must vanish entirely, as if they never
+    /// joined (not just the slot label).
+    func removingClaimer(_ personID: PersonID) -> ItemPartition {
+        switch self {
+        case .unclaimed:
+            return .unclaimed
+        case .shares(let denom, let slots):
+            let newSlots = slots.map { $0 == personID ? nil : $0 }
+            return newSlots.contains(where: { $0 != nil })
+                ? .shares(denominator: denom, slots: newSlots)
+                : .unclaimed
+        case .custom(let claims):
+            let kept = claims.filter { $0.personID != personID }
+            return kept.isEmpty ? .unclaimed : .custom(kept)
+        }
+    }
 }
 
 // MARK: - Codable

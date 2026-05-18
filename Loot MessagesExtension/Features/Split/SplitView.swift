@@ -39,7 +39,89 @@ extension ConfirmationView {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Shared split-editor bottom dock
+
+    /// Tunable layout constants for the shared bottom dock (guest list +
+    /// Add Guest + picker slot). First-cut estimates — adjust on-device if
+    /// the picker sits too high/low or the guest list scrolls too soon.
+    enum SplitDockMetrics {
+        /// Approx height of one guest row (badge + name + amount + paddings).
+        static let guestRowApproxH: CGFloat = 56
+        /// Max height the guest rows may occupy before they scroll
+        /// internally instead of pushing Add Guest / the picker.
+        static let guestRowsCap: CGFloat = 176
+        /// Constant height reserved for the 3-button picker slot. Reserved
+        /// even when the picker is hidden (confirmation card) so Add Guest
+        /// never moves when switching screens / toggling the picker.
+        static let pickerSlotH: CGFloat = 48
+        /// Gap above the picker slot.
+        static let pickerTopGap: CGFloat = 10
+        /// Distance from the picker to the bottom edge — identical in
+        /// every mode so the user's finger never has to move.
+        static let bottomInset: CGFloat = 28
+        /// Floor for the by-items receipt list before it scrolls.
+        static let itemsMinH: CGFloat = 110
+    }
+
+    /// Internally-scrolling guest ROWS + pinned Add-Guest footer + Not
+    /// Included + a CONSTANT-height picker slot. Shared by all three split
+    /// editors AND the confirmation card screen so Add Guest and the
+    /// picker sit a consistent distance off the bottom, and an overflowing
+    /// guest list scrolls inside `guestRowsCap` instead of shoving the
+    /// layout. The picker slot is always `pickerSlotH` tall — the real
+    /// 3-button picker in the editors, an empty reserved space on the
+    /// confirmation card — so neither screen-switching nor the picker
+    /// toggling ever moves Add Guest. Deliberately has NO payer row —
+    /// payer is chosen on the confirmation card only.
+    @ViewBuilder
+    func splitBottomDock(
+        showPicker: Bool,
+        showCustomRemaining: Bool = false,
+        pickerClosesExpanded: Bool = false,
+        pickerCapturesSnapshot: Bool = false
+    ) -> some View {
+        let rowsH = min(
+            CGFloat(max(1, splitEditorVM.activeCount)) * SplitDockMetrics.guestRowApproxH,
+            SplitDockMetrics.guestRowsCap
+        )
+        VStack(spacing: 6) {
+            ScrollView { guestRowsList() }
+                .frame(height: rowsH)
+
+            if showCustomRemaining {
+                guestCustomRemaining()
+            }
+
+            guestAddButton()
+            guestNotIncluded()
+
+            Group {
+                if showPicker {
+                    splitModePicker(
+                        closesExpanded: pickerClosesExpanded,
+                        capturesSnapshot: pickerCapturesSnapshot
+                    )
+                } else {
+                    Color.clear
+                }
+            }
+            .frame(height: SplitDockMetrics.pickerSlotH)
+            .padding(.top, SplitDockMetrics.pickerTopGap)
+            .padding(.horizontal, 10)
+        }
+        .padding(.bottom, SplitDockMetrics.bottomInset)
+        .onChange(of: guestNameFocusedID) { _, newValue in
+            // Clear inline name-edit state when the field loses focus
+            // (moved here from the old guestList composer so it covers
+            // every split-edit screen + the confirmation card).
+            if newValue == nil {
+                splitEditorVM.editingGuestNameID = nil
+            }
+        }
+    }
+
     // MARK: - Guest donut view (used for equally + custom)
+
     func byGuestPanel(interactive: Bool) -> some View {
         let selectedCents = splitEditorVM.guestAmountsCents.indices.contains(splitEditorVM.guestSelectedIndex)
         ? splitEditorVM.guestAmountsCents[splitEditorVM.guestSelectedIndex]
@@ -50,207 +132,258 @@ extension ConfirmationView {
         let g = splitEditorVM.activeGuests.indices.contains(splitEditorVM.guestSelectedIndex) ? splitEditorVM.activeGuests[splitEditorVM.guestSelectedIndex] : nil
         let centerName = g.map { splitEditorVM.displayName(for: $0, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: $0.id)) } ?? "Guest"
 
-        return VStack(alignment: .leading, spacing: 0) {
-            splitPanelToolbar()
+        return GeometryReader { geo in
+            let H = geo.size.height
+            // The RING is fixed at the top; a flexible Spacer below it
+            // absorbs all slack so the bottom dock (guest list + Add Guest
+            // + picker) is pinned the SAME distance off the bottom as
+            // by-items. The guest list scrolls internally inside the dock.
+            let ringH: CGFloat = 230   // fixed ring area (device-tune)
 
-            Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 10) {
+                splitPanelToolbar()
 
-            DonutChart(
-                activeCount: splitEditorVM.activeCount,
-                totalCents: totalCents,
-                interactive: interactive,
-                isEqualMode: splitEditorVM.mode == .equally,
-                selectedIndex: $splitEditorVM.guestSelectedIndex,
-                guestAmountsCents: $splitEditorVM.guestAmountsCents,
-                fineTunerScrollTarget: $splitEditorVM.fineTunerScrollTarget,
-                centerName: centerName,
-                centerMoneyParts: parts,
-                centerPercent: splitEditorVM.percentText(selectedCents, totalCents: totalCents),
-                isEditingCenterAmount: splitEditorVM.isEditingAmount && splitEditorVM.editingGuestIndex == splitEditorVM.guestSelectedIndex,
-                colorForActiveIdx: { splitEditorVM.colorForActiveIdx($0) },
-                sumBefore: { splitEditorVM.sumBefore($0) },
-                sumThrough: { splitEditorVM.sumThrough($0) },
-                lastActiveIndex: { splitEditorVM.lastActiveIndex(idx: $0) },
-                remainingExcluding: { splitEditorVM.remainingExcluding($0, totalCents: totalCents) },
-                onTapEditAmount: {
-                    splitEditorVM.startEditingAmount(for: splitEditorVM.guestSelectedIndex)
-                    isAmountFieldFocused = true
-                }
-            )
+                DonutChart(
+                    activeCount: splitEditorVM.activeCount,
+                    totalCents: totalCents,
+                    interactive: interactive,
+                    isEqualMode: splitEditorVM.mode == .equally,
+                    selectedIndex: $splitEditorVM.guestSelectedIndex,
+                    guestAmountsCents: $splitEditorVM.guestAmountsCents,
+                    fineTunerScrollTarget: $splitEditorVM.fineTunerScrollTarget,
+                    centerName: centerName,
+                    centerMoneyParts: parts,
+                    centerPercent: splitEditorVM.percentText(selectedCents, totalCents: totalCents),
+                    isEditingCenterAmount: splitEditorVM.isEditingAmount && splitEditorVM.editingGuestIndex == splitEditorVM.guestSelectedIndex,
+                    colorForActiveIdx: { splitEditorVM.colorForActiveIdx($0) },
+                    sumBefore: { splitEditorVM.sumBefore($0) },
+                    sumThrough: { splitEditorVM.sumThrough($0) },
+                    lastActiveIndex: { splitEditorVM.lastActiveIndex(idx: $0) },
+                    remainingExcluding: { splitEditorVM.remainingExcluding($0, totalCents: totalCents) },
+                    onTapEditAmount: {
+                        splitEditorVM.startEditingAmount(for: splitEditorVM.guestSelectedIndex)
+                        isAmountFieldFocused = true
+                    }
+                )
+                .frame(height: ringH)
+                // Part C: a bit more breathing room directly above/below
+                // the ring.
+                .padding(.top, 10)
+                .padding(.bottom, 12)
 
-            Spacer(minLength: 0)
+                // Flexible slack sits ABOVE the dock so the dock is always
+                // pinned the same distance off the bottom — identical to
+                // by-items. Without this the picker teleported per mode.
+                Spacer(minLength: 0)
 
-            splitModePicker()
-                .padding(.top, 7)
-                .padding(.horizontal, 30)
+                splitBottomDock(showPicker: true)
+            }
+            .frame(width: geo.size.width, height: H, alignment: .top)
         }
     }
 
     // MARK: - By items panel (seeded)
+    // Dynamic by-items editor: fills the sheet. The receipt-items list
+    // takes all free space first; as guests are added the guest section
+    // grows and the items list shrinks — down to a floor, after which the
+    // items list scrolls internally. The guest ROWS scroll independently
+    // while "Add Guest" stays pinned as a footer. Heights are derived
+    // from the live viewport (GeometryReader). The constants below are
+    // first-cut estimates meant to be tuned on-device.
     func byItemPanel() -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            splitPanelToolbar()
-            Spacer()
-            HStack {
-                Text(splitEditorVM.claimMode
-                     ? "Recipients claim their own items in chat."
-                     : "Tap items to assign. Unassigned items split evenly between guests.")
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+        GeometryReader { geo in
+            let H = geo.size.height
 
-                Spacer()
+            VStack(alignment: .leading, spacing: 10) {
+                splitPanelToolbar()
 
-                Button(action: { showEditReceipt = true }) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 13))
-                        Text("Edit")
-                            .font(.system(size: 13, weight: .semibold))
+                HStack {
+                    // On a tab, every member can already edit/claim anything
+                    // regardless of this toggle (tab receipts are fully
+                    // collaborative — see project_tab_receipts_collaborative).
+                    // The toggle only changes the STARTING state, not who's
+                    // allowed to edit, so the copy says so explicitly to
+                    // resolve the "claim collapses to collaborative" confusion.
+                    Text({
+                        let isTabCompose = splitEditorVM.tabContextVM.activeTab != nil
+                        switch (isTabCompose, splitEditorVM.claimMode) {
+                        case (true, true):
+                            return "Claim your own items. Tab members will claim their own."
+                        case (true, false):
+                            return "Assign items to each member."
+                        case (false, true):
+                            return "Claim your own items. Recipients will claim their own."
+                        case (false, false):
+                            return "Assign items to each guest."
+                        }
+                    }())
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer()
+
+                    Button(action: { showEditReceipt = true }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 13))
+                            Text("Edit")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.15))
+                        .foregroundStyle(Color.blue)
+                        .clipShape(Capsule())
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.15))
-                    .foregroundStyle(Color.blue)
-                    .clipShape(Capsule())
+                    .buttonStyle(.plain)
+                    .disabled(isLoadingItems)
+                    .opacity(isLoadingItems ? 0.5 : 1)
                 }
-                .buttonStyle(.plain)
-                .disabled(isLoadingItems)
-                .opacity(isLoadingItems ? 0.5 : 1)
-            }
 
-            // Tap-to-Claim variant toggle. When on, the cl flag ships in the
-            // payload and recipients can claim items from the chat bubble.
-            // Transition off→on wipes only OTHER guests' claims — the sender's
-            // own pre-assignments survive so an accidental toggle doesn't
-            // erase their work. The active guest gets locked to the sender.
-            // Toggling off is non-destructive: claims stay put so you can
-            // recover from a mis-tap without losing progress.
-            Toggle(isOn: Binding(
-                get: { splitEditorVM.claimMode },
-                set: { newValue in
-                    let wasOn = splitEditorVM.claimMode
-                    splitEditorVM.claimMode = newValue
-                    if newValue && !wasOn {
-                        splitEditorVM.wipeNonSenderItemPartitions(
+                // Tap-to-Claim variant toggle. When on, the cl flag ships in
+                // the payload and recipients can claim items from the chat
+                // bubble. Transition off→on wipes only OTHER guests' claims —
+                // the sender's own pre-assignments survive so an accidental
+                // toggle doesn't erase their work. The active guest gets
+                // locked to the sender. Toggling off is non-destructive.
+                Toggle(isOn: Binding(
+                    get: { splitEditorVM.claimMode },
+                    set: { newValue in
+                        let wasOn = splitEditorVM.claimMode
+                        splitEditorVM.claimMode = newValue
+                        if newValue && !wasOn {
+                            splitEditorVM.wipeNonSenderItemPartitions(
+                                totalCents: totalCents, tipAmount: tipAmount
+                            )
+                            splitEditorVM.byItemSelectedGuestID = splitEditorVM.senderPersonID
+                        }
+                        splitEditorVM.syncByItemsToSplitDraft(
                             totalCents: totalCents, tipAmount: tipAmount
                         )
-                        splitEditorVM.byItemSelectedGuestID = splitEditorVM.senderPersonID
                     }
-                    splitEditorVM.syncByItemsToSplitDraft(
-                        totalCents: totalCents, tipAmount: tipAmount
-                    )
+                )) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "hand.tap")
+                            .font(.system(size: 13))
+                        Text("Let recipients claim")
+                            .font(.system(size: 14, weight: .medium))
+                    }
                 }
-            )) {
-                HStack(spacing: 6) {
-                    Image(systemName: "hand.tap")
-                        .font(.system(size: 13))
-                    Text("Let recipients claim")
-                        .font(.system(size: 14, weight: .medium))
-                }
-            }
-            .tint(.blue)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+                .tint(.blue)
 
-            Spacer()
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Receipt items")
-                    .font(.system(size: 14, weight: .semibold))
+                // The items list is the flexible region here: it expands
+                // to absorb all slack so the bottom dock is pinned the
+                // SAME distance off the bottom as even/custom (no Spacer
+                // between Add Guest and the picker → no stray gap).
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Receipt items")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    byItemsReceiptListBody()
+                        .frame(minHeight: SplitDockMetrics.itemsMinH, maxHeight: .infinity)
+                }
+                .frame(maxHeight: .infinity)
+
+                splitBottomDock(showPicker: true)
+            }
+            .frame(width: geo.size.width, height: H, alignment: .top)
+        }
+    }
+
+    // The receipt-items list body (loading / empty / scrollable list).
+    // Height is governed by the caller; the inner ScrollView scrolls
+    // within whatever it's given.
+    @ViewBuilder
+    func byItemsReceiptListBody() -> some View {
+        if isLoadingItems {
+            VStack(spacing: 12) {
+                ProgressView()
+                    .scaleEffect(0.9)
+                Text("Loading items...")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+        } else if splitEditorVM.byItemItems.filter({ $0.isComplete }).isEmpty {
+            VStack(spacing: 12) {
+                Text("No items yet")
+                    .font(.system(size: 15))
                     .foregroundColor(.secondary)
 
-                if isLoadingItems {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .scaleEffect(0.9)
-                        Text("Loading items...")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary)
+                Button(action: { showEditReceipt = true }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                        Text("Add items to receipt")
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(16)
-                } else if splitEditorVM.byItemItems.filter({ $0.isComplete }).isEmpty {
-                    VStack(spacing: 12) {
-                        Text("No items yet")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(.secondarySystemBackground))
+            .cornerRadius(16)
+        } else {
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(splitEditorVM.byItemItems.indices, id: \.self) { idx in
+                        let item = splitEditorVM.byItemItems[idx]
 
-                        Button(action: { showEditReceipt = true }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "plus.circle.fill")
-                                Text("Add items to receipt")
-                            }
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.blue)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(16)
-                } else {
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            ForEach(splitEditorVM.byItemItems.indices, id: \.self) { idx in
-                                let item = splitEditorVM.byItemItems[idx]
+                        if item.isComplete {
+                            let isLast = idx == splitEditorVM.byItemItems.filter({ $0.isComplete }).count - 1
 
-                                if item.isComplete {
-                                    let isLast = idx == splitEditorVM.byItemItems.filter({ $0.isComplete }).count - 1
-
-                                    HStack(spacing: 0) {
-                                        // Left side is its own Button so the row's
-                                        // 1-way claim/unclaim fires independently
-                                        // from the right widget's Buttons (sibling
-                                        // layout — no nested-Button hit-test race).
-                                        Button {
-                                            handleItemRowTap(item: item)
-                                        } label: {
-                                            HStack {
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(item.label)
-                                                        .font(.system(size: 16, weight: .semibold))
-                                                        .lineLimit(1)
-                                                        .foregroundStyle(.primary)
-                                                    Text(ReceiptDisplay.money(item.priceCents))
+                            HStack(spacing: 0) {
+                                // Left side is its own Button so the row's
+                                // 1-way claim/unclaim fires independently
+                                // from the right widget's Buttons (sibling
+                                // layout — no nested-Button hit-test race).
+                                Button {
+                                    handleItemRowTap(item: item)
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(item.label)
+                                                .font(.system(size: 16, weight: .semibold))
+                                                .lineLimit(1)
+                                                .foregroundStyle(.primary)
+                                            HStack(spacing: 4) {
+                                                Text(ReceiptDisplay.money(item.priceCents))
+                                                    .font(.system(size: 13))
+                                                    .foregroundStyle(.secondary)
+                                                if let annotation = splitAnnotation(for: item) {
+                                                    Text(annotation)
                                                         .font(.system(size: 13))
                                                         .foregroundStyle(.secondary)
                                                 }
-                                                Spacer(minLength: 8)
                                             }
-                                            .padding(.leading, 14)
-                                            .padding(.vertical, 12)
-                                            .contentShape(Rectangle())
                                         }
-                                        .buttonStyle(.plain)
-
-                                        partitionRightWidget(for: item)
-                                            .padding(.trailing, 14)
-                                            .padding(.vertical, 12)
+                                        Spacer(minLength: 8)
                                     }
-
-                                    if !isLast {
-                                        Divider().padding(.leading, 14)
-                                    }
+                                    .padding(.leading, 14)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+
+                                partitionRightWidget(for: item)
+                                    .padding(.trailing, 14)
+                                    .padding(.vertical, 12)
+                            }
+
+                            if !isLast {
+                                Divider().padding(.leading, 14)
                             }
                         }
                     }
-                    .background(Color(.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
             }
-            .layoutPriority(1)
-            Spacer()
-
-            splitModePicker()
-                .padding(.top, 7)
-                .padding(.horizontal, 30)
+            .background(Color(.secondarySystemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
         }
-        // Picker dialog removed — the always-visible `+` button on each row
-        // grows the split incrementally, so no hidden popup is needed.
     }
 
     // MARK: - Split panel toolbar (Back / Save)
@@ -288,11 +421,12 @@ extension ConfirmationView {
                 // which can otherwise look like a math error to a user who
                 // expected unclaimed = $0 owed.
                 if splitEditorVM.mode == .byItems && !splitEditorVM.claimMode {
-                    let hasUnclaimed = splitEditorVM.byItemItems.contains { item in
-                        guard item.isComplete else { return false }
-                        return item.partition.claimedCents(priceCents: item.priceCents) < item.priceCents
+                    let unclaimedCents = splitEditorVM.byItemItems.reduce(0) { acc, item in
+                        guard item.isComplete else { return acc }
+                        return acc + max(0, item.priceCents - item.partition.claimedCents(priceCents: item.priceCents))
                     }
-                    if hasUnclaimed {
+                    if unclaimedCents > 0 {
+                        splitEvenlyUnclaimedCents = unclaimedCents
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                             showSplitEvenlyBanner = true
                         }
@@ -324,32 +458,35 @@ extension ConfirmationView {
             (.equally, "Even Split"),
             (.custom,  "Custom")
         ]
-        return VStack(alignment: .center, spacing: 7) {
-            HStack(spacing: 12) {
-                ForEach(modes, id: \.1) { (m, label) in
-                    Button {
-                        if capturesSnapshot { splitEditorVM.captureSnapshot() }
-                        if closesExpanded {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-                                splitEditorVM.splitModesExpanded = false
-                            }
+        // Just the buttons row — no wrapping padding. The shared dock
+        // gives it a constant-height slot so it renders pixel-identically
+        // and never moves vertically between modes.
+        return HStack(spacing: 8) {
+            ForEach(modes, id: \.1) { (m, label) in
+                Button {
+                    if capturesSnapshot { splitEditorVM.captureSnapshot() }
+                    if closesExpanded {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
+                            splitEditorVM.splitModesExpanded = false
                         }
-                        splitEditorVM.selectMode(m, totalCents: totalCents)
-                        onRequestExpand()
-                        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                        splitEditorVM.confirmed = false
-                    } label: {
-                        Text(label)
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(splitEditorVM.mode == m ? .white : .primary)
-                            .padding(.vertical, 12)
-                            .frame(maxWidth: .infinity)
-                            .background(RoundedRectangle(cornerRadius: 18).fill(splitEditorVM.mode == m ? .blue : buttonBase))
                     }
-                    .buttonStyle(.plain)
+                    splitEditorVM.selectMode(m, totalCents: totalCents)
+                    onRequestExpand()
+                    UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                    splitEditorVM.confirmed = false
+                } label: {
+                    Text(label)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(splitEditorVM.mode == m ? .white : .primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                        .padding(.vertical, 12)
+                        .padding(.horizontal, 4)
+                        .frame(maxWidth: .infinity)
+                        .background(RoundedRectangle(cornerRadius: 18).fill(splitEditorVM.mode == m ? .blue : buttonBase))
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.bottom, 18)
         }
     }
 
@@ -464,6 +601,17 @@ extension ConfirmationView {
 
     // MARK: - Partition-aware right-side widget
 
+    /// "(split N ways)" annotation shown next to an item's price when the
+    /// item's partition is multi-way (denominator > 1). Mirrors
+    /// EditSplitView / SplitsSummaryView so compose, claim, and edit flows
+    /// describe item structure identically — pressing `+` (which bumps the
+    /// denominator) updates this immediately.
+    func splitAnnotation(for item: LineItemForm) -> String? {
+        let (denom, _) = SplitEditorViewModel.normalizedPartition(item.partition)
+        guard denom > 1 else { return nil }
+        return "(split \(denom) ways)"
+    }
+
     /// Right-side widget — always shows the slot circles plus a leading `+`
     /// dotted circle (when more slots can be added). The `+` grows the split
     /// one denominator at a time, capped at the active guest count. Each
@@ -562,25 +710,18 @@ extension ConfirmationView {
             .contentShape(Circle())
     }
 
-    /// Leading `+` badge — solid blue border with a `+` glyph inside. Grows
-    /// the item's split by one slot per tap; hidden when the denominator
-    /// already equals the active guest count. Solid border distinguishes
-    /// the action from the dashed "empty slot" indicators.
+    /// Leading `+` badge — grows the item's split by one slot per tap;
+    /// hidden when the denominator already equals the active guest count.
     @ViewBuilder
     private func dottedPlusBadge() -> some View {
-        Circle()
-            .fill(Color.blue.opacity(0.08))
+        // Plain `+` glyph, NOT a circle — a circle reads as a tappable claim
+        // slot ("assign me here") instead of an "add another slot" action.
+        // Mirrors EditSplitView.dottedPlusBadge so compose + edit match.
+        Image(systemName: "plus")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(Color.blue.opacity(0.85))
             .frame(width: 28, height: 28)
-            .overlay(
-                Circle()
-                    .strokeBorder(Color.blue.opacity(0.65), lineWidth: 1.5)
-            )
-            .overlay(
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.blue.opacity(0.85))
-            )
-            .contentShape(Circle())
+            .contentShape(Rectangle())
     }
 
 }

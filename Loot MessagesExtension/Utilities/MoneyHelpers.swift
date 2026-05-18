@@ -80,8 +80,6 @@ enum SplitMath {
         let included = guests.indices.filter { guests[$0].inc }
         guard !included.isEmpty else { return Array(repeating: 0, count: guests.count) }
 
-        let safePayer = included.contains(payerIndex) ? payerIndex : (included.first ?? 0)
-
         var owed = Array(repeating: 0, count: guests.count)
 
         switch mode {

@@ -36,11 +36,6 @@ struct SplitsSummaryView: View {
     private var isTabReceipt: Bool { messageReceiptVM.openedMessagePayload?.tid != nil }
 
     @State private var selectedIndex: Int? = nil
-    /// True when the recipient has made claim changes that haven't been
-    /// committed yet. Enables the Save button and gates the Firestore-
-    /// listener overwrite so other recipients' updates don't clobber local
-    /// pending claims mid-edit.
-    @State private var hasUnsavedClaims: Bool = false
 
     private enum MyBillState { case choosing, joined, notInBill }
     @State private var billState: MyBillState = .choosing
@@ -147,6 +142,20 @@ struct SplitsSummaryView: View {
     private func isCurrentUserIgnored() -> Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
         return messageReceiptVM.isIgnoredUUID(myUid, for: currentBillId)
+    }
+
+    /// True only when the local user EXPLICITLY opted out of this bill
+    /// (pressed "Leave this bill" / "I'm not in this bill" → added to the
+    /// per-bill ignored list). Deliberately NOT just `billState ==
+    /// .notInBill`: a fresh recipients-claim bill also starts `.notInBill`
+    /// (recipient simply hasn't claimed yet, NOT ignored) and must keep
+    /// its normal "I'm in this bill" → popup flow. When opted out the
+    /// guest list AND the items list render grayed + non-interactive so
+    /// it's unambiguous you're not participating — re-entry is only via
+    /// the "I'm in this bill" affordance, never by tapping a guest/slot
+    /// (which previously selected you in as "the first person").
+    private var didOptOut: Bool {
+        billState == .notInBill && isCurrentUserIgnored()
     }
 
     private func unclaimCurrentUserIfNeeded() -> Bool {
@@ -459,9 +468,21 @@ struct SplitsSummaryView: View {
         BadgeColors.color(for: i)
     }
 
-    // Get items assigned to a specific guest slot (for byItems mode)
+    // Items this guest slot has a share of (byItems / claim mode). Uses the
+    // partition's centsClaimed so FRACTIONAL claims (e.g. 1/3 of an item,
+    // encoded in sh/cu rather than rs) still surface under the person — not
+    // just whole-item assignments in `rs`.
     private func itemsForSlot(_ slotIndex: Int) -> [ReceiptItemPayload] {
-        items.filter { $0.rs.contains(slotIndex) }
+        guard canonicalSlotPIDs.indices.contains(slotIndex) else {
+            return items.filter { $0.rs.contains(slotIndex) }
+        }
+        let pid = canonicalSlotPIDs[slotIndex]
+        let slotPIDs = canonicalSlotPIDs
+        return items.filter { item in
+            item.rs.contains(slotIndex)
+                || item.itemPartition(slotPersonIDs: slotPIDs)
+                    .centsClaimed(by: pid, priceCents: item.p) > 0
+        }
     }
 
     private func sumBeforeIncludedSlot(_ includedSlot: Int) -> Int {
@@ -591,6 +612,28 @@ struct SplitsSummaryView: View {
         }
     }
 
+    /// True only for the ORIGINAL bill sender (`payload.su`). Editing
+    /// receipt CONTENT (items/prices/tax) is a sender concern; recipients
+    /// only claim. Never a later claimer who auto-sent an updated bill.
+    private var isBillSender: Bool {
+        guard let su = messageReceiptVM.openedMessagePayload?.su, !su.isEmpty else { return false }
+        return su == KeychainHelper.getOrCreateUserId()
+    }
+
+    /// "M/N" fraction for `slotIndex`'s share of `item` (e.g. "1/3"), or
+    /// nil for a whole-item claim (M == N) or no share. Drives the fraction
+    /// prefix shown next to an item under a person's name in the breakdown.
+    private func slotItemFraction(slotIndex: Int, item: ReceiptItemPayload) -> String? {
+        guard canonicalSlotPIDs.indices.contains(slotIndex) else { return nil }
+        let pid = canonicalSlotPIDs[slotIndex]
+        let (denom, slots) = SplitEditorViewModel.normalizedPartition(
+            item.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+        )
+        let shares = slots.filter { $0 == pid }.count
+        guard shares > 0, shares < denom else { return nil }
+        return "\(shares)/\(denom)"
+    }
+
     // MARK: - Guest row (reusable)
 
     @ViewBuilder
@@ -631,6 +674,11 @@ struct SplitsSummaryView: View {
                             Circle()
                                 .fill(colorForSlot(gi).opacity(0.5))
                                 .frame(width: 6, height: 6)
+                            if let frac = slotItemFraction(slotIndex: gi, item: item) {
+                                Text(frac)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
                             Text(item.l)
                                 .font(.system(size: 13))
                                 .foregroundStyle(.secondary)
@@ -645,12 +693,6 @@ struct SplitsSummaryView: View {
             // Transactions
             if showTransactions {
                 VStack(spacing: 6) {
-                    Rectangle()
-                        .fill(Color(.separator).opacity(0.4))
-                        .frame(height: 1)
-                        .padding(.top, 8)
-                        .padding(.bottom, 2)
-
                     if split.pi == gi {
                         // Payer: show who owes them
                         let myUid = KeychainHelper.getOrCreateUserId()
@@ -680,6 +722,10 @@ struct SplitsSummaryView: View {
                         )
                     }
                 }
+                // Replaces the old hairline divider: keep the breathing
+                // room between the items list and the transaction rows
+                // without drawing a separator line.
+                .padding(.top, 10)
             }
         }
     }
@@ -724,12 +770,63 @@ struct SplitsSummaryView: View {
         }
     }
 
+    /// Strips the local user's slot from every item partition and
+    /// recomputes `split.o`. Leaving a bill must clear the user's item
+    /// claims too — not just the slot label — so the bill looks "as if I
+    /// never joined". Runs BEFORE the slot's uid is cleared so
+    /// `canonicalSlotPIDs` still resolves their slot to their uid-based
+    /// PersonID.
+    private func clearMyClaimsFromItems() {
+        let myUid = KeychainHelper.getOrCreateUserId()
+        guard let gi = split.g.firstIndex(where: { $0.uid == myUid }) else { return }
+        let slotPIDs = canonicalSlotPIDs
+        guard slotPIDs.indices.contains(gi) else { return }
+        let myPID = slotPIDs[gi]
+
+        items = items.map { item in
+            var updated = item
+            let stripped = item
+                .itemPartition(slotPersonIDs: slotPIDs)
+                .removingClaimer(myPID)
+            let wire = stripped.wireFields(guests: split.g)
+            updated.rs = wire.rs
+            updated.sh = wire.sh
+            updated.cu = wire.cu
+            return updated
+        }
+
+        let mathItems = items.map { it -> (label: String, priceCents: Int, partition: ItemPartition) in
+            (label: it.l, priceCents: it.p,
+             partition: it.itemPartition(slotPersonIDs: slotPIDs))
+        }
+        split.o = SplitMath.computeOwedCents(
+            mode: split.m,
+            guests: split.g,
+            payerIndex: split.pi,
+            totalCents: split.tot,
+            perGuestActive: nil,
+            items: mathItems,
+            feesCents: split.f ?? 0,
+            discountCents: split.d ?? 0,
+            taxCents: split.tx ?? 0,
+            tipCents: split.tip ?? 0,
+            claimMode: split.cl ?? false
+        )
+    }
+
     private func optOutOfBill() {
+        // Order matters: strip item claims while the slot still carries
+        // our uid (so canonicalSlotPIDs maps it to us), THEN clear the
+        // slot, THEN persist split + items together.
+        clearMyClaimsFromItems()
         _ = unclaimCurrentUserIfNeeded()
         addCurrentUserToIgnored()
         selectedIndex = nil
         billState = .notInBill
-        persistSplit(action: .optedOut)
+        messageReceiptVM.persist(
+            split: split, items: items,
+            broadcast: true, action: .optedOut, via: bus
+        )
     }
 
     private func reconcileClaimState(shouldAutoJoin: Bool = false) {
@@ -773,12 +870,18 @@ struct SplitsSummaryView: View {
     /// the user in the choosing state. Skipped when reconciling from a live
     /// Firestore update so a remote change doesn't trigger an auto-claim.
     private func attemptAutoJoinOrChoose(shouldAutoJoin: Bool) {
-        // Tap-to-Claim bills implicitly auto-bind the recipient to a free
-        // slot on view load — they claim items directly, no opt-in/out
-        // prompt. Skips the `shouldAutoJoin` gate (which exists for the
-        // listener-fed reconcile path) since cl=true always wants auto-bind.
-        if split.cl == true, let i = split.g.firstIndex(where: { $0.uid == nil }) {
-            autoClaimSlotAfterViewLoad(at: i)
+        // Tap-to-Claim bills no longer auto-bind the recipient on view load:
+        // viewing must never claim or send (a viewer may not be a payer, and
+        // a silent auto-claim blocked real participants + spammed the chat).
+        // The recipient claims explicitly in the claim sheet and presses
+        // Save; that explicit tap is what binds + broadcasts.
+        //
+        // Until they've actually claimed an item the recipient is "not in
+        // this bill" — there's nothing to modify, so we DON'T show the
+        // `.choosing` "Modify claimed items" affordance. `.notInBill`'s
+        // "I'm in this bill" reopens the claim popup (see splitPeopleSection).
+        if split.cl == true {
+            billState = .notInBill
             return
         }
 
@@ -786,15 +889,13 @@ struct SplitsSummaryView: View {
             billState = .choosing
             return
         }
+        // ONLY even splits auto-claim a slot on view. Uneven / custom /
+        // by-items must NEVER auto-join — the recipient explicitly picks a
+        // slot or saves item claims; saving nothing == cancel (no slot
+        // bound). Auto-claiming a single free slot for non-even bills
+        // mis-attributed shares and spammed the chat.
         if split.m == .equally, let i = split.g.firstIndex(where: { $0.uid == nil }) {
             autoClaimSlotAfterViewLoad(at: i)
-        } else if split.m != .equally {
-            let freeSlots = split.g.indices.filter { split.g[$0].uid == nil }
-            if freeSlots.count == 1 {
-                autoClaimSlotAfterViewLoad(at: freeSlots[0])
-            } else {
-                billState = .choosing
-            }
         } else {
             billState = .choosing
         }
@@ -834,20 +935,6 @@ struct SplitsSummaryView: View {
     private var receiptDetailsSection: some View {
         if let receipt {
             VStack(alignment: .leading, spacing: 14) {
-                if isClaimModeForMe {
-                    HStack(alignment: .top, spacing: 6) {
-                        Image(systemName: "hand.tap")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.blue)
-                        Text("Tap dotted circles to claim your shares. Items claimed by someone else are locked — only the original splitter can change how they're divided.")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.leading)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 16)
-                }
                 VStack(spacing: 0) {
                         if receiptDraftVM.itemsLoadingState.isLoading {
                             VStack(spacing: 12) {
@@ -881,49 +968,18 @@ struct SplitsSummaryView: View {
                     }
                     .background(Color(.secondarySystemBackground))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
+                    // Opted out → gray the items list too (not just the
+                    // guest list) so the whole bill reads as "not yours".
+                    .opacity(didOptOut ? 0.4 : 1)
                     .padding(.horizontal, 16)
 
                     TotalsBox(receipt: receipt)
                         .padding(.horizontal, 16)
 
-                    if isClaimModeForMe {
-                        if claimWidgetLocked {
-                            Button {
-                                onClose?()
-                            } label: {
-                                Label("Edit your splits", systemImage: "pencil")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color.blue)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 12)
-                                    .background(Color(.tertiarySystemFill))
-                                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                            .padding(.horizontal, 16)
-                        } else {
-                            Button {
-                                commitClaimChanges()
-                            } label: {
-                                Label(
-                                    hasUnsavedClaims ? "Save Claims" : "All Claims Saved",
-                                    systemImage: hasUnsavedClaims ? "checkmark.circle.fill" : "checkmark.circle"
-                                )
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(hasUnsavedClaims ? Color.white : Color.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .background(hasUnsavedClaims ? Color.blue : Color(.tertiarySystemFill))
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(!hasUnsavedClaims)
-                            .padding(.horizontal, 16)
-                        }
-                    }
-
                     VStack(spacing: 10) {
-                        if canEdit {
+                        // Edit Receipt is sender-only — recipients view the
+                        // receipt and claim, they don't edit its content.
+                        if isBillSender {
                             Button {
                                 onEditReceipt?()
                             } label: {
@@ -1000,7 +1056,13 @@ struct SplitsSummaryView: View {
                             }
                         }
 
-                        if count > 0, safeTotal > 0 {
+                        // Seam-cover dot at 12 o'clock — only when the arcs
+                        // actually complete the circle (full ring). On a
+                        // partial ring there is no seam at the top, so this
+                        // dot would float spuriously above a single arc
+                        // (the recurring "green dot at the very top" bug).
+                        if count > 0, safeTotal > 0,
+                           sumThroughIncludedSlot(count - 1) >= safeTotal {
                             let lastI = count - 1
                             let lastGi = included[lastI]
                             Circle()
@@ -1083,20 +1145,30 @@ struct SplitsSummaryView: View {
 
             splitPeopleSection(included: included, count: count)
 
-            if canEdit {
+            // "Modify claimed items" only makes sense once the recipient
+            // has actually claimed something. On a recipients-claim bill a
+            // non-sender who hasn't claimed sees nothing here — they enter
+            // via .notInBill's "I'm in this bill" (which opens the popup).
+            // Tab receipts are fully collaborative — ANY member edits
+            // anything, so the editor is always offered and labeled
+            // "Edit Splits" (never the recipient-claim wording).
+            let showEditSplitButton = isBillSender || isTabReceipt || split.cl != true || billState == .joined
+            if canEdit && (showEditSplitButton || isTabReceipt) {
                 HStack(spacing: 10) {
-                    Button {
-                        onEditSplit?()
-                    } label: {
-                        Text("Edit Splits")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.blue)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color(.tertiarySystemFill))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    if showEditSplitButton {
+                        Button {
+                            onEditSplit?()
+                        } label: {
+                            Text((isBillSender || isTabReceipt) ? "Edit Splits" : "Modify claimed items")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.blue)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color(.tertiarySystemFill))
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
                     if isTabReceipt {
                         Button {
@@ -1126,7 +1198,11 @@ struct SplitsSummaryView: View {
 
     @ViewBuilder
     private func splitPeopleSection(included: [Int], count: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Single VStack so the state block (joined "me" row + Leave,
+        // or the choosing / notInBill card) and the rest of the guests
+        // read as ONE continuous list with a consistent gap between
+        // every row — even with the Leave / I'm-in buttons between.
+        VStack(alignment: .leading, spacing: 10) {
             switch billState {
             case .joined:
                 if let myIdx = myIncludedIndex {
@@ -1176,6 +1252,8 @@ struct SplitsSummaryView: View {
                 }
 
             case .choosing:
+                // Non-claim bills only — recipients-claim bills go
+                // .joined / .notInBill (claiming happens in the popup).
                 VStack(spacing: 10) {
                     VStack(spacing: 4) {
                         Text("Which one are you?")
@@ -1211,14 +1289,29 @@ struct SplitsSummaryView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
 
             case .notInBill:
+                // For recipients-claim bills "I'm in this bill" reopens the
+                // claim popup (EditSplitView) — that's the only claim path.
+                // Non-claim bills keep the legacy inline self-identification
+                // (.choosing → tap a guest slot).
+                let isClaimBill = split.cl == true
+                let canEnter = isClaimBill || hasClaimableSlots
                 VStack(spacing: 10) {
                     Text("You're not in this bill")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.secondary)
 
                     Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                            if hasClaimableSlots {
+                        if isClaimBill {
+                            // Explicit rejoin: drop the opt-out flag so the
+                            // post-Save reconcile doesn't see us as still
+                            // "ignored" and immediately auto-unclaim the
+                            // slot (which made the re-claim silently revert
+                            // to "Guest N"). The old inline path did this
+                            // in ensureMySlotBound; the popup path didn't.
+                            removeCurrentUserFromIgnoredIfPresent()
+                            onEditSplit?()
+                        } else if hasClaimableSlots {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                                 billState = .choosing
                             }
                         }
@@ -1229,64 +1322,75 @@ struct SplitsSummaryView: View {
                             Text("I'm in this bill")
                                 .font(.system(size: 13, weight: .medium))
                         }
-                        .foregroundStyle(hasClaimableSlots ? .blue : .secondary)
+                        .foregroundStyle(canEnter ? .blue : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background((hasClaimableSlots ? Color.blue.opacity(0.08) : Color(.tertiarySystemFill)))
+                        .background((canEnter ? Color.blue.opacity(0.08) : Color(.tertiarySystemFill)))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
-                    .disabled(!hasClaimableSlots)
+                    .disabled(!canEnter)
                     .padding(.horizontal, 8)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
+                // Bottom gap matches the button's 8pt horizontal inset so
+                // the "I'm in this bill" button is evenly framed (L/R/bottom
+                // all 8); top keeps more room for the header text.
+                .padding(.top, 14)
+                .padding(.bottom, 8)
                 .background(Color(.secondarySystemBackground))
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-        }
-        .padding(.top, 15)
 
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(spacing: 10) {
-                ForEach(0..<count, id: \.self) { i in
-                    if billState != .joined || i != myIncludedIndex {
-                        let gi = included[i]
-                        let isUnclaimed = split.g[gi].uid == nil
+            Group {
+            ForEach(0..<count, id: \.self) { i in
+                if billState != .joined || i != myIncludedIndex {
+                    let gi = included[i]
+                    let isUnclaimed = split.g[gi].uid == nil
+                    // Recipients-claim bills are VIEW-ONLY here: claiming
+                    // happens only in the EditSplitView popup. Inline
+                    // slot-tap claiming stays for legacy non-claim
+                    // received bills (recipient self-identification).
+                    let inlineClaimable = billState == .choosing && isUnclaimed && split.cl != true
 
-                        Button {
-                            if billState == .choosing && isUnclaimed {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                    claimSlot(at: gi)
-                                }
+                    Button {
+                        if inlineClaimable {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                claimSlot(at: gi)
                             }
-                            selectedIndex = i
-                        } label: {
-                            guestRow(
-                                includedIdx: i,
-                                guestIdx: gi,
-                                showTransactions: false,
-                                included: included
-                            )
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .overlay(
-                                billState == .choosing && isUnclaimed
-                                    ? RoundedRectangle(cornerRadius: 14)
-                                        .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                                        .foregroundStyle(Color.blue.opacity(0.5))
-                                    : nil
-                            )
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        selectedIndex = i
+                    } label: {
+                        guestRow(
+                            includedIdx: i,
+                            guestIdx: gi,
+                            showTransactions: false,
+                            included: included
+                        )
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(i == selectedIndex ? Color(.secondarySystemBackground) : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(
+                            inlineClaimable
+                                ? RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                                    .foregroundStyle(Color.blue.opacity(0.5))
+                                : nil
+                        )
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
                 }
             }
+            }
+            // Opted out → the guest list is grayed + non-interactive so a
+            // tap can't re-select you in as "the first person". Re-entry
+            // is only via the "I'm in this bill" card above.
+            .opacity(didOptOut ? 0.4 : 1)
+            .disabled(didOptOut)
         }
-        .padding(.top, 8)
+        .padding(.top, 15)
     }
 
     var body: some View {
@@ -1341,12 +1445,11 @@ struct SplitsSummaryView: View {
             guard initializedClaimStateBillId != initBillId else { return }
             initializedClaimStateBillId = initBillId
             reconcileClaimState(shouldAutoJoin: true)
-            // Tap-to-Claim recipients land on the receipt items section so
-            // they can start claiming immediately. The donut/per-person area
-            // doesn't tell them much before they've claimed anything.
-            if isClaimModeForMe {
-                selectedSection = .receipt
-            }
+            // Recipients-claim bills land on the splits screen (default
+            // `.splits`). Claiming is done in the EditSplitView popup
+            // (auto-presented by MessageReceiptViewer); after Save or
+            // Cancel the recipient returns here to the splits view, not a
+            // bare receipt.
         }
         .onChange(of: messageReceiptVM.openedMessagePayload?.s) { _, latestSplit in
             guard let latestSplit, latestSplit != split else { return }
@@ -1354,15 +1457,13 @@ struct SplitsSummaryView: View {
             reconcileClaimState()
         }
         .onChange(of: messageReceiptVM.openedMessagePayload?.r.i) { _, latestItems in
-            // Real-time sync for the Tap-to-Claim recipient flow: when another
-            // viewer claims an item via the Firestore listener, refresh the
-            // local @State `items` so the partition widget rerenders. Equality
-            // guard avoids re-firing on our own writes (the listener bounces
-            // them back through openedMessagePayload). Pending-claims guard
-            // prevents a remote update from clobbering the user's uncommitted
-            // local edits — they'd lose what they've tapped between Save events.
+            // Real-time sync: when a claim is saved (via the EditSplitView
+            // popup) or another viewer updates the bill, the Firestore
+            // listener bounces the new items back through
+            // openedMessagePayload. Refresh the local @State `items` so the
+            // read-only receipt list rerenders. Equality guard avoids
+            // re-firing on our own writes.
             guard let latestItems, latestItems != items else { return }
-            guard !hasUnsavedClaims else { return }
             items = latestItems
         }
         .task {
@@ -1512,37 +1613,21 @@ struct SplitsSummaryView: View {
         // iteratively.
     }
 
-    // MARK: - Item row (tap-to-claim aware)
+    // MARK: - Item row (read-only)
 
+    // Read-only. Claiming happens only in the EditSplitView popup; this
+    // list just shows item structure + who has claimed each share.
     @ViewBuilder
     private func itemRow(displayItem item: ReceiptDisplay.Item) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            // Left side is a Button only when this user can claim inline. The
-            // sender (or anyone read-only) gets a plain HStack — no row-tap
-            // claim path for them; they edit via the Edit Splits sheet.
-            if isClaimModeForMe {
-                Button {
-                    handleItemRowTap(itemId: item.id)
-                } label: {
-                    HStack {
-                        itemLabelBlock(item: item)
-                        Spacer(minLength: 8)
-                    }
-                    .padding(.leading, 14)
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            } else {
-                HStack {
-                    itemLabelBlock(item: item)
-                    Spacer(minLength: 8)
-                }
-                .padding(.leading, 14)
-                .padding(.vertical, 12)
+            HStack {
+                itemLabelBlock(item: item)
+                Spacer(minLength: 8)
             }
+            .padding(.leading, 14)
+            .padding(.vertical, 12)
 
-            claimOrAssigneeWidget(for: item)
+            assigneeBadges(for: item)
                 .padding(.trailing, 14)
                 .padding(.vertical, 12)
         }
@@ -1550,19 +1635,11 @@ struct SplitsSummaryView: View {
 
     @ViewBuilder
     private func itemLabelBlock(item: ReceiptDisplay.Item) -> some View {
-        let locked = isItemLockedForLocalUser(itemId: item.id)
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                if locked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
-                Text(item.label)
-                    .font(.system(size: 16, weight: .semibold))
-                    .lineLimit(1)
-                    .foregroundStyle(locked ? .secondary : .primary)
-            }
+            Text(item.label)
+                .font(.system(size: 16, weight: .semibold))
+                .lineLimit(1)
+                .foregroundStyle(.primary)
             HStack(spacing: 4) {
                 Text(ReceiptDisplay.money(item.priceCents))
                     .font(.system(size: 13, weight: .regular))
@@ -1574,7 +1651,6 @@ struct SplitsSummaryView: View {
                 }
             }
         }
-        .opacity(locked ? 0.75 : 1.0)
     }
 
     /// "(split N ways)" annotation shown next to an item's price when the
@@ -1589,168 +1665,21 @@ struct SplitsSummaryView: View {
         return "(split \(denom) ways)"
     }
 
-    /// True when the local user can't meaningfully interact with this item:
-    /// someone else has claimed at least one share, the local user has
-    /// none, AND there are no empty slots left to fill. Drives the lock
-    /// icon + dimmed label in `itemLabelBlock`.
-    private func isItemLockedForLocalUser(itemId: String) -> Bool {
-        guard isClaimModeForMe else { return false }
-        guard let wireItem = items.first(where: { $0.id == itemId }) else { return false }
-        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        let (_, slots) = SplitEditorViewModel.normalizedPartition(partition)
-        let claimedPIDs = Set(slots.compactMap { $0 })
-        guard !claimedPIDs.isEmpty else { return false }
-        if claimedPIDs.contains(myCanonicalPID) { return false }
-        return !slots.contains(nil)
-    }
-
-    /// Picks between the existing read-only assignee badges and the
-    /// partition-aware claim widget. The widget renders for any Tap-to-Claim
-    /// bill so the sender's read-only view still shows the partition state
-    /// (filled + hollow slots), but interactivity is gated on
-    /// `isClaimModeForMe` (sender viewing their own bill → read-only).
+    /// Read-only assignee badges for the receipt item list: a colored
+    /// badge per claimed share, a static hollow circle per open share.
+    /// Non-interactive — claiming is done only in the EditSplitView popup.
+    /// Equally / custom bills carry no per-item partition (denominator 1,
+    /// unclaimed) so nothing renders, matching prior assignee behavior.
     @ViewBuilder
-    private func claimOrAssigneeWidget(for item: ReceiptDisplay.Item) -> some View {
-        if isClaimModeBill, let wireItem = items.first(where: { $0.id == item.id }) {
-            claimWidget(displayItem: item, wireItem: wireItem)
-        } else {
-            HStack(spacing: 6) {
-                // Resolve slot index from canonical assigneeIDs, then use the
-                // local displayName helper so the badge text reflects the
-                // Firestore-cached name for joined members and `myDisplayName`
-                // for the local user.
-                let assigneeSlots: [Int] = item.assigneeIDs.compactMap { pid in
-                    split.g.slotIndex(for: pid)
-                }
-                ForEach(Array(assigneeSlots.enumerated()), id: \.offset) { _, slot in
-                    ColoredCircleBadge(
-                        text: BadgeColors.initials(from: displayName(for: slot), fallback: slot),
-                        color: BadgeColors.color(for: slot)
-                    )
-                }
-            }
-        }
-    }
-
-    // MARK: - Tap-to-Claim widget (recipient side)
-
-    /// True when this bill was sent in Tap-to-Claim mode. Drives the
-    /// partition-aware display (circles + claimer badges) regardless of
-    /// whether the local user can interact with it.
-    private var isClaimModeBill: Bool {
-        split.cl == true
-    }
-
-    /// True when the local user can claim/unclaim items inline. The sender of
-    /// the bill is excluded — they edit through the Edit Splits sheet, not
-    /// inline. Any other chat participant can claim in a `cl=true` bill (the
-    /// first tap binds them to a free slot via `ensureMySlotBound`).
-    private var isClaimModeForMe: Bool {
-        guard isClaimModeBill else { return false }
-        let myUid = KeychainHelper.getOrCreateUserId()
-        if let payload = messageReceiptVM.openedMessagePayload, payload.su == myUid {
-            return false
-        }
-        return true
-    }
-
-    /// True once the local user owns at least one claimed share anywhere
-    /// in the bill's current item partitions.
-    private var localUserHasClaimedShare: Bool {
-        let myPID = myCanonicalPID
-        let slotPIDs = canonicalSlotPIDs
-        return items.contains { item in
-            let p = item.itemPartition(slotPersonIDs: slotPIDs)
-            let (_, slots) = SplitEditorViewModel.normalizedPartition(p)
-            return slots.contains(myPID)
-        }
-    }
-
-    /// The recipient's claim is committed and frozen. The recipient gets
-    /// one open editing session; once they Save, the split locks so a
-    /// later tap can't re-cut a bill others may have already paid against
-    /// (the decided "first claimer owns structure, locked after first
-    /// save" model). Drives hiding `+`/empty slots and the
-    /// "Edit your splits" action button.
-    private var claimWidgetLocked: Bool {
-        isClaimModeForMe && localUserHasClaimedShare && !hasUnsavedClaims
-    }
-
-    /// Wire-canonical PersonID list, one per slot — uid for identified
-    /// guests, `"slot-N"` for anonymous ones. Used to translate between
-    /// item partitions (PersonID-keyed) and the wire format.
-    private var canonicalSlotPIDs: [PersonID] {
-        split.g.indices.map { split.g.personID(forSlot: $0) }
-    }
-
-    /// PersonID for the current user, derived from their Keychain uid.
-    private var myCanonicalPID: PersonID {
-        PersonID(rawValue: KeychainHelper.getOrCreateUserId())
-    }
-
-    @ViewBuilder
-    private func claimWidget(displayItem: ReceiptDisplay.Item, wireItem: ReceiptItemPayload) -> some View {
-        let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
-
-        let myPID = myCanonicalPID
-
-        HStack(spacing: 4) {
-            // Leading `+` to grow the split. The structure of an item is
-            // owned by whoever has already claimed a share — outsiders can
-            // fill open slots but can't change the denominator. So show `+`
-            // only when nobody has claimed yet (the item is still up for
-            // grabs) OR the local user is already one of the claimers.
-            //
-            // Also hide when the local user is the sole recipient in the
-            // bill (2-person bills, recipient viewing): the only other
-            // guest is the sender, who can't claim via this flow, so any
-            // new slot would sit unbound forever. No one to split with.
-            if isClaimModeForMe
-                && !claimWidgetLocked
-                && denom < split.g.count
-                && localUserCanChangeStructure(slots: slots)
-                && hasAnotherPotentialClaimer {
-                Button {
-                    increaseClaimDenominator(itemId: wireItem.id)
-                } label: {
-                    dottedPlusBadge()
-                }
-                .buttonStyle(.plain)
-            }
-
-            if claimWidgetLocked {
-                // First claim committed — split is frozen. Show only the
-                // filled claimer badges: no `+`, no empty dotted slots to
-                // re-cut a bill others may have already paid against.
-                ForEach(Array(slots.compactMap { $0 }.enumerated()), id: \.offset) { _, pid in
-                    claimerBadge(for: pid)
-                }
-            } else {
-                ForEach(0..<denom, id: \.self) { i in
-                    let claimer = slots.indices.contains(i) ? slots[i] : nil
-                    if isClaimModeForMe {
-                        // Tappable when: the slot is empty (anyone can claim it)
-                        // OR the slot belongs to the local user (they can
-                        // unclaim themselves). Other people's filled slots are
-                        // static — only the owner can undo their own claim.
-                        let isInteractive = (claimer == nil) || (claimer == myPID)
-                        if isInteractive {
-                            Button {
-                                handleCircleTap(itemId: wireItem.id, shareIndex: i)
-                            } label: {
-                                if let pid = claimer {
-                                    claimerBadge(for: pid)
-                                } else {
-                                    dottedClaimSlotBadge()
-                                }
-                            }
-                            .buttonStyle(.plain)
-                        } else if let pid = claimer {
-                            claimerBadge(for: pid)
-                        }
-                    } else {
-                        if let pid = claimer {
+    private func assigneeBadges(for item: ReceiptDisplay.Item) -> some View {
+        if let wireItem = items.first(where: { $0.id == item.id }) {
+            let partition = wireItem.itemPartition(slotPersonIDs: canonicalSlotPIDs)
+            let (denom, slots) = SplitEditorViewModel.normalizedPartition(partition)
+            let hasAnyClaim = slots.contains(where: { $0 != nil })
+            if denom > 1 || hasAnyClaim {
+                HStack(spacing: 4) {
+                    ForEach(0..<denom, id: \.self) { i in
+                        if let pid = slots.indices.contains(i) ? slots[i] : nil {
                             claimerBadge(for: pid)
                         } else {
                             staticHollowCircle()
@@ -1761,109 +1690,15 @@ struct SplitsSummaryView: View {
         }
     }
 
-    /// True when there's at least one guest besides the local user and the
-    /// sender — meaning a new partition slot could plausibly be filled by
-    /// someone else. False in the common 2-person case (just sender + me),
-    /// where pressing `+` would only create an unfillable slot since the
-    /// sender doesn't claim via this flow.
-    private var hasAnotherPotentialClaimer: Bool {
-        let myUid = KeychainHelper.getOrCreateUserId()
-        let senderUid = messageReceiptVM.openedMessagePayload?.su
-        for g in split.g {
-            // Anonymous slot (uid == nil) counts: it represents a potential
-            // future claimer who hasn't bound yet.
-            guard let uid = g.uid else { return true }
-            if uid == myUid { continue }
-            if uid == senderUid { continue }
-            return true
-        }
-        return false
+    /// Wire-canonical PersonID list, one per slot — uid for identified
+    /// guests, `"slot-N"` for anonymous ones. Used to translate between
+    /// item partitions (PersonID-keyed) and the wire format.
+    private var canonicalSlotPIDs: [PersonID] {
+        split.g.indices.map { split.g.personID(forSlot: $0) }
     }
 
-    /// Returns true when the local user is allowed to grow the item's
-    /// structure (press `+`). Only the structure owner — the person who
-    /// first established the split — can change the denominator. Outsiders
-    /// (and even later joiners filling empty slots) can't widen or shrink
-    /// the pie behind the original splitter's back.
-    ///
-    /// Structure owner is computed as the earliest-indexed non-nil slot's
-    /// claimer. `+` appends to the end and auto-claim fills the lowest nil
-    /// slot, so the original splitter stays in slot 0 unless they
-    /// explicitly unclaim. If they do unclaim, ownership naturally
-    /// transfers to whoever's left in the earliest filled slot.
-    private func localUserCanChangeStructure(slots: [PersonID?]) -> Bool {
-        let firstClaimer = slots.compactMap { $0 }.first
-        guard let owner = firstClaimer else { return true }
-        return owner == myCanonicalPID
-    }
-
-    /// Grows the claim widget's denominator by one. Recipient-side analogue
-    /// of `SplitEditorViewModel.increaseDenominator`. Capped at `split.g.count`
-    /// so the `+` can never exceed the chat's guest list.
-    ///
-    /// Auto-joins the local user: pressing `+` is the act of splitting, and
-    /// the splitter is implicitly part of their own split. If the user
-    /// already has a share, the new slot is left open for someone else.
-    private func increaseClaimDenominator(itemId: String) {
-        guard ensureMySlotBound(),
-              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
-        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        let (currentDenom, currentSlots) = SplitEditorViewModel.normalizedPartition(partition)
-        guard currentDenom < split.g.count else { return }
-
-        let myPID = myCanonicalPID
-        var newSlots = currentSlots
-        if !newSlots.contains(myPID), let nilIdx = newSlots.firstIndex(where: { $0 == nil }) {
-            // Take the lowest empty slot so the splitter lands in slot 0 of
-            // a fresh structure — keeps structure-owner stable as `+` grows.
-            newSlots[nilIdx] = myPID
-            newSlots.append(nil)
-        } else {
-            newSlots.append(nil)
-        }
-
-        let newPartition = ItemPartition.shares(
-            denominator: currentDenom + 1,
-            slots: newSlots
-        )
-        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
-    }
-
-    @ViewBuilder
-    private func dottedPlusBadge() -> some View {
-        Circle()
-            .fill(Color.blue.opacity(0.08))
-            .frame(width: 28, height: 28)
-            .overlay(
-                Circle()
-                    .strokeBorder(Color.blue.opacity(0.65), lineWidth: 1.5)
-            )
-            .overlay(
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.blue.opacity(0.85))
-            )
-            .contentShape(Circle())
-    }
-
-    @ViewBuilder
-    private func dottedClaimSlotBadge() -> some View {
-        Circle()
-            .fill(Color.gray.opacity(0.06))
-            .frame(width: 28, height: 28)
-            .overlay(
-                Circle()
-                    .strokeBorder(
-                        Color.secondary.opacity(0.55),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
-                    )
-            )
-            .contentShape(Circle())
-    }
-
-    /// Non-interactive hollow circle used in the sender's read-only view of a
-    /// Tap-to-Claim bill — no `+` icon, no pulse animation, no Button wrapper.
-    /// Purely visual indicator that a slot is open for recipients to claim.
+    /// Non-interactive hollow circle marking an open (unclaimed) share in
+    /// the read-only receipt item list.
     @ViewBuilder
     private func staticHollowCircle() -> some View {
         Circle()
@@ -1884,161 +1719,6 @@ struct SplitsSummaryView: View {
         )
     }
 
-    @ViewBuilder
-    private func hollowClaimCircle() -> some View {
-        // Dashed border (vs. solid + pulsing `+`) signals "this slot is open
-        // for claiming" without competing with other UI animations. Filled
-        // interior keeps the entire 28×28 area hit-testable.
-        Circle()
-            .fill(Color.gray.opacity(0.08))
-            .frame(width: 28, height: 28)
-            .overlay(
-                Circle()
-                    .strokeBorder(
-                        Color.blue.opacity(0.65),
-                        style: StrokeStyle(lineWidth: 1.5, dash: [3, 2.5])
-                    )
-            )
-            .contentShape(Circle())
-    }
-
-    // MARK: - Tap-to-Claim handlers (recipient side)
-
-    /// Row-tap handler for recipient claim flow. Mirrors compose's
-    /// `handleItemRowTap` rules but with the active guest forced to the
-    /// local user. Auto-claims a slot if the user isn't bound yet.
-    private func handleItemRowTap(itemId: String) {
-        guard ensureMySlotBound(),
-              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
-
-        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        let myPID = myCanonicalPID
-
-        let newPartition: ItemPartition = {
-            switch partition {
-            case .unclaimed:
-                return .shares(denominator: 1, slots: [myPID])
-            case .shares(let denom, var slots) where denom == 1:
-                if slots.first == myPID { return .unclaimed }
-                return partition
-            case .shares(let denom, var slots):
-                if let myIdx = slots.firstIndex(of: myPID) {
-                    slots[myIdx] = nil
-                    if slots.allSatisfy({ $0 == nil }) { return .unclaimed }
-                    return .shares(denominator: denom, slots: slots)
-                } else if let emptyIdx = slots.firstIndex(where: { $0 == nil }) {
-                    slots[emptyIdx] = myPID
-                    return .shares(denominator: denom, slots: slots)
-                }
-                return partition
-            case .custom:
-                return partition
-            }
-        }()
-
-        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
-    }
-
-    private func handleCircleTap(itemId: String, shareIndex: Int) {
-        guard ensureMySlotBound(),
-              let wireIdx = items.firstIndex(where: { $0.id == itemId }) else { return }
-
-        let partition = items[wireIdx].itemPartition(slotPersonIDs: canonicalSlotPIDs)
-        let (denom, originalSlots) = SplitEditorViewModel.normalizedPartition(partition)
-        guard originalSlots.indices.contains(shareIndex) else { return }
-
-        let myPID = myCanonicalPID
-        var slots = originalSlots
-        if let existing = slots[shareIndex] {
-            // Only the slot's owner can unclaim it — outsiders can't undo
-            // someone else's claim. Safety net for callers that bypass the
-            // view's interactivity guard.
-            guard existing == myPID else { return }
-            slots[shareIndex] = nil
-        } else {
-            // Claim, sender-locked: only the local user can claim, no
-            // auto-rotate to other guests in the recipient flow.
-            if slots.contains(myPID) { return }
-            slots[shareIndex] = myPID
-        }
-
-        let newPartition: ItemPartition = slots.allSatisfy({ $0 == nil })
-            ? .unclaimed
-            : .shares(denominator: denom, slots: slots)
-
-        applyPartitionUpdate(itemIndex: wireIdx, newPartition: newPartition)
-    }
-
-    /// Write the new partition into `items[itemIndex]` as wire fields and
-    /// recompute `split.o`, but DON'T persist yet — accumulates as an
-    /// unsaved local change so the recipient can claim multiple items
-    /// without each tap firing a bubble retract. Committed via
-    /// `commitClaimChanges()` when the user taps Save.
-    private func applyPartitionUpdate(itemIndex: Int, newPartition: ItemPartition) {
-        let wire = newPartition.wireFields(guests: split.g)
-        items[itemIndex].rs = wire.rs
-        items[itemIndex].sh = wire.sh
-        items[itemIndex].cu = wire.cu
-
-        let slotPIDs = canonicalSlotPIDs
-        let mathItems = items.map { it -> (label: String, priceCents: Int, partition: ItemPartition) in
-            (label: it.l,
-             priceCents: it.p,
-             partition: it.itemPartition(slotPersonIDs: slotPIDs))
-        }
-        split.o = SplitMath.computeOwedCents(
-            mode: split.m,
-            guests: split.g,
-            payerIndex: split.pi,
-            totalCents: split.tot,
-            perGuestActive: nil,
-            items: mathItems,
-            feesCents: split.f ?? 0,
-            discountCents: split.d ?? 0,
-            taxCents: split.tx ?? 0,
-            tipCents: split.tip ?? 0,
-            claimMode: split.cl ?? false
-        )
-
-        hasUnsavedClaims = true
-    }
-
-    /// Commits all pending claim changes — single bubble retract + Firestore
-    /// write. Replaces the per-tap broadcast that used to spam the chat with
-    /// updates on every claim toggle.
-    private func commitClaimChanges() {
-        guard hasUnsavedClaims else { return }
-        messageReceiptVM.persist(
-            split: split, items: items,
-            broadcast: true, action: .claimed, via: bus
-        )
-        hasUnsavedClaims = false
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
-
-    /// Binds the local user to a slot if they aren't yet. Returns true on
-    /// success. Mirrors the existing `claimSlot(at:)` logic: sets uid on the
-    /// first slot without a uid, never overwrites the slot's stored name
-    /// (per `feedback_slot_name_design.md`).
-    @discardableResult
-    private func ensureMySlotBound() -> Bool {
-        let myUid = KeychainHelper.getOrCreateUserId()
-        if split.g.contains(where: { $0.uid == myUid }) { return true }
-        guard let emptyIdx = split.g.firstIndex(where: { $0.uid == nil }) else {
-            return false
-        }
-        split.g[emptyIdx].uid = myUid
-        billState = .joined
-
-        // Make sure the user's display name is cached so cross-sender viewers
-        // see it before the bubble propagates.
-        let myName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-        if !myName.isEmpty {
-            Task { try? await TabService.shared.createOrUpdateUser(userId: myUid, displayName: myName) }
-        }
-        removeCurrentUserFromIgnoredIfPresent()
-        return true
-    }
 }
 
 // MARK: - Totals box

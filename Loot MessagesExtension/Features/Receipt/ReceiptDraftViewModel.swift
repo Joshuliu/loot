@@ -41,6 +41,57 @@ final class ReceiptDraftViewModel: ObservableObject {
     /// state above.
     var phase2Task: Task<Void, Never>? = nil
 
+    /// Lazily-invocable Phase 2 (item extraction) starter. Set by
+    /// `RootContainerView` once Phase 1 completes. `nil` until then (and
+    /// for manual entry — no transcript to extract from). Cleared after it
+    /// fires and on reset.
+    var startPhase2: (@MainActor () -> Void)? = nil
+
+    /// "The user wants line items." Set the moment By Items is chosen
+    /// ANYWHERE — including the scan-review screen, before Phase 1 has even
+    /// run. Phase 2 (the expensive second LLM round-trip) only runs when
+    /// this is true, so Even Split / Custom skip it entirely. Persisted
+    /// across the lazy window so an early intent (review screen) survives
+    /// until the starter becomes available. Reset on `reset()`.
+    private(set) var wantsItemization: Bool = false
+
+    /// Records itemization intent and starts Phase 2 if it's ready. Safe to
+    /// call from anywhere By Items is selected, at any point in the flow:
+    ///  • On the scan-review screen (starter not set yet): just records the
+    ///    intent — `startPhase2IfWanted()` picks it up the instant Phase 1
+    ///    finishes, so Phase 2 starts ASAP rather than waiting for a second
+    ///    manual selection on the confirmation screen.
+    ///  • On the confirmation screen (starter set): fires immediately.
+    /// Idempotent — once Phase 2 is loading/loaded/failed it's a no-op, so
+    /// re-selecting By Items can't spawn duplicate extractions.
+    func requestPhase2() {
+        wantsItemization = true
+        startPhase2IfWanted()
+    }
+
+    /// Fires the stored Phase 2 starter iff the user has expressed
+    /// itemization intent and it hasn't run yet. Called by `requestPhase2`
+    /// and by `RootContainerView` the moment the starter is installed
+    /// (right after Phase 1) so a pre-Phase-1 intent fires at the earliest
+    /// correct point — Phase 2 needs Phase 1's total.
+    func startPhase2IfWanted() {
+        guard wantsItemization else { return }
+        guard let starter = startPhase2 else { return }
+        guard phase2Task == nil else { return }
+        if case .idle = itemsLoadingState {} else { return }
+        startPhase2 = nil
+        starter()
+    }
+
+    /// Drops itemization intent (user switched to Even Split / Custom
+    /// before Phase 2 started). Does NOT cancel an already-running Phase 2
+    /// — that call is already spent and its result is reusable if they
+    /// switch back. Keeps the "Even/Custom never triggers Phase 2"
+    /// guarantee when the user toggles modes on the review screen.
+    func cancelItemizationIntent() {
+        wantsItemization = false
+    }
+
     // MARK: - Scan / parse intermediates (moved from LootUIModel in step 12c)
 
     /// Raw Phase 1 LLM output. Used by the EditReceiptView "Override Total"
@@ -214,6 +265,8 @@ final class ReceiptDraftViewModel: ObservableObject {
     func reset() {
         phase2Task?.cancel()
         phase2Task = nil
+        startPhase2 = nil
+        wantsItemization = false
         currentReceipt = nil
         currentSplitDraft = nil
         itemsLoadingState = .idle

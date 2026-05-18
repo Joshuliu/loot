@@ -12,8 +12,20 @@ import UIKit
 struct EditSplitView: View {
     let payload: LootMessagePayload
     let docId: String
+    /// The saved receipt photo (if the bill was sent with one). Only used
+    /// post-send to RECOVER line items via re-OCR when a bill was sent
+    /// without itemization and the editor then switches to By Items —
+    /// there's no scan transcript post-send, so we re-run OCR + Phase 2 on
+    /// this image. `nil` ⇒ no image was attached ⇒ no recovery is possible.
+    let receiptImage: UIImage?
     let onSave: (LootMessagePayload) -> Void
     let onCancel: () -> Void
+
+    /// True while re-OCR + Phase 2 is in flight (the "Load receipt items"
+    /// action). Drives the By Items empty-state spinner.
+    @State private var isLoadingItems = false
+    /// Non-nil after a failed recovery so the empty state can offer a retry.
+    @State private var itemsLoadError: String? = nil
 
     // Split state (initialized from payload in init)
     @State private var mode: SplitDraft.Mode
@@ -37,9 +49,37 @@ struct EditSplitView: View {
 
     private var localUserId: String { KeychainHelper.getOrCreateUserId() }
 
-    init(payload: LootMessagePayload, docId: String, onSave: @escaping (LootMessagePayload) -> Void, onCancel: @escaping () -> Void) {
+    /// True only for the ORIGINAL bill creator. `payload.su` is set once at
+    /// send time and preserved across claim re-broadcasts, so a recipient who
+    /// claims and auto-sends an updated bill is NOT the sender. Only the
+    /// sender may change the split mode (even / custom / by-items); recipients
+    /// use this view solely to claim their items.
+    private var isSender: Bool {
+        guard let su = payload.su, !su.isEmpty else { return false }
+        return su == localUserId
+    }
+
+    /// A receipt attached to a tab. Tab receipts are fully collaborative —
+    /// ANY member can edit anything (membership is already enforced
+    /// upstream: SplitsSummaryView locks non-members out). So tab receipts
+    /// get the full editor, never the recipient-claim-only view.
+    private var isTabReceipt: Bool {
+        (payload.tid?.isEmpty == false)
+    }
+
+    /// Who gets the FULL editor (mode picker, payer, guest list, custom
+    /// remaining) vs. the recipient claim-only view: the original sender
+    /// of a standalone bill, OR any member of a tab the receipt belongs
+    /// to. Gating the full editor on `isSender` alone left tab members
+    /// staring at an empty EditSplitView for non-by-items tab receipts.
+    private var canFullyEdit: Bool {
+        isSender || isTabReceipt
+    }
+
+    init(payload: LootMessagePayload, docId: String, receiptImage: UIImage? = nil, onSave: @escaping (LootMessagePayload) -> Void, onCancel: @escaping () -> Void) {
         self.payload = payload
         self.docId = docId
+        self.receiptImage = receiptImage
         self.onSave = onSave
         self.onCancel = onCancel
 
@@ -48,16 +88,54 @@ struct EditSplitView: View {
             totalCents: payload.s.tot
         )
 
-        _slotPersonIDs = State(initialValue: slotPersonIDs)
-        _guests = State(initialValue: draft.guests)
-        _includedIDs = State(initialValue: draft.includedIDs)
-        _payerID = State(initialValue: draft.payerID)
-
         let draftMode = draft.mode
         _mode = State(initialValue: draftMode)
+        _payerID = State(initialValue: draft.payerID)
 
-        let active = draft.includedGuests
-        let activeCount = active.count
+        // --- Recipient self-binding (bug #5: claims AS THE SENDER) --------
+        // A first-time claimer is NOT yet bound to any slot — no guest in
+        // the wire payload carries their uid, so `isMe` matches nothing and
+        // the old code fell back to `active.first` == guest[0] == the
+        // sender/payer. Every claim tap was then attributed to the sender
+        // ("Karen claiming as Bryan"). Patching the selection default alone
+        // didn't hold because auto-open made first-time claiming the common
+        // path. Real fix: actually BIND the recipient to a free slot here
+        // (set that Person's userId to the local user) so taps, the
+        // by-items selection, AND the save round-trip
+        // (SplitPayload.from → uid) all resolve to the recipient's own
+        // identity. Mirrors the inline path's ensureMySlotBound/claimSlot.
+        let localId = KeychainHelper.getOrCreateUserId()
+        let isSenderInit = (payload.su.flatMap { $0.isEmpty ? nil : ($0 == localId) }) ?? false
+
+        var boundGuests = draft.guests
+        var boundIncluded = draft.includedIDs
+        let selectedID: PersonID
+
+        if isSenderInit {
+            // Sender keeps the first active guest as the default selection.
+            selectedID = draft.includedGuests.first?.id ?? PersonID(rawValue: "")
+        } else if let mine = boundGuests.first(where: { $0.isMe(localUserId: localId) }) {
+            // Recipient already bound (re-entering via "Modify claimed
+            // items") — select their existing slot.
+            selectedID = mine.id
+        } else if payload.s.cl == true,
+                  let freeIdx = boundGuests.firstIndex(where: { ($0.userId ?? "").isEmpty }) {
+            // First-time claimer: bind them to the first unclaimed slot. A
+            // claimer must be an active participant, so ensure the slot is
+            // included.
+            boundGuests[freeIdx].userId = localId
+            boundIncluded.insert(boundGuests[freeIdx].id)
+            selectedID = boundGuests[freeIdx].id
+        } else {
+            selectedID = draft.includedGuests.first?.id ?? PersonID(rawValue: "")
+        }
+
+        _slotPersonIDs = State(initialValue: slotPersonIDs)
+        _guests = State(initialValue: boundGuests)
+        _includedIDs = State(initialValue: boundIncluded)
+        _byItemSelectedGuestID = State(initialValue: selectedID)
+
+        let activeCount = boundGuests.filter { boundIncluded.contains($0.id) }.count
 
         // Compute initial amounts
         var amounts = draft.perGuestCents
@@ -65,8 +143,6 @@ struct EditSplitView: View {
             amounts = splitCentsEvenly(total: payload.s.tot, count: activeCount)
         }
         _guestAmountsCents = State(initialValue: amounts)
-
-        _byItemSelectedGuestID = State(initialValue: active.first?.id ?? PersonID(rawValue: ""))
         // Pass partition through directly (Phase 8b) so uneven shares and
         // custom claims survive an Edit Split round-trip. The legacy Set-based
         // accessor on LineItemForm still works for the existing tap-toggle UI,
@@ -89,29 +165,43 @@ struct EditSplitView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Mode picker
-                splitModePicker()
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                // Mode picker — full editor only (standalone-bill sender,
+                // or ANY member of a tab the receipt belongs to). A
+                // standalone-bill recipient uses this view solely to claim
+                // their items (the by-items widget) and can't switch mode.
+                if canFullyEdit {
+                    splitModePicker()
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
 
-                Divider().padding(.top, 12)
+                    Divider().padding(.top, 12)
+                }
 
                 // Main content
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Payer selector
-                        payerSelector()
+                        // Payer selection + full guest-list editing: full
+                        // editor only. A standalone-bill recipient uses this
+                        // view solely to claim their OWN items (the by-items
+                        // panel) — tab members get the full editor.
+                        if canFullyEdit {
+                            // Payer selector
+                            payerSelector()
 
-                        // Guest list
-                        guestListView()
+                            // Guest list
+                            guestListView()
+                        }
 
-                        // By-items panel
+                        // By-items panel — recipient claims their items here;
+                        // sender/tab member assigns items.
                         if mode == .byItems {
                             byItemsPanel()
                         }
 
-                        // Custom mode remaining
-                        if mode == .custom {
+                        // Custom-mode remaining — full editor only; a
+                        // standalone recipient can't reach custom (no mode
+                        // picker for them).
+                        if canFullyEdit, mode == .custom {
                             customRemainingView()
                         }
                     }
@@ -125,7 +215,7 @@ struct EditSplitView: View {
                     amountEditingOverlay()
                 }
             }
-            .navigationTitle("Edit Split")
+            .navigationTitle(canFullyEdit ? "Edit Split" : "Claim your items")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -145,6 +235,32 @@ struct EditSplitView: View {
     // MARK: - Save
 
     private func save() {
+        // Save with ZERO claims == Cancel for a FIRST-TIME claim
+        // recipient. P0a eagerly binds them to a free slot on open so
+        // taps attribute to them; if they claim nothing and Save, that
+        // binding must NOT persist (it would show them as a $0
+        // participant — "saving no items should be the same as Cancel,
+        // no slot claimed"). Discard the EditSplitView state, broadcast
+        // nothing. Returning claimers (already bound in the incoming
+        // payload — a deliberate unclaim must persist), the sender, and
+        // tab full-editors are explicitly unaffected.
+        if !canFullyEdit, payload.s.cl == true {
+            let localId = localUserId
+            let wasBoundInPayload = payload.s.g.contains { ($0.uid ?? "") == localId }
+            let myPID = guests.first(where: { $0.isMe(localUserId: localId) })?.id
+            let claimedSomething = myPID.map { pid in
+                byItemItems.contains { item in
+                    let (_, slots) = SplitEditorViewModel.normalizedPartition(item.partition)
+                    return slots.contains(pid)
+                }
+            } ?? false
+            if !wasBoundInPayload, !claimedSomething {
+                print("[EditSplit.save] first-time claimer saved zero items → treat as Cancel (no slot bound)")
+                onCancel()
+                return
+            }
+        }
+
         // DEBUG: Phase 13a investigation — by-items save produces zero owed amounts.
         print("[EditSplit.save] mode=\(mode) totalCents=\(totalCents)")
         print("[EditSplit.save] guests=\(guests.map { "(name=\($0.displayName) id=\($0.id.rawValue) uid=\($0.userId ?? "nil"))" })")
@@ -219,16 +335,38 @@ struct EditSplitView: View {
                     return (p.id, canonical)
                 })
 
-            updatedPayload.r.i = updatedPayload.r.i.enumerated().map { idx, item in
-                var updated = item
-                if byItemItems.indices.contains(idx) {
-                    let canonical = byItemItems[idx].partition.remappingPersonIDs(remap)
-                    let wire = canonical.wireFields(guests: wireGuests)
-                    updated.rs = wire.rs
-                    updated.sh = wire.sh
-                    updated.cu = wire.cu
+            if updatedPayload.r.i.isEmpty {
+                // Bill was sent without itemization and items were
+                // recovered here (re-OCR → Phase 2). The index-map below
+                // would no-op against an empty array and the recovered
+                // items would be lost — rebuild the wire item list from
+                // byItemItems so they (and their partitions) persist.
+                updatedPayload.r.i = byItemItems
+                    .filter { $0.isComplete }
+                    .map { form in
+                        let canonical = form.partition.remappingPersonIDs(remap)
+                        let wire = canonical.wireFields(guests: wireGuests)
+                        return ReceiptItemPayload(
+                            id: form.id.uuidString,
+                            l: form.label,
+                            p: form.priceCents,
+                            rs: wire.rs,
+                            sh: wire.sh,
+                            cu: wire.cu
+                        )
+                    }
+            } else {
+                updatedPayload.r.i = updatedPayload.r.i.enumerated().map { idx, item in
+                    var updated = item
+                    if byItemItems.indices.contains(idx) {
+                        let canonical = byItemItems[idx].partition.remappingPersonIDs(remap)
+                        let wire = canonical.wireFields(guests: wireGuests)
+                        updated.rs = wire.rs
+                        updated.sh = wire.sh
+                        updated.cu = wire.cu
+                    }
+                    return updated
                 }
-                return updated
             }
         }
 
@@ -395,17 +533,25 @@ struct EditSplitView: View {
 
     // MARK: - By Items Panel
 
+    @ViewBuilder
     private func byItemsPanel() -> some View {
+        let completeItems = byItemItems.filter { $0.isComplete }
         VStack(alignment: .leading, spacing: 10) {
+            if completeItems.isEmpty {
+                // The bill was sent without itemization. Mirror the
+                // compose-side "No items yet" card; with a saved receipt
+                // photo a full editor can recover items via re-OCR +
+                // Phase 2 (there's no scan transcript post-send).
+                byItemsEmptyState()
+            } else {
             Text((payload.s.cl ?? false)
-                 ? "Edit splits. Recipients can also claim from chat."
+                 ? "Tap an item to claim it. Press + to split it."
                  : "Tap items to assign. Unassigned items split evenly between guests.")
                 .font(.system(size: 13))
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 0) {
-                let completeItems = byItemItems.filter { $0.isComplete }
                 ForEach(completeItems.indices, id: \.self) { idx in
                     let itemIdx = byItemItems.firstIndex(where: { $0.id == completeItems[idx].id })!
                     let item = byItemItems[itemIdx]
@@ -451,9 +597,128 @@ struct EditSplitView: View {
             }
             .background(Color(.secondarySystemBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            }
         }
         // Picker dialog removed — the inline `+` button grows the split
         // one slot at a time, capped at the active guest count.
+    }
+
+    /// "No items" card for a bill sent without itemization. A full editor
+    /// (sender / tab member) with a saved receipt photo can press "Load
+    /// receipt items" to re-OCR the image and run Phase 2 — there's no
+    /// scan transcript post-send, so the image is the only recovery
+    /// source. Without an image the slot stays a (non-functional)
+    /// "Add items to receipt" placeholder: post-send has no Edit Receipt
+    /// manual-entry flow. Recipients (claim-only) just see a neutral
+    /// message — they can't rewrite the bill's items.
+    @ViewBuilder
+    private func byItemsEmptyState() -> some View {
+        VStack(spacing: 12) {
+            if isLoadingItems {
+                ProgressView()
+                    .scaleEffect(0.9)
+                Text("Loading items…")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+            } else if !canFullyEdit {
+                Text("No items on this receipt yet.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+            } else if let err = itemsLoadError, receiptImage != nil {
+                Text(err)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                Button(action: { loadItemsViaOCR() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                        Text("Try again")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            } else if receiptImage != nil {
+                Text("No items yet")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+                Button(action: { loadItemsViaOCR() }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.text.viewfinder")
+                        Text("Load receipt items")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.blue)
+                }
+                .buttonStyle(.plain)
+            } else {
+                // No image post-send: manual add doesn't exist here.
+                Text("No items yet")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add items to receipt")
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
+    /// Recover line items for a bill that was sent without itemization:
+    /// re-OCR the saved receipt photo and run Phase 2. The bill's totals
+    /// stay authoritative (we pass `totalCents` as the known anchor and
+    /// never touch `payload.r`/`payload.s` amounts) — this only recovers
+    /// the item LIST so it can be split By Items. Recovered items persist
+    /// via the rebuilt `r.i` in `save()`.
+    private func loadItemsViaOCR() {
+        guard canFullyEdit, !isLoadingItems else { return }
+        itemsLoadError = nil
+        isLoadingItems = true
+        Task { @MainActor in
+            do {
+                // Fetch the photo authoritatively by docId rather than
+                // trusting the passed-in `receiptImage`: scanImageCropped
+                // isn't cleared between opens, so it can be a stale image
+                // from a previously-opened bill. The passed image is only
+                // a show/hide hint for the button.
+                let (_, fetched) = try await SharedReceiptService.shared.fetch(id: docId)
+                guard let image = fetched else {
+                    itemsLoadError = "No saved photo for this receipt."
+                    isLoadingItems = false
+                    return
+                }
+                let transcript = try await TranscriptGenerator.generate(from: image)
+                let phase2 = try await LLMClient.shared.analyzeReceiptPhase2(
+                    transcript: transcript,
+                    knownTotalCents: totalCents
+                )
+                let recovered: [LineItemForm] = phase2.items.compactMap { it in
+                    guard let cents = it.cents, cents > 0 else { return nil }
+                    return LineItemForm(
+                        id: UUID(),
+                        label: it.label,
+                        priceText: Money(cents: cents).inputString,
+                        partition: .unclaimed
+                    )
+                }
+                if recovered.isEmpty {
+                    itemsLoadError = "No items found on this receipt."
+                } else {
+                    byItemItems = recovered
+                }
+                isLoadingItems = false
+            } catch {
+                print("[EditSplit] re-OCR Phase 2 failed: \(error)")
+                itemsLoadError = "Couldn't read items. Try again."
+                isLoadingItems = false
+            }
+        }
     }
 
     /// "(split N ways)" annotation shown next to an item's price when the
@@ -468,12 +733,28 @@ struct EditSplitView: View {
 
     // MARK: - Partition widget (post-send edit)
 
+    /// The local user's draft PersonID, or nil if they aren't a guest.
+    private var myDraftPersonID: PersonID? {
+        guests.first(where: { $0.isMe(localUserId: localUserId) })?.id
+    }
+
+    /// Who may grow / re-split an item's structure. A full editor (the
+    /// standalone-bill sender, or any tab member) always can. A
+    /// standalone-bill recipient may only split an UNCLAIMED item, or one
+    /// they already own — never one another person has solely claimed
+    /// (a finalized item shouldn't sprout a `+` for outsiders).
+    private func canChangeItemStructure(slots: [PersonID?]) -> Bool {
+        if canFullyEdit { return true }
+        guard let owner = slots.compactMap({ $0 }).first else { return true }
+        return owner == myDraftPersonID
+    }
+
     @ViewBuilder
     private func partitionRightWidget(for item: LineItemForm) -> some View {
         let (denom, slots) = SplitEditorViewModel.normalizedPartition(item.partition)
 
         HStack(spacing: 4) {
-            if denom < activeCount {
+            if denom < activeCount, canChangeItemStructure(slots: slots) {
                 Button {
                     increaseDenominator(itemId: item.id)
                 } label: {
@@ -525,19 +806,13 @@ struct EditSplitView: View {
 
     @ViewBuilder
     private func dottedPlusBadge() -> some View {
-        Circle()
-            .fill(Color.blue.opacity(0.08))
+        // Plain `+` glyph, NOT a circle — a circle reads as a tappable claim
+        // slot ("assign me here") instead of an "add another slot" action.
+        Image(systemName: "plus")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(Color.blue.opacity(0.85))
             .frame(width: 28, height: 28)
-            .overlay(
-                Circle()
-                    .strokeBorder(Color.blue.opacity(0.65), lineWidth: 1.5)
-            )
-            .overlay(
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.blue.opacity(0.85))
-            )
-            .contentShape(Circle())
+            .contentShape(Rectangle())
     }
 
     // MARK: - Partition mutators
@@ -764,13 +1039,35 @@ struct EditSplitView: View {
 
 
     private func byItemsGuestCents(for guestId: PersonID) -> Int {
-        byItemsGuestSubtotalCents(
-            guestID: guestId,
-            guestOrder: guests.map(\.id),
-            items: byItemItems.map { item in
-                (priceCents: item.priceCents, assignedGuestIDs: Array(item.assignedGuestIds))
-            }
+        // SINGLE SOURCE OF TRUTH: compute via SplitMath.owedFromDraft — the
+        // exact path SplitsSummaryView uses for split.o and ConfirmationView
+        // uses for the bill card. Building a parallel formula here is what
+        // caused the 1¢ (and earlier 26.47-vs-24.71) desync; share the
+        // function instead so Edit Splits is byte-identical to the screen.
+        let draftItems: [SplitDraft.Item] = byItemItems
+            .filter { $0.isComplete }
+            .map { SplitDraft.Item(id: $0.id, label: $0.label,
+                                   priceCents: $0.priceCents, partition: $0.partition) }
+        let draft = SplitDraft(
+            guests: guests,
+            includedIDs: includedIDs,
+            payerID: payerID,
+            mode: mode,
+            totalCents: totalCents,
+            perGuestCents: guestAmountsCents,
+            items: draftItems,
+            feesCents: payload.s.f ?? 0,
+            discountCents: payload.s.d ?? 0,
+            taxCents: payload.s.tx ?? 0,
+            tipCents: payload.s.tip ?? 0,
+            claimMode: payload.s.cl ?? false
         )
+        guard let owed = SplitMath.owedFromDraft(
+                draft, fallbackTotalCents: totalCents, participantCount: activeCount),
+              let idx = guests.firstIndex(where: { $0.id == guestId }),
+              owed.indices.contains(idx)
+        else { return 0 }
+        return owed[idx]
     }
 
     private func remainingExcluding(_ idx: Int) -> Int {
