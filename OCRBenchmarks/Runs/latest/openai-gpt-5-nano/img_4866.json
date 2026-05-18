@@ -1,0 +1,126 @@
+{
+  "capturedAt" : "2026-05-08T19:41:50Z",
+  "caseID" : "img_4866",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 34314,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 30314,
+    "itemValues" : 0.8666666666666667,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.26,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 4000,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1364,
+        "label" : "State Tax"
+      }
+    ],
+    "phase1" : {
+      "total_cents" : 28950
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 5364 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 3000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 4200,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 3600,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 3200,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 3100,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1900,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 650,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 900,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2700,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 400,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 3000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 27586,
+      "tax_cents" : 1364
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Unknown Item|3000\nITEM|Unknown Item|1600\nITEM|Unknown Item|1700\nITEM|Unknown Item|4200\nITEM|Unknown Item|2000\nITEM|Unknown Item|3600\nITEM|Unknown Item|3200\nITEM|Unknown Item|3100\nITEM|Unknown Item|1900\nITEM|Unknown Item|650\nITEM|Unknown Item|900\nITEM|Unknown Item|2700\nITEM|Unknown Item|400\nUNKNOWN|Subtotal|25950\nITEM|Unknown Item|3000\nITEM|Unknown Item|1000\nUNKNOWN|Total|28950\nTAX|State Tax|1364\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 14.55007290840149,
+      "phase2Seconds" : 68.91774499416351,
+      "totalWorkflowSeconds" : 84.17603099346161,
+      "transcriptSeconds" : 0.708206057548523,
+      "transcriptToPhase1Seconds" : 14.55007290840149,
+      "transcriptToPhase2Seconds" : 83.46782493591309,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "$30 00 $16 00 $17.00 $42.00 $20.00 $36 00 $32.00 $31.00 $19 00 $6 50 $9.00 $27 00 $4.00 $259.50 $30.00 $10 00 $289.50 $13.64\nfour Wine Food Total cohol Total count Total Sub Total I State Tax"
+  },
+  "sourceFilename" : "IMG_4866.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

@@ -4,14 +4,18 @@
 //
 //  Created by Joshua Liu on 1/18/26.
 //
+//  Callback-based and intentionally NON-self-dismissing: it lives as a step
+//  inside the unified scan sheet, so picking must hand the image up and let
+//  SwiftUI swap the sheet's content to the review step — calling
+//  `picker.dismiss` here would tear down the whole sheet.
+//
 
-
-// PhotoLibraryPicker.swift
 import SwiftUI
 import UIKit
 
 struct PhotoLibraryPicker: UIViewControllerRepresentable {
-    @Binding var image: UIImage?
+    var onPicked: (UIImage) -> Void
+    var onCancel: () -> Void
 
     final class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate {
         var parent: PhotoLibraryPicker
@@ -21,13 +25,15 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
+            parent.onCancel()
         }
 
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
-            let img = (info[.editedImage] ?? info[.originalImage]) as? UIImage
-            parent.image = img
-            picker.dismiss(animated: true)
+            if let img = (info[.editedImage] ?? info[.originalImage]) as? UIImage {
+                parent.onPicked(img)
+            } else {
+                parent.onCancel()
+            }
         }
     }
 
@@ -39,8 +45,6 @@ struct PhotoLibraryPicker: UIViewControllerRepresentable {
         picker.allowsEditing = false
         picker.mediaTypes = ["public.image"]
         picker.sourceType = .photoLibrary
-        picker.modalPresentationStyle = .fullScreen
-
         return picker
     }
 

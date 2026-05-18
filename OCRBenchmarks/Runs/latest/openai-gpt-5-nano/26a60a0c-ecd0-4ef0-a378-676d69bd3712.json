@@ -1,0 +1,57 @@
+{
+  "capturedAt" : "2026-05-08T19:19:22Z",
+  "caseID" : "26a60a0c-ecd0-4ef0-a378-676d69bd3712",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5000,
+    "breakdown" : 1,
+    "expectedTotalCents" : 5000,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "AMAZON",
+      "total_cents" : 5000
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "label" : "Amazon",
+          "qty" : 1
+        },
+        {
+          "cents" : 5000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 5000
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Amazon|5000\nITEM|Unknown Item|5000\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 17.730425000190735,
+      "phase2Seconds" : 88.04229509830475,
+      "totalWorkflowSeconds" : 107.75096702575684,
+      "transcriptSeconds" : 1.9782400131225586,
+      "transcriptToPhase1Seconds" : 17.73042595386505,
+      "transcriptToPhase2Seconds" : 105.77272701263428,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "L cbtwmómRu3U XFUL Cbtwms XFULCH 10690 FULObMUREL CANVON B 2L EVEN XFUL Cbtwi XFUL Cbtwmóms XEUL\n2 J3U IL. CbtwmómRJ3U PAXFUL Cbtwm6mRJ3U PAXFUL CbtwmómRJ3U PACOI IA CA 913313531 PAXFUL 3188975300 J3U mómRi\nTOTAL AL DUE CbtwmómRJ3U twmómRJ3U FUL CtwmmRJ3U 50 PAXFUL Cbt AXFU mRJ3U UL CbtwmómRJ3U UL CbtwmómRJ3U PAXFUL\nST RE# 39364 CbtwmómR.\n2J3U THANKS\nL Cbtwmóm •UAB AMAZON PAX AXFUI PAXFUL\n50.00\n3 J3U nómRJ3U mómRJ3U KEL Chwm6m3U PAXFUL CbtwmómRJ3U PAXFUL Cbt 50.00\n50.00\nS 50 .00\nHFUL 082:37 XFUL C PAXFUL Cbi 9541\niL obiwmémR g) 2J30 ROVAL ROVAL#: 9165 000 AUTH CODE: 0 <FUL CbtwmómR PAXFUL cblwmen OXFUL Cbtwmery RJSU PAXFUL Cbti 5 4307 PAXFUL Cbty RJSU 6mRJ3U UL CbtwmómRJ\nPAXFUL Cb PAXFULCU PAXFU\ni CoF 2 OP11 PAXFUL CbF AXFUL Cbt R' PAXFUL Cbt PAXFUL Cb RJBU 09\/26\/2022 03:45 PAXFUL CI U3U omRJ3U btwiss\nPAXFU cbt XFULCbI PAXFULCHI PANTid.!."
+  },
+  "sourceFilename" : "26a60a0c-ecd0-4ef0-a378-676d69bd3712.jpg",
+  "variantID" : "openai-gpt-5-nano"
+}

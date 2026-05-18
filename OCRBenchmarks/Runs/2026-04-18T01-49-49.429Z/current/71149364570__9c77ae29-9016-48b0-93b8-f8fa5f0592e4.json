@@ -1,0 +1,62 @@
+{
+  "capturedAt" : "2026-04-18T01:53:37Z",
+  "caseID" : "71149364570__9c77ae29-9016-48b0-93b8-f8fa5f0592e4",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 4355,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 3890,
+    "itemValues" : 0,
+    "lineItemValues" : 0.5,
+    "merchant" : 1,
+    "overall" : 0.235,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 465,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 325,
+        "label" : "Service Charge 15%"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "ARMELLINO",
+      "total_cents" : 3890
+    },
+    "phase2" : {
+      "fees_cents" : 325,
+      "issues" : [
+        "Resolved rows differ from known total by 465 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 3565,
+          "label" : "Gemelli",
+          "qty" : 1
+        },
+        {
+          "cents" : 465,
+          "label" : "Orecchiette",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 3565
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Gemelli|3565\nITEM|Orecchiette|465\nFEE|Service Charge 15%|325\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4411940574645996,
+      "phase2Seconds" : 16.119145035743713,
+      "totalWorkflowSeconds" : 22.3214989900589,
+      "transcriptSeconds" : 5.761153936386108,
+      "transcriptToPhase1Seconds" : 0.4411940574645996,
+      "transcriptToPhase2Seconds" : 16.56034505367279,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "• ARMELLINO • PASTA\n34 Ticket: 1021\n7\/19\/23, 2:05 PM Server: Cashier 1 34\nDine In Invoice: 230719-01-1021\nCredit : Sale 000000 - Approved\nStatus: VISA XXXXXXXXXXXX3578 CARDHOLDER\/VISA\nCard Type: Card Number:\nCard Owner: Entry Method: Contactless 06477D\nAuth Code: APPLAB: VISA CREDIT A0000000031010 7A4B0062A6F000B9\nAID: 15.00\nTC: 16.00\n1 Gemelli 1 Orecchiette 35.65 4.65\n1 Service Charge 15% 3.25\nSubtotal Sales Tax 38.90\nTotal --- 38.90\nVISA - xxxx3578 4.65\nService Charge 15% 38.90\nAMOUNT Merchant Copy\n© 2023 Heartland Payment Systema"
+  },
+  "sourceFilename" : "71149364570__9C77AE29-9016-48B0-93B8-F8FA5F0592E4.jpeg",
+  "variantID" : "current"
+}

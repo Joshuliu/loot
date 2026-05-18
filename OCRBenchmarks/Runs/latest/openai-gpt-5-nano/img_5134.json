@@ -1,0 +1,53 @@
+{
+  "capturedAt" : "2026-05-08T19:55:35Z",
+  "caseID" : "img_5134",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 0,
+    "breakdown" : 1,
+    "expectedTotalCents" : 5365,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.25,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -5365,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Ralphs",
+      "total_cents" : 5365
+    },
+    "phase2" : {
+      "issues" : [
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Resolved rows differ from known total by 5365 cents"
+      ],
+      "items" : [
+
+      ],
+      "subtotal_cents" : 5365
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nDISCOUNT|Ralphs Savings|80\nDISCOUNT|Ralphs Savings|132\nDISCOUNT|Ralphs Savings|132\nDISCOUNT|Ralphs Savings|133\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 6.909648895263672,
+      "phase2Seconds" : 83.44459307193756,
+      "totalWorkflowSeconds" : 92.08946406841278,
+      "transcriptSeconds" : 1.7352150678634644,
+      "transcriptToPhase1Seconds" : 6.909648895263672,
+      "transcriptToPhase2Seconds" : 90.35424900054932,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "EVERYON 1.99 F 3.19 F 9.99 F 12.49 F 1.67 F 1.67 F 1.66 F 10.00 F 10.99 F *******7252 0.00 53.65 53.65 0.00 TOTAL NUMBER OF ITEMS SOLD = 56.6. 11 77 552 159 999999553 *...\nRalphs FRESH FOR 5680 Mission Center Rd. Your cashier was CHEC 553 BARLLA FETTUCN CLASSICO PSTA SCE RC RALPHS SAVED YOU 0.80 CAFE BUSTELO ESPRS BLACK RIFLE COFFEE MINUTEMAID JUICE RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.33 WATERMELON CUBES SHRIMP XL RC 2.00 RALPHS SAVED YOU rewards CUSTOMER TAX **** BALANCE San Diego CA 92108 VISA CREDIT Purchase ************3578 - H REF#: 07966C TOTAL: 53.65 AID: A0000000031010 TC: 4FBA00D59D618582 VISA CHANGE RALPHS rewards SAVINGS TOTAL COUPONS\n(619) 297-2593 SC SC SC RALPHS\nSC SC"
+  },
+  "sourceFilename" : "IMG_5134.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

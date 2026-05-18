@@ -1,0 +1,57 @@
+{
+  "capturedAt" : "2026-04-19T02:14:57Z",
+  "caseID" : "img_5055",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 4524,
+    "breakdown" : 1,
+    "expectedTotalCents" : 4524,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 0.2,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 325,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "El Pollo Loco",
+      "total_cents" : 4524
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 4199,
+          "label" : "Creamy Cilantro Dressing",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 4199,
+      "tax_cents" : 325
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Creamy Cilantro Dressing|4199\nTAX|Tax|325\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5410070419311523,
+      "phase2Seconds" : 11.434334993362427,
+      "totalWorkflowSeconds" : 15.651500940322876,
+      "transcriptSeconds" : 3.676151990890503,
+      "transcriptToPhase1Seconds" : 0.5410079956054688,
+      "transcriptToPhase2Seconds" : 11.975348949432373,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "A 0111 El Pollo Loco Unit# 3848 41383 Big Bear Blyd Big Bear Lake, CA, 92315 909-866-1019 CHK 8289 24 Jan'26 3:00 PM To Go - Kiosk Unknown 12101784 41.9 DRSG-Cmy Cilntro $45.24 $41.99 $3.25 $45.24 $0.00 Check Closed - Jan'26 3:00 PM\nKIOSK01 IKN-12p Meal LT 12PC Leg\/Thigh G - Side Salad G-Mashed Potato G-Spanish Rice Corn\/3 Flour ) THANKS \/MC\/DIS Payment Change Due 24"
+  },
+  "sourceFilename" : "IMG_5055.jpeg",
+  "variantID" : "current"
+}

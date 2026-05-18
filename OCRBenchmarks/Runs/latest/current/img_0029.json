@@ -1,0 +1,174 @@
+{
+  "capturedAt" : "2026-05-13T22:22:04Z",
+  "caseID" : "img_0029",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 23618,
+    "breakdown" : 0.2,
+    "expectedTotalCents" : 23618,
+    "itemValues" : 0.3076923076923077,
+    "lineItemValues" : 0.3333333333333333,
+    "merchant" : 0,
+    "overall" : 0.7828205128205129,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : -663,
+        "label" : "-6.63"
+      },
+      {
+        "cents" : 30,
+        "label" : "CRV SFTDK 35PK NTX"
+      },
+      {
+        "cents" : 2964,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Garcla Store",
+      "total_cents" : 23618
+    },
+    "phase2" : {
+      "discount_cents" : 663,
+      "fees_cents" : 30,
+      "issues" : [
+        "Ignored discount row: Member Savings",
+        "Ignored discount row: Associate Savings",
+        "Ignored discount row: Associate Savings"
+      ],
+      "items" : [
+        {
+          "cents" : 229,
+          "label" : "Jello Raspberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 179,
+          "label" : "Horizon Milk Strawberry",
+          "qty" : 1
+        },
+        {
+          "cents" : 1198,
+          "label" : "Crystal Geyser Alpine Spring Water",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Light Tortilla Bumble Bee 5oz",
+          "qty" : 1
+        },
+        {
+          "cents" : 549,
+          "label" : "Lactaid Milk RF",
+          "qty" : 1
+        },
+        {
+          "cents" : 299,
+          "label" : "Lactaid 2% Protein",
+          "qty" : 1
+        },
+        {
+          "cents" : 719,
+          "label" : "Kerns Nectar Mango",
+          "qty" : 1
+        },
+        {
+          "cents" : 549,
+          "label" : "Clover Milk",
+          "qty" : 1
+        },
+        {
+          "cents" : 479,
+          "label" : "Monday Smooth Cucumber & Mint",
+          "qty" : 1
+        },
+        {
+          "cents" : 1698,
+          "label" : "Method Body Wash Eucalyptus & Mint",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Beef Porterhouse Steak",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Beef Ribeye Steak Boneless",
+          "qty" : 1
+        },
+        {
+          "cents" : 887,
+          "label" : "Beef Ribeye Steak Boneless",
+          "qty" : 1
+        },
+        {
+          "cents" : 839,
+          "label" : "WFB Salmon Nova",
+          "qty" : 1
+        },
+        {
+          "cents" : 2225,
+          "label" : "Open Nature Snow Crab",
+          "qty" : 1
+        },
+        {
+          "cents" : 2539,
+          "label" : "Pineapple Gold Watermelon Seedless",
+          "qty" : 1
+        },
+        {
+          "cents" : 1885,
+          "label" : "Organic Girl Baby Spinach",
+          "qty" : 1
+        },
+        {
+          "cents" : 1599,
+          "label" : "Baby Bok Choy Organic",
+          "qty" : 1
+        },
+        {
+          "cents" : 2499,
+          "label" : "Organic Tomatoes",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "Recyclable Bag",
+          "qty" : 1
+        },
+        {
+          "cents" : 56,
+          "label" : "White Peaches",
+          "qty" : 1
+        },
+        {
+          "cents" : 162,
+          "label" : "White Peaches",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 21287,
+      "tax_cents" : 2964
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nDISCOUNT|-6.63|-663\nUNKNOWN|Unknown Charge|374\nITEM|Jello Raspberry|229\nDISCOUNT|Member Savings|-29\nITEM|Horizon Milk Strawberry|179\nITEM|Crystal Geyser Alpine Spring Water|1498\nFEE|CRV SFTDK 35PK NTX|30\nDISCOUNT|Member Savings|-300\nITEM|Light Tortilla Bumble Bee 5oz|350\nDISCOUNT|Member Savings|-50\nITEM|Lactaid Milk RF|549\nITEM|Lactaid 2% Protein|299\nITEM|Kerns Nectar Mango|749\nDISCOUNT|Member Savings|-30\nITEM|Clover Milk|549\nITEM|Monday Smooth Cucumber & Mint|479\nITEM|Method Body Wash Eucalyptus & Mint|1698\nITEM|Beef Porterhouse Steak|899\nITEM|Beef Ribeye Steak Boneless|1099\nDISCOUNT|Associate Savings|-264\nITEM|Beef Ribeye Steak Boneless|1099\nDISCOUNT|Associate Savings|-212\nITEM|WFB Salmon Nova|999\nDISCOUNT|Associate Savings|-160\nITEM|Open Nature Snow Crab|2925\nDISCOUNT|Associate Savings|-180\nDISCOUNT|Member Savings|-700\nITEM|Pineapple Gold Watermelon Seedless|2639\nDISCOUNT|Member Savings|-100\nITEM|Organic Girl Baby Spinach|2111\nDISCOUNT|Member Savings|-226\nITEM|Baby Bok Choy Organic|1599\nITEM|Organic Tomatoes|2499\nITEM|Recyclable Bag|399\nITEM|White Peaches|56\nITEM|White Peaches|162\nTAX|Tax|2964\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 2.4320470094680786,
+      "phase2Seconds" : 42.33477294445038,
+      "totalWorkflowSeconds" : 46.9575719833374,
+      "transcriptSeconds" : 2.190737009048462,
+      "transcriptToPhase1Seconds" : 2.4320470094680786,
+      "transcriptToPhase2Seconds" : 44.76683497428894,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "You Pay 2.00 S 1.79 S 11.98 S 3.50 S 5.49 S 2.49 S 6.99 S 5.49 4.49 16.98 S 8.99 T 10.99 T 10.99 T 9.99 T 29.25 S 23.75 S 18.99 S 14.39 S 16.19 S 3.99 co 6.99 5.99 S 6.76 S 2.23 S 8.08 S 0.30 -6.63 3.74 236.18\nGarcla Store 919 Dir Abel Main: (408) 867-0180 12876 Saratoga\/Sunnyvale Rd SARATOGA CA 95070 00091900303362407290103 YOUR CASHIER TODAY WAS David Price 2.29 1.79 14.98 3.50 5.49 2.99 7.49 5.49 4.79 16.98 8.99 10.99 10.99 9.99 29.25 26.39 21.11 15.99 24.99 3.99 7.99 5.99 9.02 2.23 8.08 0.30 07\/29\/24 01:03 AUTH: 0006564D 236.18 0.00 14.85 14.79 29.64 11%\nJELLO RASPBERRY Member Savings -0.29 74236520865 HORIZON MLK STRWBR 29 CRYSTL GYR ALPINE 29 CRV SFTDK 35PK NTX Member Savings -3.00 LTF TORTILLA LIGHT BUMBLE BEE 50Z Member Savings -0.50 LACTAID MILK RF -0.50 Member Savings LACTAID 2% PROTEIN KERNS NECTAR MANGO Member Savings -0.30 29 CLOVER MILK MONDAY SMOOTH CUCUMBER & MINT EUCALYPTUS & MINT METHOD BODY WASH BF PORTERHOUSE STK BF RIBEYE STK BNLS Associate Savings -2.64 BF RIBEYE STK BNLS Associate Savings -2.12 WFB SALMON NOVA Associate Savings -1.60 OPN NAT SNOW CRAB Associate Savings -1.80 Member Savings -7.00 505037211700 PINEAPPLE GOLD WATERMELON SDLS Henber Savings -1.00 89520300116 ORG GIRL BABY SPIN Herber Savings -2.26 BOK CHOY BBY ORGNC TOV TOMATOES ORGNC 3@ RCYCBLE BAG CHARGE CARD #************3578 236.18 YOUR SAVINGS\nGROCERY 4300020002 7514035001 7885852044 8660000055 REFRIG\/FROZEN 4138309072 4410015766 5385908571 7085200020 GEN MERCHANDISE 81000541445 81215403330 81215403332 81793901858 NEAT 20215900000 20750200000 20750200000 SEAFOOD. 2113012703 7989315930 PRODUCE 61002011100 89646000208 PEACHES WHITE 2.26 Ib @ $2.99 \/1b 0.56 1b @ $3.99 \/16 1.62 lb @ \/lb ADDITIONAL DISCOUNTS Associate Savings TAX **** BALANCE Credit Purchase REF: 780325435780 PAYMENT AMOUNT AL VISA CREDIT AID A0000000031010 TVR 0000000000 Visa CHANGE ember Savings sociate Savings tal Savings Value\n9435 94544 94664 MISCELLANEOUS 22147 TSI 0000 tal"
+  },
+  "sourceFilename" : "IMG_0029.jpeg",
+  "variantID" : "current"
+}

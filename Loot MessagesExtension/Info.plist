@@ -10,6 +10,11 @@
 	<string>iMessage App Icon</string>
 	<key>NSExtension</key>
 	<dict>
+		<key>MSSupportedPresentationContexts</key>
+		<array>
+			<string>MSMessagesAppPresentationContextMessages</string>
+			<string>MSMessagesAppPresentationContextMedia</string>
+		</array>
 		<key>NSExtensionMainStoryboard</key>
 		<string>MainInterface</string>
 		<key>NSExtensionPointIdentifier</key>

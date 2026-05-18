@@ -1,0 +1,115 @@
+{
+  "capturedAt" : "2026-05-13T22:26:42Z",
+  "caseID" : "img_4591",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 16298,
+    "breakdown" : 1,
+    "expectedTotalCents" : 16501,
+    "itemValues" : 0.7272727272727273,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.40909090909090906,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -203,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1509,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Reed's Indoor Range",
+      "total_cents" : 16501
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 203 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 4000,
+          "label" : "Ext",
+          "qty" : 1
+        },
+        {
+          "cents" : 1200,
+          "label" : "2 PEOPLE 1 LANE",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "GLOCK 19 9MM 4IN",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "RUGER PC CARBINE",
+          "qty" : 1
+        },
+        {
+          "label" : "9MM 16IN",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "Disposable Ear Plugs",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 198,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1398,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 398,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 14992,
+      "tax_cents" : 1509
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Ext|4000\nITEM|2 PEOPLE 1 LANE|1200\nITEM|GLOCK 19 9MM 4IN|2000\nITEM|RUGER PC CARBINE|2299\nITEM|9MM 16IN|2299\nITEM|Unknown Item|99\nITEM|Disposable Ear Plugs|699\nITEM|Unknown Item|199\nITEM|Unknown Item|1200\nITEM|Unknown Item|2299\nITEM|Unknown Item|198\nITEM|Unknown Item|1398\nITEM|Unknown Item|398\nTAX|Tax|1509\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.3430219888687134,
+      "phase2Seconds" : 48.57851803302765,
+      "totalWorkflowSeconds" : 51.46140503883362,
+      "transcriptSeconds" : 1.53985595703125,
+      "transcriptToPhase1Seconds" : 1.3430219888687134,
+      "transcriptToPhase2Seconds" : 49.92154800891876,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Welcome to Reed's Indoor Range Dec 23 25 2 Time 03:38 Ext 40.00 12.00 20.00 22.99 1.98 13.98 3.98 12.00 22.99 149.92 15.09 =-- 165.01 165.01\nReed's Indoor Range 1100 Duane Ave. Santa Clara, CA 95054 (408) 970-9870 Ticket#945742 Cus#Y6951877 2 Dr# Price 40.00 12.00 PI19502 20.00 9MM 16IN 22.99 .99 PYDP1000BN DISPOSABLE EAR 6.99 1.99 12.00 22.99\nQty 19117 SB9A 9MM 115GRN FMJ PLUGS 32DB DP1000 S4110S OR XV100 SAFETY B-27E BLACK SILH TARGET 19502 **075C JOSHUA LIU 15520 BELNAP WAY SARATOGA CA 95070\nUsr JGR Item Number 2 PEOPLE 1 LANE <--- LANE BPHE823 GLOCK 19 9MM 4IN SR# BPHE823 915-01337 RUGER PC CARBINE SR# 618-01337 SBBB-SB9A PYRX-PYDP1000BN PYRX-S4110S GLASSES CLEAR ALCO-B27E Total sale ****\n2PPL 50BX F #4 BXML.023 GLOrU MC\/Visa Approval"
+  },
+  "sourceFilename" : "IMG_4591.jpeg",
+  "variantID" : "current"
+}

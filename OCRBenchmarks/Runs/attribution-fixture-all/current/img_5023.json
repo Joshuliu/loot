@@ -1,0 +1,130 @@
+{
+  "capturedAt" : "2026-04-25T18:56:59Z",
+  "caseID" : "img_5023",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 8184,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 10632,
+    "itemValues" : 0.8333333333333334,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.40499999999999997,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -2448,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "California Market",
+      "total_cents" : 10632
+    },
+    "phase2" : {
+      "fees_cents" : 10,
+      "issues" : [
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Markdown",
+        "Resolved rows differ from known total by 2448 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 299,
+          "label" : "ROSEMARY FARMS MED A BROWN E",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "SHANGHAI BOKCHOY",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "GREENLEAF LETTUCE",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "YELLOW ONION",
+          "qty" : 1
+        },
+        {
+          "cents" : 612,
+          "label" : "CARROTS 1LB MARINATED PORK",
+          "qty" : 1
+        },
+        {
+          "cents" : 548,
+          "label" : "SPICY MARINATED CHICKEN",
+          "qty" : 1
+        },
+        {
+          "cents" : 1578,
+          "label" : "MARINATED ANGUS BEEF BNLS S",
+          "qty" : 1
+        },
+        {
+          "cents" : 671,
+          "label" : "MARINATED ANGUS BEEF FINGER",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "MARINATED BEEF RIB EYE BULG",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "JIMMY DEAN SAUSAGE EGG",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "CHOCOLATE CHIP WAFFLES",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "GARLIC PK",
+          "qty" : 1
+        },
+        {
+          "cents" : 599,
+          "label" : "JUICY DUMPLING W\/ PORK",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "PULMUONE MINI WONTONS",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "SIMPLY MANGO JUICE",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 10622
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|ROSEMARY FARMS MED A BROWN E|299\nDISCOUNT|Markdown|100\nITEM|SHANGHAI BOKCHOY|99\nITEM|GREENLEAF LETTUCE|75\nITEM|YELLOW ONION|99\nITEM|CARROTS 1LB MARINATED PORK|612\nITEM|SPICY MARINATED CHICKEN|548\nITEM|MARINATED ANGUS BEEF BNLS S|1578\nITEM|MARINATED ANGUS BEEF FINGER|671\nITEM|MARINATED BEEF RIB EYE BULG|899\nITEM|JIMMY DEAN SAUSAGE EGG|399\nITEM|CHOCOLATE CHIP WAFFLES|699\nDISCOUNT|Markdown|200\nITEM|GARLIC PK|199\nITEM|JUICY DUMPLING W\/ PORK|599\nDISCOUNT|Markdown|350\nITEM|PULMUONE MINI WONTONS|999\nITEM|SIMPLY MANGO JUICE|399\nFEE|Bottle sales|10\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.8789240121841431,
+      "phase2Seconds" : 17.338194966316223,
+      "totalWorkflowSeconds" : 18.21714699268341,
+      "transcriptSeconds" : 1.6927719116210938e-05,
+      "transcriptToPhase1Seconds" : 0.8789240121841431,
+      "transcriptToPhase2Seconds" : 18.217130064964294,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "450 South Western Ave California Market (213) 382-9444\nLos Angeles, CA, 90020\nInv#:00137387 Trs#: 138073 #001-007 1\/19\/2026 19:27:02 Young Mi\nROSEMARY FARMS MED A BROWN E $2.99 F\n0.18 lb @ $0.99\/1b Markdown: $1.00 $0.18 F\nSHANGHAI BOKCHOY LB $0.99 F\nGREENLEAF LETTUCE\n1.51 lb @ $0.99\/21b $0.75 F\nYELLOW ONION LB $0.99 F\nCARROTS 1LB a)-sIt MARINATED ALL NATURAL PORK B $6.12 F\ng7 1LB\nSPICY MARINATED NATURAL CHIC $5.48 F\nMARINATED ANGUS BEEF BNLS S $15.78 F\nMARINATED ANGUS BEEF FINGER $11.31 F• $6.71 F\nMARINATED NATURAL CHICKEN TH\nMARINATED BEEF RIB EYE BULG $12.99 F $8.99 F\nJIMMY DEAN SAUSAGE, EGG, &am $3.99 F\nCHOCOLATE CHIP WAFFLES $6.99 F\nNONGSHIM MUPAMA TANG MYUN -\nMarkdown: $2.00\nGARLIC PK $1.99 F\nPMO JUICY DUMPLING W\/ PORK & $5.99 F #1# PK\n#78 938497\nMarkdown: $3.50\nPULMUONE MINI WONTONS 600 G $9.99 F\nSIMPLY MANGO JUICE 1.53 L $3.99 F\n+Bottle sales: $0.10\nNet Sales $106.22\nBottle sales $0.10\nTOTAL SALES $106.32\nSUB TOTAL $106.32\nVisa $106.32\n#***** :*****1407\nBalance $0.00"
+  },
+  "sourceFilename" : "IMG_5023.jpeg",
+  "variantID" : "current"
+}

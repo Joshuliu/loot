@@ -66,8 +66,10 @@ enum DebtSimplifier {
 
 extension LootTab {
     func simplifiedTransactions() -> [DebtSimplifier.Transaction] {
-        let balanceMap = Dictionary(uniqueKeysWithValues:
-            members.map { ($0.memberId, $0.balanceCents) })
+        let balanceMap = Dictionary(
+            members.map { ($0.memberId, $0.balanceCents) },
+            uniquingKeysWith: { first, _ in first }
+        )
         return DebtSimplifier.simplify(balances: balanceMap)
     }
 }

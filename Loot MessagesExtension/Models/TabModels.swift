@@ -82,7 +82,7 @@ enum PaymentMethodType: String, Codable, CaseIterable {
 
     /// Builds a deep link URL for the payment app, or nil if no deep link exists.
     func deepLinkURL(identifier: String, amountCents: Int, note: String, bankURL: String? = nil, payeeName: String? = nil, zelleData: String? = nil) -> URL? {
-        let dollars = String(format: "%.2f", Double(amountCents) / 100.0)
+        let dollars = Money(cents: amountCents).inputString
 
         switch self {
         case .venmo:
@@ -132,6 +132,11 @@ enum PaymentMethodType: String, Codable, CaseIterable {
                 .replacingOccurrences(of: "http://", with: "https://"))
 
         case .applePay, .cash:
+            // Apple Pay handoff is not URL-driven — the call site detects
+            // `.applePay` and routes through `LootUIModel.sendApplePayHandoff`
+            // (settlement card sent; an in-extension confirmation tells the
+            // sender to use the iMessage Apple Cash drawer). Cash has no
+            // deep link by design.
             return nil
         }
     }
@@ -183,6 +188,49 @@ struct TabMember: Codable, Identifiable {
     var isActive: Bool
 }
 
+extension LootTab {
+    /// Returns a copy of this tab with `members` and `memberIds` deduped.
+    /// Past corruption (or simultaneous joins racing on `joinTab`'s membership
+    /// guard) can leave the tab document with two TabMember entries that share
+    /// the same `userId` or `memberId`. Anywhere downstream that builds a
+    /// dictionary keyed on those ids — `Dictionary(uniqueKeysWithValues:)` —
+    /// would trap. Calling `.dedupedMembers()` at the fetch boundary keeps
+    /// every consumer safe with no ambient defensiveness scattered about.
+    func dedupedMembers() -> LootTab {
+        var seenMemberIds: Set<String> = []
+        var seenUserIds: Set<String> = []
+        var deduped: [TabMember] = []
+        for member in members {
+            // Drop a duplicate by memberId outright.
+            if seenMemberIds.contains(member.memberId) { continue }
+            // Drop a duplicate by non-empty userId — a single Loot user
+            // appearing twice with different memberIds is the corruption
+            // pattern that crashes `TabReceiptAdapter.fromPayload`'s uid → memberId dict.
+            if let uid = member.userId, !uid.isEmpty {
+                if seenUserIds.contains(uid) { continue }
+                seenUserIds.insert(uid)
+            }
+            seenMemberIds.insert(member.memberId)
+            deduped.append(member)
+        }
+        guard deduped.count != members.count else { return self }
+
+        var copy = self
+        copy.members = deduped
+        // Resync memberIds to match the deduped active members so
+        // membership-driven Firestore queries (whereField "memberIds"
+        // arrayContains) don't index phantom slots.
+        let activeUserIds = deduped.compactMap { $0.userId.flatMap { $0.isEmpty ? nil : $0 } }
+        let preservedMemberIds = self.memberIds.filter { id in
+            activeUserIds.contains(id) || deduped.contains(where: { $0.memberId == id })
+        }
+        // Drop duplicate memberIds while preserving order.
+        var seenIdx: Set<String> = []
+        copy.memberIds = preservedMemberIds.filter { seenIdx.insert($0).inserted }
+        return copy
+    }
+}
+
 // MARK: - Tab Receipt
 
 struct TabReceipt: Codable, Identifiable {
@@ -195,20 +243,29 @@ struct TabReceipt: Codable, Identifiable {
     var taxCents: Int
     var tipCents: Int
     var feesCents: Int
-    var discountCents: Int
+    var discountCents: Int?
     var splitMode: SplitMode
     var payerMemberId: String
     var splits: [ReceiptSplit]
     var items: [ReceiptItem]?
     var imageUrl: String?
     var messagePayloadId: String?
+
+    // Payload-derived. Populated by TabReceiptAdapter.fromPayload() so render doesn't
+    // depend on activeTab.members being in sync at the moment of display.
+    var payerDisplayName: String? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, createdBy, createdAt
+        case totalCents, subtotalCents, taxCents, tipCents, feesCents, discountCents
+        case splitMode, payerMemberId, splits, items, imageUrl, messagePayloadId
+    }
 }
 
-enum SplitMode: String, Codable {
-    case equally
-    case byItems
-    case custom
-}
+// SplitMode is now defined in Domain/SplitConfiguration.swift as the canonical
+// enum (Hashable + Sendable + CaseIterable on top of String + Codable). Raw
+// values are unchanged, so existing Firestore documents and decoded
+// LootMessagePayload data continue to round-trip cleanly.
 
 struct ReceiptSplit: Codable {
     var memberId: String
@@ -219,7 +276,76 @@ struct ReceiptItem: Codable {
     var label: String
     var priceCents: Int
     var quantity: Int
+    /// Legacy: deduplicated list of memberIds with any claim on this item.
+    /// New writers populate this from `partition.claimerMemberIds` for
+    /// readers on builds before Phase 4 ships.
     var assignedMemberIds: [String]
+    /// Per-item claim partition, parallels `ItemPartition` but keys on
+    /// `TabMember.memberId` (string) instead of `PersonID`. nil/absent =
+    /// no rich partition recorded; readers fall back to `assignedMemberIds`.
+    var partition: ReceiptItemPartition?
+
+    init(label: String, priceCents: Int, quantity: Int,
+         assignedMemberIds: [String], partition: ReceiptItemPartition? = nil) {
+        self.label = label
+        self.priceCents = priceCents
+        self.quantity = quantity
+        self.assignedMemberIds = assignedMemberIds
+        self.partition = partition
+    }
+}
+
+/// Firestore-side mirror of `Domain/ItemPartition` keyed on `TabMember.memberId`.
+/// Mutually exclusive variants — once an item enters shares or custom mode, it
+/// stays there.
+enum ReceiptItemPartition: Codable, Equatable {
+    case shares(denominator: Int, slots: [String?])
+    case custom(claims: [ReceiptItemCustomClaim])
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, denominator, slots, claims
+    }
+
+    private enum Kind: String, Codable {
+        case shares, custom
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try c.decode(Kind.self, forKey: .kind)
+        switch kind {
+        case .shares:
+            let denom = try c.decode(Int.self, forKey: .denominator)
+            let slots = try c.decode([String?].self, forKey: .slots)
+            self = .shares(denominator: denom, slots: slots)
+        case .custom:
+            let claims = try c.decode([ReceiptItemCustomClaim].self, forKey: .claims)
+            self = .custom(claims: claims)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .shares(let denom, let slots):
+            try c.encode(Kind.shares, forKey: .kind)
+            try c.encode(denom, forKey: .denominator)
+            try c.encode(slots, forKey: .slots)
+        case .custom(let claims):
+            try c.encode(Kind.custom, forKey: .kind)
+            try c.encode(claims, forKey: .claims)
+        }
+    }
+}
+
+struct ReceiptItemCustomClaim: Codable, Equatable {
+    var memberId: String
+    var cents: Int
+
+    init(memberId: String, cents: Int) {
+        self.memberId = memberId
+        self.cents = cents
+    }
 }
 
 // MARK: - Settlement
@@ -232,79 +358,6 @@ struct Settlement: Codable, Identifiable {
     var toMemberId: String
     var amountCents: Int
     var note: String?
-}
-
-// MARK: - TabReceipt Factory
-
-extension TabReceipt {
-    /// Creates a TabReceipt from a sent message payload and the active tab.
-    static func from(payload: LootMessagePayload, messagePayloadId: String, tab: LootTab) -> TabReceipt {
-        let myId = KeychainHelper.getOrCreateUserId()
-        let split = payload.s
-        let receipt = payload.r
-
-        // Build a lookup from guest uid → tab memberId
-        let uidToMemberId: [String: String] = Dictionary(
-            uniqueKeysWithValues: tab.members.compactMap { m in
-                guard let uid = m.userId, !uid.isEmpty else { return nil }
-                return (uid, m.memberId)
-            }
-        )
-
-        // Map payer slot to memberId
-        let payerUid = split.g[split.pi].uid ?? myId
-        let payerMemberId = uidToMemberId[payerUid] ?? myId
-
-        // Map split mode
-        let splitMode: SplitMode = {
-            switch split.m {
-            case .equally: return .equally
-            case .custom: return .custom
-            case .byItems: return .byItems
-            }
-        }()
-
-        // Build splits: for each included guest, map to tab member
-        let splits: [ReceiptSplit] = split.g.enumerated().compactMap { idx, guest in
-            guard guest.inc, split.o.indices.contains(idx), split.o[idx] > 0 else { return nil }
-            let uid = guest.uid ?? ""
-            let memberId = uidToMemberId[uid] ?? uid
-            guard !memberId.isEmpty else { return nil }
-            return ReceiptSplit(memberId: memberId, owedCents: split.o[idx])
-        }
-
-        // Build items (if by-items mode)
-        let items: [ReceiptItem]? = splitMode == .byItems ? receipt.i.map { item in
-            let assignedMemberIds = item.rs.compactMap { slotIdx -> String? in
-                guard split.g.indices.contains(slotIdx) else { return nil }
-                let uid = split.g[slotIdx].uid ?? ""
-                return uidToMemberId[uid] ?? uid
-            }
-            return ReceiptItem(
-                label: item.l,
-                priceCents: item.p,
-                quantity: 1,
-                assignedMemberIds: assignedMemberIds
-            )
-        } : nil
-
-        return TabReceipt(
-            title: receipt.t,
-            createdBy: myId,
-            totalCents: receipt.tot,
-            subtotalCents: receipt.sub,
-            taxCents: receipt.tx,
-            tipCents: receipt.tip,
-            feesCents: receipt.f,
-            discountCents: receipt.d,
-            splitMode: splitMode,
-            payerMemberId: payerMemberId,
-            splits: splits,
-            items: items,
-            imageUrl: nil,
-            messagePayloadId: messagePayloadId
-        )
-    }
 }
 
 // MARK: - Minimal Tab Construction

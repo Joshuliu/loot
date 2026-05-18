@@ -1,0 +1,58 @@
+{
+  "capturedAt" : "2026-05-13T22:30:46Z",
+  "caseID" : "img_5055",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 4524,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 4524,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0,
+    "merchant" : 0.2,
+    "overall" : 0.835,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "El Pollo Loco",
+      "total_cents" : 4524
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 4199,
+          "label" : "12PC Meal Leg\/Thigh",
+          "qty" : 1
+        },
+        {
+          "cents" : 325,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 4524
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|12PC Meal Leg\/Thigh|4199\nITEM|Unknown Item|325\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.123684048652649,
+      "phase2Seconds" : 8.501394987106323,
+      "totalWorkflowSeconds" : 10.63969600200653,
+      "transcriptSeconds" : 1.014611005783081,
+      "transcriptToPhase1Seconds" : 1.123684048652649,
+      "transcriptToPhase2Seconds" : 9.62508499622345,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "*[o11] El Pollo Loco Unit# 3848 41383 Big Bear Blvd Big Bear Lake, CA, 92315 909-866-1019 CHK 8289 24 Jan'26 3:00 PM To Go - Kiosk 41.9 $45.24 $41.99 $3.25\n$45.24 $0.00 Check Closed -- 24 Jan'26 3:00 PM\nUnknown 12101784 IKN-12p Meal LT 12PC Leg\/Thigh LG - Side Salad DRSG-Cmy Cilntro G-Mashed Potato G-Spanish Rice Corn\/3 Flour ) THANKS \/MC\/DIS Payment Change Due --\nKIOSK01"
+  },
+  "sourceFilename" : "IMG_5055.jpeg",
+  "variantID" : "current"
+}

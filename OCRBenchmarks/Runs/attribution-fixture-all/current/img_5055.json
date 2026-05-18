@@ -1,0 +1,58 @@
+{
+  "capturedAt" : "2026-04-25T18:57:08Z",
+  "caseID" : "img_5055",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 4524,
+    "breakdown" : 1,
+    "expectedTotalCents" : 4524,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 325,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "E Pollo LOcu",
+      "total_cents" : 4524
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Food",
+        "Unclassified priced row: Payment"
+      ],
+      "items" : [
+        {
+          "cents" : 4199,
+          "label" : "Chicken 12pc Meal",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 4199,
+      "tax_cents" : 325
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Chicken 12pc Meal|4199\nUNKNOWN|Food|4199\nTAX|Tax|325\nUNKNOWN|Payment|4524\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.7295509576797485,
+      "phase2Seconds" : 9.15816605091095,
+      "totalWorkflowSeconds" : 9.887737035751343,
+      "transcriptSeconds" : 7.033348083496094e-06,
+      "transcriptToPhase1Seconds" : 0.7295509576797485,
+      "transcriptToPhase2Seconds" : 9.88773000240326,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "TAKE-OUT\n[p11]\nE Pollo LOcu\n_Unit# 3848\nBig Bear Lake, CA, 41383 Big Bear Blvd\n92315\n110 KIOSK01 909-866-1019\n1\nCHK 8289\n24 Jan'26 3:00 PM\nTo Go - Kiosk\nUnknown\n1 CHKN-12p Meal LT 12101784\n41.99\n12PC Leg\/Thigh\nLG - Side Salad\nDRSG-Cmy Cilntro\nLG-Mashed Potato\nLG-Spanish Rice\n3 Corn\/3 Flour\nNO THANKS\nVisa\/MC\/DIS $45.24\nFood $41.99\nTax $3.25\nPayment $45.24\nChange Due $0.00\n- Check Closed -\n24 Jan'26 3:00 PM\n^^[p 12]\nOrder 8289\n*: ** PURCHASE *** ***\n**: PURCHASE ******* ***** ** ***\nSale: ACCEPTED\nTotal: USD 45.24 USD 45.24\nCard Type:\nCard Expiration Date: Card Entry:\nAcct Contactless\nAUTH CODE: ************3578 **\/**\n****** EMV PURCHASE 08230C\nApp Label: ******\nMode: VISA CREDIT\nAID: A0000000031010 Issuer\nIAD: 06011203A00000 TVR: 0000000000\nTSI:\nARC: 00"
+  },
+  "sourceFilename" : "IMG_5055.jpeg",
+  "variantID" : "current"
+}

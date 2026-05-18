@@ -1,0 +1,25 @@
+RUSTY PELICAN
+3201 Rickenbacker swy Rusty Pelican Miami Key
+TheRustyPelican.com Biscayne, FL
+(305.361, 381в
+Seruer: Valentine A Check #356
+Guest Count: 1 Table 252
+Ordered: 3/17/24 6:57 PM
+1 Surf and Turf $84.00
+Subtotal
+Tax $84.00
+Tip $6.72
+Total $15.12
+$105.84
+Input Type
+VISA CREDIT Time C (EMU Chip Read)
+xxxxxxxx3578
+Authorization Transaction Type 7:39 PM
+Payment ID Approval Code Approved Sale
+Application ID wxsbrLCpdwww 08854D
+Application Label A0000000031010
+Terminal ID VISA CREDIT
+Card Reader 8eda667332de7f85
+VISA CARDHOLDER BBPOS
+Suggested Additional Tip:
++ 2%: (Tip $1.68 Total $92.40)

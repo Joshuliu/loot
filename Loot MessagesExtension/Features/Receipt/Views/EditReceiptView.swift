@@ -8,28 +8,26 @@
 import SwiftUI
 
 struct EditReceiptView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var receiptDraftVM: ReceiptDraftViewModel
     let onSave: (ReceiptDisplay) -> Void
     let onCancel: () -> Void
     
     // Editable state
     @State private var receiptName: String
-    @State private var items: [EditableItem]
-    @State private var taxesAndFees: [EditableLineItem]
-    @State private var discounts: [EditableLineItem]
-    @State private var tipString: String  // Separate tip field (below discounts)
+    @State private var items: [LineItemForm]
+    @State private var taxesAndFees: [AuxLineForm]  // signed amounts: negative = discount
+    @State private var tipString: String
     @State private var preTipTotalOverride: String  // Single override for pre-tip total
 
     // Capture preview
     @State private var showCapture: Bool = false
 
-    // Debug: OCR chunk viewer
-    @State private var showChunks: Bool = false
-
     // Editor state for inline add/edit
     @State private var editorMode: EditorMode = .none
     @State private var editorLabel: String = ""
     @State private var editorAmount: String = ""
+    @State private var editorIsDiscount: Bool = false
     @FocusState private var editorFocusedField: EditorFocusField?
 
     @FocusState private var focusedField: FocusableField?
@@ -38,7 +36,6 @@ struct EditReceiptView: View {
         case none
         case item(UUID?)      // nil = adding new, UUID = editing existing
         case fee(UUID?)
-        case discount(UUID?)
         case preTipTotal
         case tip
 
@@ -56,35 +53,13 @@ struct EditReceiptView: View {
         case tip
     }
     
-    // Editable models
-    struct EditableItem: Identifiable, Equatable {
-        let id: UUID
-        var label: String
-        var price: String
-        
-        var isComplete: Bool {
-            !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !price.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-    }
-    
-    struct EditableLineItem: Identifiable, Equatable {
-        let id: UUID
-        var label: String
-        var amount: String
-
-        var isComplete: Bool {
-            !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            !amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-    }
-    
-    init(uiModel: LootUIModel, onSave: @escaping (ReceiptDisplay) -> Void, onCancel: @escaping () -> Void) {
-        self.uiModel = uiModel
+    init(coordinator: AppCoordinator, receiptDraftVM: ReceiptDraftViewModel, onSave: @escaping (ReceiptDisplay) -> Void, onCancel: @escaping () -> Void) {
+        self.coordinator = coordinator
+        self.receiptDraftVM = receiptDraftVM
         self.onSave = onSave
         self.onCancel = onCancel
-        
-        let receipt = uiModel.currentReceipt ?? ReceiptDisplay(
+
+        let receipt = receiptDraftVM.currentReceipt ?? ReceiptDisplay(
             id: UUID().uuidString,
             title: "New Receipt",
             createdAt: Date(),
@@ -92,7 +67,6 @@ struct EditReceiptView: View {
             feesCents: 0,
             taxCents: 0,
             tipCents: 0,
-            discountCents: 0,
             totalCents: 0,
             items: []
         )
@@ -101,21 +75,70 @@ struct EditReceiptView: View {
         
         // Convert items (no empty row - use Add button instead)
         let editableItems = receipt.items.map { item in
-            EditableItem(
+            LineItemForm(
                 id: UUID(uuidString: item.id) ?? UUID(),
                 label: item.label,
-                price: centsToDecimalString(item.priceCents)
+                priceText: Money(cents: item.priceCents).inputString
             )
         }
         _items = State(initialValue: editableItems)
 
-        // Convert taxes & fees (no empty row - use Add button instead)
-        var fees: [EditableLineItem] = []
-        if receipt.taxCents > 0 {
-            fees.append(EditableLineItem(id: UUID(), label: "Tax", amount: centsToDecimalString(receipt.taxCents)))
-        }
-        if receipt.feesCents > 0 {
-            fees.append(EditableLineItem(id: UUID(), label: "Fees", amount: centsToDecimalString(receipt.feesCents)))
+        // Convert taxes, fees & discounts into one list with signed amounts.
+        // Prefer lineItems (individual rows) if present — they were saved by EditReceiptView
+        // and preserve each row separately. Fall back to aggregates for scanned receipts.
+        var fees: [AuxLineForm] = []
+        if !receipt.lineItems.isEmpty {
+            func isTipLabel(_ label: String) -> Bool {
+                let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return normalized.contains("tip") || normalized.contains("gratuity")
+            }
+
+            func isTaxLabel(_ label: String) -> Bool {
+                let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return normalized.contains("tax")
+            }
+
+            var explicitTaxCents = 0
+            var explicitFeeCents = 0
+            var explicitDiscountCents = 0
+            for item in receipt.lineItems {
+                let stableId = UUID(uuidString: item.id) ?? UUID()
+                if isTipLabel(item.label) {
+                    continue
+                }
+                fees.append(AuxLineForm(id: stableId, label: item.label, amountText: Money(cents: item.cents).inputString))
+                if isTaxLabel(item.label) {
+                    explicitTaxCents += item.cents
+                } else if item.cents < 0 {
+                    explicitDiscountCents += abs(item.cents)
+                } else {
+                    explicitFeeCents += item.cents
+                }
+            }
+
+            let missingTaxCents = receipt.taxCents - explicitTaxCents
+            if missingTaxCents != 0 {
+                fees.append(AuxLineForm(label: "Tax", amountText: Money(cents: missingTaxCents).inputString))
+            }
+
+            let missingFeeCents = receipt.feesCents - explicitFeeCents
+            if missingFeeCents != 0 {
+                fees.append(AuxLineForm(label: "Fees", amountText: Money(cents: missingFeeCents).inputString))
+            }
+            let missingDiscountCents = receipt.discountCents - explicitDiscountCents
+            if missingDiscountCents != 0 {
+                fees.append(AuxLineForm(label: "Discount", amountText: Money(cents: -missingDiscountCents).inputString))
+            }
+        } else {
+            if receipt.taxCents != 0 {
+                fees.append(AuxLineForm(label: "Tax", amountText: Money(cents: receipt.taxCents).inputString))
+            }
+            if receipt.feesCents != 0 {
+                fees.append(AuxLineForm(label: "Fees", amountText: Money(cents: receipt.feesCents).inputString))
+            }
+            if receipt.discountCents != 0 {
+                fees.append(AuxLineForm(label: "Discount", amountText: Money(cents: -receipt.discountCents).inputString))
+            }
         }
         _taxesAndFees = State(initialValue: fees)
 
@@ -126,13 +149,6 @@ struct EditReceiptView: View {
             _tipString = State(initialValue: "")
         }
 
-        // Convert discounts (no empty row - use Add button instead)
-        var discountsList: [EditableLineItem] = []
-        if receipt.discountCents > 0 {
-            discountsList.append(EditableLineItem(id: UUID(), label: "Discount", amount: centsToDecimalString(receipt.discountCents)))
-        }
-        _discounts = State(initialValue: discountsList)
-
         // Initialize pre-tip total override.
         // Priority:
         // 1) Explicit override previously saved in this receipt flow (persist user intent),
@@ -140,7 +156,7 @@ struct EditReceiptView: View {
         let hasItems = !receipt.items.isEmpty
         let calculatedPreTip = receipt.subtotalCents + receipt.taxCents + receipt.feesCents - receipt.discountCents
 
-        if let persistedOverride = uiModel.preTipTotalOverrideCents {
+        if let persistedOverride = receiptDraftVM.preTipTotalOverrideCents {
             _preTipTotalOverride = State(initialValue: centsToDecimalString(persistedOverride))
         } else if !hasItems && calculatedPreTip > 0 {
             _preTipTotalOverride = State(initialValue: centsToDecimalString(calculatedPreTip))
@@ -151,33 +167,25 @@ struct EditReceiptView: View {
     
     // MARK: - Computed values
 
-    private var completedItems: [EditableItem] {
+    private var completedItems: [LineItemForm] {
         items.filter { $0.isComplete }
     }
 
     private var calculatedSubtotalCents: Int {
-        completedItems.reduce(0) { $0 + stringToCents($1.price) }
+        completedItems.reduce(0) { $0 + $1.priceCents }
     }
 
-    private var completedFees: [EditableLineItem] {
+    private var completedFees: [AuxLineForm] {
         taxesAndFees.filter { $0.isComplete }
     }
 
     private var taxesAndFeesCents: Int {
-        completedFees.reduce(0) { $0 + stringToCents($1.amount) }
+        completedFees.reduce(0) { $0 + $1.amountCents }
     }
 
-    private var completedDiscounts: [EditableLineItem] {
-        discounts.filter { $0.isComplete }
-    }
-
-    private var discountsCents: Int {
-        completedDiscounts.reduce(0) { $0 + stringToCents($1.amount) }
-    }
-
-    // Calculated pre-tip total from items + taxes + fees - discounts
+    // Calculated pre-tip total from items + taxes + fees (fees signed so discounts reduce it)
     private var calculatedPreTipTotalCents: Int {
-        calculatedSubtotalCents + taxesAndFeesCents - discountsCents
+        calculatedSubtotalCents + taxesAndFeesCents
     }
 
     // Pre-tip total: use override if set, otherwise use calculated
@@ -206,54 +214,48 @@ struct EditReceiptView: View {
     
     // MARK: - Actions
 
-    private func deleteItem(_ item: EditableItem) {
+    private func deleteItem(_ item: LineItemForm) {
         items.removeAll { $0.id == item.id }
     }
 
-    private func deleteFee(_ fee: EditableLineItem) {
+    private func deleteFee(_ fee: AuxLineForm) {
         taxesAndFees.removeAll { $0.id == fee.id }
-    }
-
-    private func deleteDiscount(_ discount: EditableLineItem) {
-        discounts.removeAll { $0.id == discount.id }
     }
 
     // MARK: - Editor Actions
 
-    private func openEditor(mode: EditorMode, focusField: EditorFocusField = .label) {
+    private func openEditor(mode: EditorMode, focusField: EditorFocusField = .label, isDiscount: Bool = false) {
         switch mode {
         case .none:
             return
         case .item(let id):
             if let id = id, let item = items.first(where: { $0.id == id }) {
                 editorLabel = item.label
-                editorAmount = sanitizedUSDAmountInput(item.price)
+                editorAmount = sanitizedUSDAmountInput(item.priceText)
             } else {
                 editorLabel = ""
                 editorAmount = ""
             }
+            editorIsDiscount = false
         case .fee(let id):
             if let id = id, let fee = taxesAndFees.first(where: { $0.id == id }) {
+                let cents = fee.amountCents
+                editorIsDiscount = cents < 0
                 editorLabel = fee.label
-                editorAmount = sanitizedUSDAmountInput(fee.amount)
+                editorAmount = sanitizedUSDAmountInput(Money(cents: abs(cents)).inputString)
             } else {
-                editorLabel = ""
-                editorAmount = ""
-            }
-        case .discount(let id):
-            if let id = id, let discount = discounts.first(where: { $0.id == id }) {
-                editorLabel = discount.label
-                editorAmount = sanitizedUSDAmountInput(discount.amount)
-            } else {
-                editorLabel = ""
+                editorIsDiscount = isDiscount
+                editorLabel = isDiscount ? "Discount" : ""
                 editorAmount = ""
             }
         case .preTipTotal:
             editorLabel = "Override total"
             editorAmount = sanitizedUSDAmountInput(preTipTotalOverride)
+            editorIsDiscount = false
         case .tip:
             editorLabel = "Tip amount"
             editorAmount = sanitizedUSDAmountInput(tipString)
+            editorIsDiscount = false
         }
         editorMode = mode
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
@@ -274,7 +276,7 @@ struct EditReceiptView: View {
             tipString = amount
             closeEditor()
             return
-        case .none, .item, .fee, .discount:
+        case .none, .item, .fee:
             break
         }
 
@@ -290,23 +292,17 @@ struct EditReceiptView: View {
         case .item(let id):
             if let id = id, let idx = items.firstIndex(where: { $0.id == id }) {
                 items[idx].label = label
-                items[idx].price = amount
+                items[idx].priceText = amount
             } else {
-                items.append(EditableItem(id: UUID(), label: label, price: amount))
+                items.append(LineItemForm(label: label, priceText: amount))
             }
         case .fee(let id):
+            let storedAmount = editorIsDiscount && !amount.isEmpty ? "-\(amount)" : amount
             if let id = id, let idx = taxesAndFees.firstIndex(where: { $0.id == id }) {
                 taxesAndFees[idx].label = label
-                taxesAndFees[idx].amount = amount
+                taxesAndFees[idx].amountText = storedAmount
             } else {
-                taxesAndFees.append(EditableLineItem(id: UUID(), label: label, amount: amount))
-            }
-        case .discount(let id):
-            if let id = id, let idx = discounts.firstIndex(where: { $0.id == id }) {
-                discounts[idx].label = label
-                discounts[idx].amount = amount
-            } else {
-                discounts.append(EditableLineItem(id: UUID(), label: label, amount: amount))
+                taxesAndFees.append(AuxLineForm(label: label, amountText: storedAmount))
             }
         case .preTipTotal, .tip:
             break
@@ -319,15 +315,17 @@ struct EditReceiptView: View {
         editorMode = .none
         editorLabel = ""
         editorAmount = ""
+        editorIsDiscount = false
     }
 
     private var editorTitle: String {
         switch editorMode {
         case .none: return ""
         case .item(let id): return id == nil ? "Add Item" : "Edit Item"
-        case .fee(let id): return id == nil ? "Add Tax/Fee" : "Edit Tax/Fee"
-        case .discount(let id): return id == nil ? "Add Discount" : "Edit Discount"
-        case .preTipTotal: return "Edit Override Total"
+        case .fee(let id):
+            if editorIsDiscount { return id == nil ? "Add Discount" : "Edit Discount" }
+            return id == nil ? "Add Tax / Fee" : "Edit Tax / Fee"
+        case .preTipTotal: return "Override Total"
         case .tip: return "Edit Tip Amount"
         }
     }
@@ -336,15 +334,14 @@ struct EditReceiptView: View {
         switch editorMode {
         case .none: return ""
         case .item: return "Item name"
-        case .fee: return "e.g. Tax, Service fee"
-        case .discount: return "e.g. Coupon, Promo"
+        case .fee: return editorIsDiscount ? "Discount" : "Tax or fee"
         case .preTipTotal, .tip: return ""
         }
     }
 
     private var showsEditorLabelField: Bool {
         switch editorMode {
-        case .item, .fee, .discount:
+        case .item, .fee:
             return true
         case .none, .preTipTotal, .tip:
             return false
@@ -355,22 +352,23 @@ struct EditReceiptView: View {
         switch editorMode {
         case .preTipTotal:
             return "Auto"
-        case .tip:
-            return "0.00"
-        case .none, .item, .fee, .discount:
+        case .none, .tip, .item, .fee:
             return "0.00"
         }
     }
 
-    private func sanitizedUSDAmountInput(_ raw: String) -> String {
+    private func sanitizedUSDAmountInput(_ raw: String, allowNegative: Bool = false) -> String {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "" }
+
+        let isNegative = allowNegative && trimmed.hasPrefix("-")
+        let digits = isNegative ? String(trimmed.dropFirst()) : trimmed
 
         var integerPart = ""
         var fractionalPart = ""
         var hasDecimalSeparator = false
 
-        for char in trimmed {
+        for char in digits {
             if char.isWholeNumber {
                 if hasDecimalSeparator {
                     if fractionalPart.count < 2 {
@@ -393,10 +391,11 @@ struct EditReceiptView: View {
             }
         }
 
+        let prefix = isNegative ? "-" : ""
         if hasDecimalSeparator {
-            return "\(integerPart).\(fractionalPart)"
+            return "\(prefix)\(integerPart).\(fractionalPart)"
         }
-        return integerPart
+        return "\(prefix)\(integerPart)"
     }
 
     private func normalizedUSDAmountForStorage(_ raw: String) -> String {
@@ -406,65 +405,68 @@ struct EditReceiptView: View {
     }
     
     private func saveReceipt() {
-        // Aggregate fees by type (tax and fees only - tip is separate)
+        // Aggregate fees by type (tax vs fees/discounts — tip is separate)
+        // Label containing "tax" → taxTotal; everything else → feesTotal (signed, negative = discount)
         var taxTotal = 0
         var feesTotal = 0
+        var discountTotal = 0
 
         for fee in completedFees {
             let label = fee.label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-            let amount = stringToCents(fee.amount)
+            let amount = fee.amountCents
 
             if label.contains("tax") {
-                taxTotal += amount
+                taxTotal += max(0, amount)  // tax is always positive
+            } else if amount < 0 {
+                discountTotal += abs(amount)
             } else {
-                // Everything else in taxes & fees section is a fee (service fee, delivery, etc.)
                 feesTotal += amount
             }
         }
 
-        // Aggregate discounts
-        let totalDiscounts = discountsCents
-
-        // Calculate subtotal: pre-tip total - taxes - fees + discounts
-        // (working backwards since user sets the pre-tip total)
-        let subtotal = preTipTotalCents - taxTotal - feesTotal + totalDiscounts
+        let subtotal = preTipTotalCents - taxTotal - feesTotal + discountTotal
 
         // Final total is always pre-tip + tip
         let finalTotalCents = calculatedTotalCents
 
         // Persist explicit override intent only when user kept a non-empty override value.
-        // Clearing this field and saving means "revert to calculated total".
         if preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            uiModel.preTipTotalOverrideCents = nil
+            receiptDraftVM.preTipTotalOverrideCents = nil
         } else {
-            uiModel.preTipTotalOverrideCents = preTipTotalCents
+            receiptDraftVM.preTipTotalOverrideCents = preTipTotalCents
+        }
+
+        let feeLineItems = completedFees.compactMap { fee -> ReceiptDisplay.LineItem? in
+            let amount = fee.amountCents
+            guard amount != 0 else { return nil }
+            return ReceiptDisplay.LineItem(id: fee.id.uuidString, label: fee.label, cents: amount)
         }
 
         let updatedReceipt = ReceiptDisplay(
-            id: uiModel.currentReceipt?.id ?? UUID().uuidString,
+            id: receiptDraftVM.currentReceipt?.id ?? UUID().uuidString,
             title: receiptName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "New Receipt" : receiptName,
-            createdAt: uiModel.currentReceipt?.createdAt ?? Date(),
+            createdAt: receiptDraftVM.currentReceipt?.createdAt ?? Date(),
             subtotalCents: subtotal,
             feesCents: feesTotal,
+            discountCents: discountTotal,
             taxCents: taxTotal,
             tipCents: tipCents,
-            discountCents: totalDiscounts,
             totalCents: finalTotalCents,
             items: completedItems.map { item in
                 ReceiptDisplay.Item(
                     id: item.id.uuidString,
                     label: item.label,
-                    priceCents: stringToCents(item.price),
-                    responsible: []
+                    priceCents: item.priceCents
                 )
-            }
+            },
+            lineItems: feeLineItems
         )
 
         onSave(updatedReceipt)
     }
     
     private var captureImage: UIImage? {
-        uiModel.scanImageCropped ?? uiModel.scanImageOriginal
+        receiptDraftVM.scanImageCropped ?? receiptDraftVM.scanImageOriginal
     }
 
     // MARK: - Body
@@ -485,16 +487,6 @@ struct EditReceiptView: View {
                     Spacer()
 
                     HStack(spacing: 16) {
-                        if !uiModel.debugChunkImages.isEmpty {
-                            Button {
-                                showChunks = true
-                            } label: {
-                                Image(systemName: "square.grid.3x3")
-                                    .font(.system(size: 16))
-                            }
-                            .buttonStyle(.plain)
-                        }
-
                         if captureImage != nil {
                             Button {
                                 showCapture = true
@@ -554,7 +546,7 @@ struct EditReceiptView: View {
                                                         openEditor(mode: .item(item.id), focusField: .label)
                                                     }
                                                 Spacer()
-                                                Text(ReceiptDisplay.money(stringToCents(item.price)))
+                                                Text(ReceiptDisplay.money(item.priceCents))
                                                     .font(.system(size: 16, weight: .medium))
                                                     .onTapGesture {
                                                         openEditor(mode: .item(item.id), focusField: .amount)
@@ -611,13 +603,13 @@ struct EditReceiptView: View {
                             .padding(.top, 4)
                         }
 
-                        // MARK: - Taxes & Fees Section
+                        // MARK: - Taxes, Fees & Discounts Section
                         VStack(alignment: .leading, spacing: 10) {
-                            Text("Taxes & Fees")
+                            Text("Taxes, Fees & Discounts")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
 
-                            // Fees list
+                            // Fees list (signed amounts: negative = discount)
                             if !taxesAndFees.isEmpty {
                                 VStack(spacing: 0) {
                                     ForEach(taxesAndFees) { fee in
@@ -630,8 +622,9 @@ struct EditReceiptView: View {
                                                         openEditor(mode: .fee(fee.id), focusField: .label)
                                                     }
                                                 Spacer()
-                                                Text(ReceiptDisplay.money(stringToCents(fee.amount)))
+                                                Text(ReceiptDisplay.money(fee.amountCents))
                                                     .font(.system(size: 16, weight: .medium))
+                                                    .foregroundColor(fee.amountCents < 0 ? .green : .primary)
                                                     .onTapGesture {
                                                         openEditor(mode: .fee(fee.id), focusField: .amount)
                                                     }
@@ -657,110 +650,44 @@ struct EditReceiptView: View {
                                 .cornerRadius(12)
                             }
 
-                            // Add fee button
-                            Button {
-                                openEditor(mode: .fee(nil), focusField: .label)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.blue)
-                                    Text("Add Tax/Fee")
-                                        .foregroundColor(.blue)
-                                    Spacer()
-                                }
-                                .font(.system(size: 16, weight: .medium))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(Color(.secondarySystemBackground).opacity(0.6))
-                                .cornerRadius(12)
-                            }
-                            .buttonStyle(.plain)
-
-                            HStack {
-                                Text("Total taxes & fees")
-                                    .font(.system(size: 15, weight: .medium))
-                                Spacer()
-                                Text(ReceiptDisplay.money(taxesAndFeesCents))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.top, 4)
-                        }
-
-                        // MARK: - Discounts Section
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Discounts")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(.secondary)
-
-                            // Discounts list
-                            if !discounts.isEmpty {
-                                VStack(spacing: 0) {
-                                    ForEach(discounts) { discount in
-                                        VStack(spacing: 0) {
-                                            HStack {
-                                                Text(discount.label)
-                                                    .font(.system(size: 16))
-                                                    .foregroundColor(.primary)
-                                                    .onTapGesture {
-                                                        openEditor(mode: .discount(discount.id), focusField: .label)
-                                                    }
-                                                Spacer()
-                                                Text(ReceiptDisplay.money(stringToCents(discount.amount)))
-                                                    .font(.system(size: 16, weight: .medium))
-                                                    .onTapGesture {
-                                                        openEditor(mode: .discount(discount.id), focusField: .amount)
-                                                    }
-                                                Button {
-                                                    deleteDiscount(discount)
-                                                } label: {
-                                                    Image(systemName: "xmark.circle.fill")
-                                                        .foregroundColor(.secondary)
-                                                        .font(.system(size: 18))
-                                                }
-                                                .buttonStyle(.plain)
-                                            }
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 12)
-
-                                            if discount.id != discounts.last?.id {
-                                                Divider().padding(.leading, 14)
-                                            }
-                                        }
+                            // Add tax/fee and add discount buttons
+                            HStack(spacing: 10) {
+                                Button {
+                                    openEditor(mode: .fee(nil), focusField: .label, isDiscount: false)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundColor(.blue)
+                                        Text("Add Tax / Fee")
+                                            .foregroundColor(.blue)
+                                        Spacer()
                                     }
-                                }
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(12)
-                            }
-
-                            // Add discount button
-                            Button {
-                                openEditor(mode: .discount(nil), focusField: .label)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.blue)
-                                    Text("Add Discount")
-                                        .foregroundColor(.blue)
-                                    Spacer()
-                                }
-                                .font(.system(size: 16, weight: .medium))
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                                .background(Color(.secondarySystemBackground).opacity(0.6))
-                                .cornerRadius(12)
-                            }
-                            .buttonStyle(.plain)
-
-                            HStack {
-                                Text("Total discounts")
                                     .font(.system(size: 15, weight: .medium))
-                                Spacer()
-                                Text(ReceiptDisplay.money(discountsCents))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.secondarySystemBackground).opacity(0.6))
+                                    .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
+
+                                Button {
+                                    openEditor(mode: .fee(nil), focusField: .amount, isDiscount: true)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundColor(.green)
+                                        Text("Add Discount")
+                                            .foregroundColor(.green)
+                                        Spacer()
+                                    }
+                                    .font(.system(size: 15, weight: .medium))
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(Color(.secondarySystemBackground).opacity(0.6))
+                                    .cornerRadius(12)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .padding(.top, 4)
                         }
 
                         // MARK: - Pre-tip Total & Tip Section
@@ -769,34 +696,61 @@ struct EditReceiptView: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(.secondary)
 
-                            HStack {
-                                Text("Calculated total")
-                                    .font(.system(size: 15, weight: .medium))
-                                Spacer()
-                                Text(ReceiptDisplay.money(calculatedPreTipTotalCents))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                            }
-
                             VStack(spacing: 0) {
                                 HStack {
-                                    Text("Override total")
-                                        .font(.system(size: 15))
-
+                                    Text(hasPreTipWarning ? "Pre-tip total (Overridden)" : "Pre-tip total")
+                                        .font(.system(size: 14, weight: .regular))
                                     Spacer()
+                                    Button {
+                                        openEditor(mode: .preTipTotal, focusField: .amount)
+                                    } label: {
+                                        Text(ReceiptDisplay.money(preTipTotalCents))
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(hasPreTipWarning ? .primary : .secondary)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color(.tertiarySystemFill))
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
 
-                                    Text(preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Auto" : preTipTotalOverride)
+                                HStack {
+                                    Text("Tip amount")
+                                        .font(.system(size: 14, weight: .regular))
+                                    Spacer()
+                                    Button {
+                                        openEditor(mode: .tip, focusField: .amount)
+                                    } label: {
+                                        Text(ReceiptDisplay.money(stringToCents(
+                                            tipString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "0.00" : tipString
+                                        )))
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundColor(.blue)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 4)
+                                            .background(Color(.tertiarySystemFill))
+                                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+
+                                Divider()
+                                    .padding(.horizontal, 16)
+
+                                HStack {
+                                    Text("Total")
                                         .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(preTipTotalOverride.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
-                                        .multilineTextAlignment(.trailing)
-                                        .frame(width: 100, alignment: .trailing)
+                                    Spacer()
+                                    Text(ReceiptDisplay.money(calculatedTotalCents))
+                                        .font(.system(size: 15, weight: .semibold))
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    openEditor(mode: .preTipTotal, focusField: .amount)
-                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
                             }
                             .background(Color(.secondarySystemBackground))
                             .cornerRadius(12)
@@ -812,37 +766,6 @@ struct EditReceiptView: View {
                                 .padding(.top, 4)
                             }
 
-                            VStack(spacing: 0) {
-                                HStack {
-                                    Text("Tip amount")
-                                        .font(.system(size: 15))
-
-                                    Spacer()
-
-                                    Text(tipString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "0.00" : tipString)
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(tipString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .secondary : .primary)
-                                        .multilineTextAlignment(.trailing)
-                                        .frame(width: 100, alignment: .trailing)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    openEditor(mode: .tip, focusField: .amount)
-                                }
-                            }
-                            .background(Color(.secondarySystemBackground))
-                            .cornerRadius(12)
-
-                            HStack {
-                                Text("Grand total")
-                                    .font(.system(size: 15, weight: .medium))
-                                Spacer()
-                                Text(ReceiptDisplay.money(calculatedTotalCents))
-                                    .font(.system(size: 17, weight: .bold))
-                            }
-                            .padding(.top, 4)
                         }
 
                         Spacer().frame(height: 40)
@@ -898,6 +821,12 @@ struct EditReceiptView: View {
                                     }
                             }
 
+                            if editorIsDiscount {
+                                Text("−")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.green)
+                            }
+
                             TextField(editorAmountPlaceholder, text: $editorAmount)
                                 .font(.system(size: 16))
                                 .keyboardType(.decimalPad)
@@ -929,49 +858,6 @@ struct EditReceiptView: View {
         .sheet(isPresented: $showCapture) {
             CapturePreviewView(image: captureImage) {
                 showCapture = false
-            }
-        }
-        .sheet(isPresented: $showChunks) {
-            ChunkDebugView(chunks: uiModel.debugChunkImages)
-        }
-    }
-}
-
-// MARK: - Chunk debug sheet
-
-private struct ChunkDebugView: View {
-    let chunks: [UIImage]
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ForEach(Array(chunks.enumerated()), id: \.offset) { index, image in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Chunk \(index + 1)")
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(.secondary)
-                                .padding(.horizontal, 16)
-
-                            Image(uiImage: image)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: .infinity)
-                                .background(Color(.secondarySystemBackground))
-                                .cornerRadius(8)
-                                .padding(.horizontal, 16)
-                        }
-                    }
-                }
-                .padding(.vertical, 16)
-            }
-            .navigationTitle("OCR Chunks (\(chunks.count))")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                }
             }
         }
     }

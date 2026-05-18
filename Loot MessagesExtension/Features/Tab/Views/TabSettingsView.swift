@@ -7,6 +7,8 @@ import SwiftUI
 
 struct TabSettingsView: View {
     let tab: LootTab
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var tabContextVM: TabContextViewModel
     let onSave: (LootTab) -> Void
     var onLeft: (() -> Void)? = nil
     var onDeleted: (() -> Void)? = nil
@@ -22,19 +24,38 @@ struct TabSettingsView: View {
     @State private var showingLeaveConfirm: Bool = false
     @State private var showingDeleteConfirm: Bool = false
     @State private var saveError: String? = nil
+    @State private var isRecomputing: Bool = false
+    @State private var recomputeMessage: String? = nil
 
     @Environment(\.dismiss) private var dismiss
 
     private let myId = KeychainHelper.getOrCreateUserId()
 
-    init(tab: LootTab, onSave: @escaping (LootTab) -> Void, onLeft: (() -> Void)? = nil, onDeleted: (() -> Void)? = nil) {
+    init(tab: LootTab,
+         coordinator: AppCoordinator,
+         tabContextVM: TabContextViewModel,
+         onSave: @escaping (LootTab) -> Void,
+         onLeft: (() -> Void)? = nil,
+         onDeleted: (() -> Void)? = nil) {
         self.tab = tab
+        self.coordinator = coordinator
+        self.tabContextVM = tabContextVM
         self.onSave = onSave
         self.onLeft = onLeft
         self.onDeleted = onDeleted
         self._name = State(initialValue: tab.name)
         self._selectedColor = State(initialValue: tab.colorHex ?? TabColorOptions.defaultHex)
         self._members = State(initialValue: tab.members)
+    }
+
+    /// Merges live tab members from `tabContextVM.activeTab` into the local working
+    /// list. Preserves any locally-added (not-yet-saved) guests — those are
+    /// members with `userId == nil` whose memberId isn't in the remote list.
+    private func mergeLiveMembers() {
+        guard let liveTab = tabContextVM.activeTab, liveTab.id == tab.id else { return }
+        let remoteIds = Set(liveTab.members.map(\.memberId))
+        let localOnly = members.filter { $0.userId == nil && !remoteIds.contains($0.memberId) }
+        members = liveTab.members + localOnly
     }
 
     private var myBalance: Int {
@@ -83,7 +104,11 @@ struct TabSettingsView: View {
 
                 // MARK: Members
                 Section {
-                    ForEach(Array(members.enumerated()), id: \.element.id) { index, member in
+                    // Past members (left the tab) are preserved in `members`
+                    // for historical balance/name lookups but should not show
+                    // up in the live list.
+                    let activeMembers = members.filter(\.isActive)
+                    ForEach(Array(activeMembers.enumerated()), id: \.element.id) { index, member in
                         HStack(spacing: 12) {
                             ColoredCircleBadge(
                                 text: BadgeColors.initials(from: member.displayName, fallback: index),
@@ -95,15 +120,6 @@ struct TabSettingsView: View {
                                 Text(member.userId != nil ? "Loot member" : "Guest")
                                     .font(.system(size: 12))
                                     .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .onDelete { indexSet in
-                        for idx in indexSet {
-                            let member = members[idx]
-                            // Only allow removing guests with no userId and zero balance
-                            if member.userId == nil && member.balanceCents == 0 {
-                                members.remove(at: idx)
                             }
                         }
                     }
@@ -129,7 +145,7 @@ struct TabSettingsView: View {
                         }
                     }
                 } footer: {
-                    Text("Swipe to remove guests with no balance. Loot members can only be removed by leaving the tab themselves.")
+                    Text("Loot members can only be removed by leaving the tab themselves.")
                         .font(.system(size: 12))
                 }
 
@@ -140,6 +156,30 @@ struct TabSettingsView: View {
                             .foregroundStyle(.red)
                             .font(.system(size: 13))
                     }
+                }
+
+                // MARK: Recompute Balances
+                Section {
+                    if isRecomputing {
+                        HStack {
+                            ProgressView().scaleEffect(0.8)
+                            Text("Recomputing…")
+                                .foregroundStyle(.secondary)
+                                .font(.system(size: 15))
+                        }
+                    } else {
+                        Button("Recompute Balances") {
+                            performRecomputeBalances()
+                        }
+                    }
+                    if let recomputeMessage {
+                        Text(recomputeMessage)
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                } footer: {
+                    Text("Recalculates everyone's balance from scratch using the current receipts and settlements in the tab. Use this if amounts look wrong — for example after removing receipts that were sent in error.")
+                        .font(.system(size: 12))
                 }
 
                 // MARK: Leave / Delete Tab
@@ -174,7 +214,7 @@ struct TabSettingsView: View {
                         }
                     } else {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Must settle up to leave")
+                            Text("Must \(myBalance < 0 ? "get paid" : "pay back") to leave")
                                 .font(.system(size: 15, weight: .medium))
                             Text("Your balance is \(ReceiptDisplay.money(abs(myBalance)))\(myBalance < 0 ? " owed" : " to receive"). Settle up first.")
                                 .font(.system(size: 13))
@@ -220,7 +260,20 @@ struct TabSettingsView: View {
             } message: {
                 Text("This will permanently delete the tab and all its history. This cannot be undone.")
             }
+            .onAppear { mergeLiveMembers() }
+            .onChange(of: liveTabMembersFingerprint) { _, _ in mergeLiveMembers() }
         }
+    }
+
+    /// Compact identity string for `tabContextVM.activeTab.members` so SwiftUI's
+    /// `.onChange(of:)` has a simple value-typed expression to type-check.
+    /// `tabContextVM.activeTab?.members` would otherwise blow the type-checker
+    /// budget when this Form body is already large.
+    private var liveTabMembersFingerprint: String {
+        guard let tab = tabContextVM.activeTab, tab.id == self.tab.id else { return "" }
+        return tab.members
+            .map { "\($0.memberId):\($0.displayName):\($0.isActive ? 1 : 0)" }
+            .joined(separator: "|")
     }
 
     // MARK: - Actions
@@ -240,6 +293,31 @@ struct TabSettingsView: View {
                 await MainActor.run {
                     saveError = "Failed to leave: \(error.localizedDescription)"
                     isLeaving = false
+                }
+            }
+        }
+    }
+
+    private func performRecomputeBalances() {
+        guard let tabId = tab.id else { return }
+        isRecomputing = true
+        recomputeMessage = nil
+        saveError = nil
+        Task {
+            do {
+                _ = try await TabService.shared.syncTabDerivedState(tabId: tabId)
+                await MainActor.run {
+                    if let liveTab = tabContextVM.activeTab, liveTab.id == tab.id {
+                        members = liveTab.members
+                    }
+                    isRecomputing = false
+                    recomputeMessage = "Balances refreshed."
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                }
+            } catch {
+                await MainActor.run {
+                    saveError = "Failed to recompute: \(error.localizedDescription)"
+                    isRecomputing = false
                 }
             }
         }

@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-05-13T22:18:56Z",
+  "caseID" : "64072025180__dd32f62b-d7f8-4117-a0f5-0da248be7708",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2892,
+    "breakdown" : 1,
+    "expectedTotalCents" : 2892,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 242,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "LOS GATOS CAFE",
+      "total_cents" : 2892
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 750,
+          "label" : "Flank Steak",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "Flank Steak Modifier",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Sunnyside Up Eggs",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 2650,
+      "tax_cents" : 242
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Flank Steak|750\nITEM|Flank Steak Modifier|300\nITEM|Sunnyside Up Eggs|1600\nTAX|Tax|242\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 2.4349899291992188,
+      "phase2Seconds" : 19.896008014678955,
+      "totalWorkflowSeconds" : 23.54712402820587,
+      "transcriptSeconds" : 1.2161179780960083,
+      "transcriptToPhase1Seconds" : 2.4349910020828247,
+      "transcriptToPhase2Seconds" : 22.331006050109863,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "LOS GATOS CAFE 340 N SANTA CRUZ LOS GATOS, CA 95030 4083544647 ORDER: patio saturday S4 $7.50 $3.00 Egg Style: Scramble $0.00 $16.00 Egg Style: Sunnyside Up $0.00 Toast Options: Sourdough $0.00 $26.50 $2.42 $28.92\nDine In Cashier: Sandra 21-Apr-2021 10:18:42A S Flank Steak Santa Clara County9.125% 42BPYJV4DNEZT Order 42BPYJV4DNEZT\nTwo Eggs Flank Steak Subtotal Total"
+  },
+  "sourceFilename" : "64072025180__DD32F62B-D7F8-4117-A0F5-0DA248BE7708.jpeg",
+  "variantID" : "current"
+}

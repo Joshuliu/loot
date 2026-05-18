@@ -1,0 +1,59 @@
+{
+  "capturedAt" : "2026-04-25T18:51:52Z",
+  "caseID" : "68741337286__37b757a3-7a96-421b-bb57-eeae1a8e7595",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 843,
+    "breakdown" : 1,
+    "expectedTotalCents" : 1942,
+    "itemValues" : 0.5,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.375,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -1099,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 144,
+        "label" : "Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "ubway",
+      "total_cents" : 1942
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Sub Total",
+        "Unclassified priced row: Total",
+        "Resolved rows differ from known total by 1099 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 699,
+          "label" : "Meatball Sub Steak & Cheese Footlong",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 1798,
+      "tax_cents" : 144
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Meatball Sub Steak & Cheese Footlong|699\nUNKNOWN|Sub Total|1798\nTAX|Sales Tax|144\nUNKNOWN|Total|1942\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6239970922470093,
+      "phase2Seconds" : 17.131163954734802,
+      "totalWorkflowSeconds" : 17.755183935165405,
+      "transcriptSeconds" : 1.1920928955078125e-05,
+      "transcriptToPhase1Seconds" : 0.6239970922470093,
+      "transcriptToPhase2Seconds" : 17.75517201423645,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "ubway#64183-0 Phone 3158027726 452 grant blvd\nserved by: 10 10\/14\/2022 12:08:14 am Term ID-Trans# 1\/A-134463 syracuse, ny, 13206\nPrice\nQty Size Item 10.99\n1 12\" Meatball Sub Steak & Chse FtPro 6.99\n17.98\nSub Total General Sales Tax (8%) 19.42 1.44\nTotal (Take Out) 19.42\nCredit Card 0.00\nChange Reference No: 5YZW001665720483030 Approval No: 04235D\nCard Issuer: Visa Account No: ************5931 Acquired: Contactless chip CVM: VERIFIED BY DEVICE\nApplication: VISA Amount: $19.42\nAID: A0000000031010 one: 10\/14\/2022 00:08:03 *D: 420429002127251\n: 75206218\nAPPROVED\nCUSTOMER COPY"
+  },
+  "sourceFilename" : "68741337286__37B757A3-7A96-421B-BB57-EEAE1A8E7595.jpeg",
+  "variantID" : "current"
+}

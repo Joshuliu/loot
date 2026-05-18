@@ -1,0 +1,74 @@
+{
+  "capturedAt" : "2026-04-19T01:23:51Z",
+  "caseID" : "img_0259",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 3729,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 16329,
+    "itemValues" : 0,
+    "lineItemValues" : 1,
+    "merchant" : 0.2,
+    "overall" : 0.26,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -12600,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 2520,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 1209,
+        "label" : "JS Charge"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "La Cañita",
+      "total_cents" : 16329
+    },
+    "phase2" : {
+      "issues" : [
+        "Ignored discount row: Discount",
+        "Resolved rows differ from known total by 12600 cents"
+      ],
+      "items" : [
+        {
+          "label" : "Burger Lla Damm",
+          "qty" : 1
+        },
+        {
+          "label" : "Local Calamari",
+          "qty" : 1
+        },
+        {
+          "label" : "Nasado Cheeseburger",
+          "qty" : 1
+        },
+        {
+          "label" : "Buddha IPA",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 12600,
+      "tax_cents" : 2520,
+      "tip_cents" : 1209
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nTAX|Tax|2520\nTIP|JS Charge|1209\nITEM|Burger Lla Damm|\nITEM|Local Calamari|\nITEM|Nasado Cheeseburger|\nITEM|Buddha IPA|\nDISCOUNT|Discount|1300\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.5194649696350098,
+      "phase2Seconds" : 34.76580500602722,
+      "totalWorkflowSeconds" : 39.86626601219177,
+      "transcriptSeconds" : 4.580991983413696,
+      "transcriptToPhase1Seconds" : 0.5194649696350098,
+      "transcriptToPhase2Seconds" : 35.285274028778076,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Table 62 3\/14\/25 1:03 PM $22.00 $8.00 $17.00 $23.00 $8.00 $14.00 $8.00 $26.00 $126.00 $25.20 $12.09 $163.29 Book Your Party with us! RATUITY IS ADDED TO EVERY PARTY THANK YOU FOR YOU VISIT!\nLa Cañita 6844 NW 169th St. Miami, FL 33015 Javier M ount: 3 BURGER LLA DAMM LOCAL CALAMARI NASADO ?? CHEESEBURGER BUDDHA IPA CAN JS Charge (20.00%)\n- 13"
+  },
+  "sourceFilename" : "IMG_0259.jpeg",
+  "variantID" : "current"
+}

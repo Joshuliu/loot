@@ -1,0 +1,136 @@
+{
+  "capturedAt" : "2026-04-25T18:57:28Z",
+  "caseID" : "img_5103",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 10134,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 10632,
+    "itemValues" : 0.8888888888888888,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.3933333333333333,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -498,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 10,
+        "label" : "Bottle sales"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "ROSEMARY FARMS MED",
+      "total_cents" : 10632
+    },
+    "phase2" : {
+      "fees_cents" : 10,
+      "issues" : [
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Discount",
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Markdown",
+        "Resolved rows differ from known total by 498 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 299,
+          "label" : "ROSEMARY FARMS MED A BROWN E",
+          "qty" : 1
+        },
+        {
+          "cents" : 18,
+          "label" : "SHANGHAI BUKCHOY",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "GREENLEAF LETTUCE",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "YELLOW ONION",
+          "qty" : 1
+        },
+        {
+          "cents" : 612,
+          "label" : "MARINATED PORK",
+          "qty" : 1
+        },
+        {
+          "cents" : 548,
+          "label" : "SPICY MARINATED CHICKEN",
+          "qty" : 1
+        },
+        {
+          "cents" : 1578,
+          "label" : "MARINATED ANGUS BEEF",
+          "qty" : 1
+        },
+        {
+          "cents" : 1131,
+          "label" : "MARINATED ANGUS BEEF FINGER",
+          "qty" : 1
+        },
+        {
+          "cents" : 671,
+          "label" : "MARINATED CHICKEN TH",
+          "qty" : 1
+        },
+        {
+          "cents" : 1299,
+          "label" : "MARINATED BEEF RIB EYE",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "JIMMY DEAN SAUSAGE, EGG, &am",
+          "qty" : 1
+        },
+        {
+          "cents" : 699,
+          "label" : "CHOCOLATE CHIP WAFFLES",
+          "qty" : 1
+        },
+        {
+          "cents" : 199,
+          "label" : "NONGSHIM MUPAMA TANG MYUN",
+          "qty" : 1
+        },
+        {
+          "cents" : 599,
+          "label" : "PMO JUICY DUMPLING W\/ PORK",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "PULMUONE MINI WONTONS",
+          "qty" : 1
+        },
+        {
+          "cents" : 399,
+          "label" : "SIMPLY MANGO JUICE",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 10622
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|ROSEMARY FARMS MED A BROWN E|299\nITEM|SHANGHAI BUKCHOY|18\nDISCOUNT|Markdown|100\nITEM|GREENLEAF LETTUCE|75\nITEM|YELLOW ONION|99\nITEM|MARINATED PORK|612\nITEM|SPICY MARINATED CHICKEN|548\nITEM|MARINATED ANGUS BEEF|1578\nITEM|MARINATED ANGUS BEEF FINGER|1131\nITEM|MARINATED CHICKEN TH|671\nITEM|MARINATED BEEF RIB EYE|1299\nITEM|JIMMY DEAN SAUSAGE, EGG, &am|899\nDISCOUNT|Discount|399\nITEM|CHOCOLATE CHIP WAFFLES|699\nDISCOUNT|Markdown|200\nITEM|NONGSHIM MUPAMA TANG MYUN|199\nITEM|PMO JUICY DUMPLING W\/ PORK|599\nDISCOUNT|Markdown|350\nITEM|PULMUONE MINI WONTONS|999\nITEM|SIMPLY MANGO JUICE|399\nFEE|Bottle sales|10\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6408770084381104,
+      "phase2Seconds" : 18.431704998016357,
+      "totalWorkflowSeconds" : 19.072595953941345,
+      "transcriptSeconds" : 5.0067901611328125e-06,
+      "transcriptToPhase1Seconds" : 0.6408770084381104,
+      "transcriptToPhase2Seconds" : 19.072589993476868,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "450 South Western Ave Los Angeles, CA, 90020 California tar\n(213) 382-9444\n#001-007 1\/19\/2026 19:27:02 Young Mi Inv#:00137387 Trs#: 138073\nROSEMARY FARMS MED A BROWN E $2.99 F\n0.18 1b 6 99\/1b SHANGHAI BUKCHOY LB Markdown: $1.00\n$0. 18 F\nGREENLEAF LETTUCE\n1.51 1b @ $0.99\/21b $0.75 F\nYELLOW ONION LB\n$0.99 F\nCARROTS 1LB\nMARINATED ALL NATURAL PORK B $6.12 F ₫71LB\nSPICY MARINATED NATURAL CHIC $5.48 F\nMARINATED ANGUS BEEF BNLS S $15.78 F\nMARINATED ANGUS BEEF FINGER $11.31 F\nMARINATED NATURAL CHICKEN TH $6.71 F\nMARINATED BEEF RIB EYE BULG $12.99 F\nJIMMY DEAN SAUSAGE, EGG, &am $8.99 F $3.99 F\nCHOCOLATE CHIP WAFFLES $6.99 F\nNONGSHIM MUPAMA TANG MYUN -\nMarkdown: $2.00 $1.99 F\nGARLIC PK\nPMO JUICY DUMPLING W\/ PORK & $5.99 F\nPULMUONE MINI WONTONS 600 G Markdown: $3.50 $9.99 F\nSIMPLY MANGO JUICE 1.53 L $3.99 F\n+Bottle sales: $0.10\nNet Sales $106.22\nBottle sales $0.10\nTOTAL SALES $106.32\nSUB TOTAL $106.32\nVisa $106.32"
+  },
+  "sourceFilename" : "IMG_5103.jpeg",
+  "variantID" : "current"
+}

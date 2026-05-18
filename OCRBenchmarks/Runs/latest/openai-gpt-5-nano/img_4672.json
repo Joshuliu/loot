@@ -1,0 +1,66 @@
+{
+  "capturedAt" : "2026-05-08T19:40:25Z",
+  "caseID" : "img_4672",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 357,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 318,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.21,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 39,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 5,
+        "label" : "CRV"
+      },
+      {
+        "cents" : 36,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 36,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Safeway",
+      "total_cents" : 318
+    },
+    "phase2" : {
+      "fees_cents" : 5,
+      "issues" : [
+        "Resolved rows differ from known total by 39 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 280,
+          "label" : "AQUAFINA WATER",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 241,
+      "tax_cents" : 72
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|AQUAFINA WATER|318\nDISCOUNT|Associate Savings|-38\nFEE|CRV|5\nTAX|Tax|36\nTAX|Tax|36\nUNKNOWN|Balance|159\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 7.127017021179199,
+      "phase2Seconds" : 52.05670392513275,
+      "totalWorkflowSeconds" : 60.40698289871216,
+      "transcriptSeconds" : 1.2232539653778076,
+      "transcriptToPhase1Seconds" : 7.127017021179199,
+      "transcriptToPhase2Seconds" : 59.183727979660034,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "You Pay 3.13 S 0.05 S 0.00 3.18 REF: 632035414070 AUTH: 0000272C 3.18 0.00 0.36 0.36 10% TOTAL NUMBER OF ITEMS SOLD = 8854 12\/23\/25 22:20 919 54 197 Thank you for shopping Safeway! For SAFEWAY FOR U questions call 877-276-9637 or Safeway.com\/foru\nPrice 3.49 0.05 Assoclate Savings -0.38 12\/23\/25 22:20 CARD # ************1407 AID A0000000031010 TVR 0000000000 YOUR SAVINGS ociate Savings al Savings Value Points Earned Today 3 Points Available 224\n3.18\nAQUAFINA WATER CRV SFTDK SNGL NTX TAX **** BALANCE Credit Purchase PAYMENT AMOUNT AL VISA CREDIT Visa CHANGE YOUR POINTS\n0159"
+  },
+  "sourceFilename" : "IMG_4672.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

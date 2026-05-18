@@ -1,0 +1,111 @@
+{
+  "capturedAt" : "2026-05-13T22:25:14Z",
+  "caseID" : "img_2309",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 25518,
+    "breakdown" : 1,
+    "expectedTotalCents" : 37942,
+    "itemValues" : 0.9,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.435,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -12424,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 3028,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 5326,
+        "label" : "Tip"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Ti'an Bistro",
+      "total_cents" : 37942
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 12424 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 1499,
+          "label" : "Beijing Roast Duck",
+          "qty" : 1
+        },
+        {
+          "cents" : 5176,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Soy Fried Rice",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "Vegetable Stir-Fried Noodles",
+          "qty" : 1
+        },
+        {
+          "cents" : 1799,
+          "label" : "Steamed Lamb & Carrot Dumplings",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "String Beans",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "String Beans",
+          "qty" : 1
+        },
+        {
+          "cents" : 1399,
+          "label" : "Home-Style Tofu",
+          "qty" : 1
+        },
+        {
+          "cents" : 1599,
+          "label" : "Beijing Zhajiang",
+          "qty" : 1
+        },
+        {
+          "cents" : 897,
+          "label" : "Bottled Iced Tea (Sweetened)",
+          "qty" : 1
+        },
+        {
+          "cents" : 598,
+          "label" : "Wong Lo Kat Herbal Tea",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 29588,
+      "tax_cents" : 3028,
+      "tip_cents" : 5326
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Beijing Roast Duck|1499\nITEM|Unknown Item|5176\nITEM|Soy Fried Rice|\nITEM|Vegetable Stir-Fried Noodles|1399\nITEM|Steamed Lamb & Carrot Dumplings|1799\nITEM|String Beans|1399\nITEM|String Beans|1399\nITEM|Home-Style Tofu|1399\nITEM|Beijing Zhajiang|1599\nITEM|Bottled Iced Tea (Sweetened)|897\nITEM|Wong Lo Kat Herbal Tea|598\nTAX|Tax|3028\nTIP|Tip|5326\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.8975870609283447,
+      "phase2Seconds" : 44.78176999092102,
+      "totalWorkflowSeconds" : 48.0977920293808,
+      "transcriptSeconds" : 2.418421983718872,
+      "transcriptToPhase1Seconds" : 0.8975870609283447,
+      "transcriptToPhase2Seconds" : 45.679370045661926,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Ti'an Bistro\nEuanston, IL 60201 810 Grove Street\nCheck #90 Server: Server 1\nGuest Count: 13 Table 12\nOrdered: 2\/1\/26 7:40 PM\nDuck set ) 1505* 2 (Whole) Beijing Roast $14.99\n5176.00\n40. Soy Fried Rice\n(Choice of\nPork\/Beef\/Chicken\/Shrimp)\nvike 01k\/4\/03\/d\nShrimp F\n1 35. Vegetable Stir-Fried\nNoodles * mi $13.99\n1 12. Steamed Lamb & Carrot\nDumplings 12PCs\n-99 12pcs$17\n1 74. String Beans\n(Dry-Fried\/Garlic)\n1 74. String Beans P4S20Pm\/**8) $13.99 Dry-Fried (Spicy Level:\nMild) TAd\n1 74. String Beans\n(Dry-Fried\/Garlic)\n(1\/x($13.99 Dry-Fried (Spicy Level:\nMild)Fhd\n1 31. Home-Style Tofu\n1 34. Beijing Zhajiang $15.99\nodes Sm$13.99 3 103. Bottled Iced\nTea (Sweetened)\nБЕЛФОКЕ* $8.97\n2 105. Wong Lo Kat Hearbal\nTea in CanE tri $5.98\nSubtotal $295.88\nTax $30.28\nTip $53.26\nTotal $379.42\nInput Type\nC (EMU Chip Read)\nit Mastercard\nxxxxxxxx0327\nTwe 8:58 PM\nTransaction Type Sale\nAuthoriscrenn Approued"
+  },
+  "sourceFilename" : "IMG_2309.heic",
+  "variantID" : "current"
+}

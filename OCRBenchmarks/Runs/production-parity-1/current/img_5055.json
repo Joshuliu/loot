@@ -1,0 +1,63 @@
+{
+  "capturedAt" : "2026-04-19T01:29:12Z",
+  "caseID" : "img_5055",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 9048,
+    "breakdown" : 1,
+    "expectedTotalCents" : 4524,
+    "itemValues" : 0.5,
+    "lineItemValues" : 1,
+    "merchant" : 0.2,
+    "overall" : 0.375,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 4524,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 325,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "El Pollo Loco",
+      "total_cents" : 4524
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Total",
+        "Resolved rows differ from known total by 4524 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 4524,
+          "label" : "Creamy Cilantro Dressing",
+          "qty" : 1
+        },
+        {
+          "cents" : 4199,
+          "label" : "12pc Leg\/Thigh Meal",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 4199,
+      "tax_cents" : 325
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Creamy Cilantro Dressing|4524\nITEM|12pc Leg\/Thigh Meal|4199\nTAX|Tax|325\nUNKNOWN|Total|4524\nDISCOUNT|Discount|0\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4026910066604614,
+      "phase2Seconds" : 20.10647201538086,
+      "totalWorkflowSeconds" : 24.315513968467712,
+      "transcriptSeconds" : 3.806344985961914,
+      "transcriptToPhase1Seconds" : 0.40269196033477783,
+      "transcriptToPhase2Seconds" : 20.5091689825058,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "A 0111 El Pollo Loco Unit# 3848 41383 Big Bear Blyd Big Bear Lake, CA, 92315 909-866-1019 CHK 8289 24 Jan'26 3:00 PM To Go - Kiosk Unknown 12101784 41.9 DRSG-Cmy Cilntro $45.24 $41.99 $3.25 $45.24 $0.00 Check Closed - Jan'26 3:00 PM\nKIOSK01 IKN-12p Meal LT 12PC Leg\/Thigh G - Side Salad G-Mashed Potato G-Spanish Rice Corn\/3 Flour ) THANKS \/MC\/DIS Payment Change Due 24"
+  },
+  "sourceFilename" : "IMG_5055.jpeg",
+  "variantID" : "current"
+}

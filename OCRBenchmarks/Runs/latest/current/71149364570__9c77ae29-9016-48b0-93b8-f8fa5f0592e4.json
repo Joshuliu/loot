@@ -1,0 +1,31 @@
+{
+  "capturedAt" : "2026-05-13T22:21:04Z",
+  "caseID" : "71149364570__9c77ae29-9016-48b0-93b8-f8fa5f0592e4",
+  "errorDescription" : "decodeFailed",
+  "expectedReviewStatus" : "needsReview",
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+
+      ]
+    },
+    "timings" : {
+      "phase1Seconds" : 0,
+      "transcriptSeconds" : 0,
+      "transcriptToPhase1Seconds" : 0,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : ""
+  },
+  "sourceFilename" : "71149364570__9C77AE29-9016-48B0-93B8-F8FA5F0592E4.jpeg",
+  "variantID" : "current"
+}

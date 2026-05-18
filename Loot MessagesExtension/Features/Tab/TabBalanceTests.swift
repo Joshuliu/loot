@@ -22,6 +22,7 @@ enum TabBalanceTests {
         testDebtSimplify3PersonCycle()
         testDebtSimplifyAllZero()
         testDebtSimplifyMultiWay()
+        LLMClient.shared.runPhase2ResolverTests()
         print("[TabBalanceTests] All tests passed")
     }
 

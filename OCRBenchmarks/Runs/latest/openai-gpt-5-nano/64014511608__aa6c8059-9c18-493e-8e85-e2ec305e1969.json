@@ -1,0 +1,51 @@
+{
+  "capturedAt" : "2026-05-08T19:20:03Z",
+  "caseID" : "64014511608__aa6c8059-9c18-493e-8e85-e2ec305e1969",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 0,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 1303,
+    "itemValues" : 0,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.06,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -1303,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "total_cents" : 0
+    },
+    "phase2" : {
+      "issues" : [
+        "Missing amount for tax row: Sales Tax"
+      ],
+      "items" : [
+        {
+          "label" : "Kale Caesar Sub",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 0
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Kale Caesar Sub|\nUNKNOWN|Sub Total|\nTAX|Sales Tax|\nUNKNOWN|Order Total|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 6.2025370597839355,
+      "phase2Seconds" : 33.79323601722717,
+      "totalWorkflowSeconds" : 40.95509696006775,
+      "transcriptSeconds" : 0.959312915802002,
+      "transcriptToPhase1Seconds" : 6.2025370597839355,
+      "transcriptToPhase2Seconds" : 39.99578404426575,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "Duplicate Recei 4\/14\/2021 Order Id: AAAZG 391 - In Store Employee: Arnol 1 Kale Caesar Sub Total Sales Tax Order Total Visa Card#: **** Authorizati CARD NAME: CARD APPROVAL: 16475 POS REF: 2 CCT REF: 2 AID: A000000003 TVR: TSI: APP LABEL: BATCH #: 104001 ENTRY METHOD: NI"
+  },
+  "sourceFilename" : "64014511608__AA6C8059-9C18-493E-8E85-E2EC305E1969.jpeg",
+  "variantID" : "openai-gpt-5-nano"
+}

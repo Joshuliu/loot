@@ -1,0 +1,129 @@
+{
+  "capturedAt" : "2026-05-13T22:32:17Z",
+  "caseID" : "img_5134",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5353,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 5365,
+    "itemValues" : 0.9,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.345,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -12,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : -80,
+        "label" : "Ralphs Savings"
+      },
+      {
+        "cents" : -132,
+        "label" : "Ralphs Savings"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Ralphs",
+      "total_cents" : 5365
+    },
+    "phase2" : {
+      "discount_cents" : 212,
+      "issues" : [
+        "Missing amount for tax row: Customer Tax",
+        "Ignored discount row: Ralphs Savings",
+        "Ignored discount row: Ralphs Savings",
+        "Resolved rows differ from known total by 12 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 199,
+          "label" : "Everyone",
+          "qty" : 1
+        },
+        {
+          "cents" : 319,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 999,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1249,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 167,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 167,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 166,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1000,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 1099,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "label" : "Barlla Fettuccine Classico Psta Sauce",
+          "qty" : 1
+        },
+        {
+          "label" : "Cafe Bustelo Esprs Black Rifle Coffee",
+          "qty" : 1
+        },
+        {
+          "label" : "Minutemaid Juice",
+          "qty" : 1
+        },
+        {
+          "label" : "Minutemaid Punch",
+          "qty" : 1
+        },
+        {
+          "label" : "Minutemaid Punch",
+          "qty" : 1
+        },
+        {
+          "cents" : 200,
+          "label" : "Watermelon Cubes Shrimp XL",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 5577
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Everyone|199\nITEM|Unknown Item|319\nITEM|Unknown Item|999\nITEM|Unknown Item|1249\nITEM|Unknown Item|167\nITEM|Unknown Item|167\nITEM|Unknown Item|166\nITEM|Unknown Item|1000\nITEM|Unknown Item|1099\nITEM|Barlla Fettuccine Classico Psta Sauce|\nDISCOUNT|Ralphs Savings|80\nITEM|Cafe Bustelo Esprs Black Rifle Coffee|\nITEM|Minutemaid Juice|\nDISCOUNT|Ralphs Savings|132\nITEM|Minutemaid Punch|\nDISCOUNT|Ralphs Savings|132\nITEM|Minutemaid Punch|\nDISCOUNT|Ralphs Savings|133\nITEM|Watermelon Cubes Shrimp XL|200\nTAX|Customer Tax|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.497304916381836,
+      "phase2Seconds" : 29.741596937179565,
+      "totalWorkflowSeconds" : 33.0696839094162,
+      "transcriptSeconds" : 1.8307729959487915,
+      "transcriptToPhase1Seconds" : 1.497304916381836,
+      "transcriptToPhase2Seconds" : 31.238910913467407,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "EVERYON 1.99 F 3.19 F 9.99 F 12.49 F 1.67 F 1.67 F 1.66 F 10.00 F 10.99 F *******7252 0.00 53.65 53.65 0.00 TOTAL NUMBER OF ITEMS SOLD = 56.6. 11 77 552 159 999999553 *...\nRalphs FRESH FOR 5680 Mission Center Rd. Your cashier was CHEC 553 BARLLA FETTUCN CLASSICO PSTA SCE RC RALPHS SAVED YOU 0.80 CAFE BUSTELO ESPRS BLACK RIFLE COFFEE MINUTEMAID JUICE RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.32 MINUTEMAID PUNCH RC RALPHS SAVED YOU 1.33 WATERMELON CUBES SHRIMP XL RC 2.00 RALPHS SAVED YOU rewards CUSTOMER TAX **** BALANCE San Diego CA 92108 VISA CREDIT Purchase ************3578 - H REF#: 07966C TOTAL: 53.65 AID: A0000000031010 TC: 4FBA00D59D618582 VISA CHANGE RALPHS rewards SAVINGS TOTAL COUPONS\n(619) 297-2593 SC SC SC RALPHS\nSC SC"
+  },
+  "sourceFilename" : "IMG_5134.jpeg",
+  "variantID" : "current"
+}

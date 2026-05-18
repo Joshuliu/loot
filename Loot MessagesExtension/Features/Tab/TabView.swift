@@ -10,8 +10,10 @@ import FirebaseFirestore
 
 struct LootTabView: View {
     @Binding var tabName: String
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var messageReceiptVM: MessageReceiptViewModel
+    @ObservedObject var tabContextVM: TabContextViewModel
 
-    var onUpload: () -> Void
     var onScan: () -> Void
     var onFill: () -> Void
 
@@ -29,9 +31,14 @@ struct LootTabView: View {
     var onTabUpdated: ((LootTab) -> Void)? = nil
     var onTabLeft: (() -> Void)? = nil
     var onTabDeleted: (() -> Void)? = nil
+    var onPreviewSplits: ((TabReceipt) -> Void)? = nil
     var onSendSettlementCard: ((String, String, Int, String, String?) -> Void)? = nil
-    var onSendRequestCard: ((String, String, Int, String?) -> Void)? = nil
+    var onApplePayHandoff: ((String, String, Int, String?) -> Void)? = nil
+    var onSendRequestCard: ((String, String, Int, String?, RequestCardMetadata?) -> Void)? = nil
     var openInSafari: ((URL) -> Void)? = nil
+    var pendingPayRequest: PendingPayRequest? = nil
+    var onConsumePendingPayRequest: (() -> Void)? = nil
+    var paymentsRefreshNonce: Int = 0
     let onRequestCollapse: () -> Void
     
     @AppStorage(DefaultsKeys.myDisplayName) private var myDisplayName: String = ""
@@ -78,14 +85,29 @@ struct LootTabView: View {
             // Its color never changes — only depends on which tab is selected.
             VStack(spacing: 0) {
                 if !isExpanded || activeTab == nil || showingAddReceiptPanel {
-                    compactInnerContent
-                        .padding(.vertical, 20)
-                        .transition(.asymmetric(
-                            insertion: .opacity.animation(.easeIn(duration: 0.25).delay(0.35)),
-                            removal: .opacity.animation(.easeOut(duration: 0.15))
-                        ))
-                    if !isExpanded {
-                        Spacer()
+                    // Apple Pay reminder takes over compact when the sender
+                    // just confirmed an Apple Cash handoff. Centered vertically
+                    // so it clears the account-initials overlay at top-right
+                    // and the tabBar at the bottom. Expanded paths run the
+                    // regular flow so the user can still navigate the app.
+                    if let info = messageReceiptVM.pendingApplePayInfo, !isExpanded {
+                        Spacer(minLength: 0)
+                        applePayPendingCompactCard(info: info)
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeIn(duration: 0.25).delay(0.35)),
+                                removal: .opacity.animation(.easeOut(duration: 0.15))
+                            ))
+                        Spacer(minLength: 0)
+                    } else {
+                        compactInnerContent
+                            .padding(.vertical, 20)
+                            .transition(.asymmetric(
+                                insertion: .opacity.animation(.easeIn(duration: 0.25).delay(0.35)),
+                                removal: .opacity.animation(.easeOut(duration: 0.15))
+                            ))
+                        if !isExpanded {
+                            Spacer()
+                        }
                     }
                 }
                 tabBar
@@ -121,6 +143,13 @@ struct LootTabView: View {
                     .frame(width: 38, height: 38)
                     .background(activeTab != nil ? Color.white : Color.black)
                     .clipShape(Circle())
+                    .overlay(
+                        Circle().stroke(
+                            activeTab != nil ? Color.white.opacity(0.6) : Color(UIColor.separator),
+                            lineWidth: 1
+                        )
+                    )
+                    .shadow(color: Color.black.opacity(0.15), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
             .padding(.top, 14)
@@ -130,6 +159,8 @@ struct LootTabView: View {
             if let tab = activeTab {
                 TabSettingsView(
                     tab: tab,
+                    coordinator: coordinator,
+                    tabContextVM: tabContextVM,
                     onSave: { updatedTab in onTabUpdated?(updatedTab) },
                     onLeft: { onTabLeft?() },
                     onDeleted: { onTabDeleted?() }
@@ -138,10 +169,71 @@ struct LootTabView: View {
         }
         .onChange(of: isExpanded) { _, newValue in
             if !newValue { showingAddReceiptPanel = false }
+            if newValue, activeTab?.id != nil {
+                Task { await loadPayments() }
+            }
         }
-        .task(id: activeTab?.id) {
+        .task(id: "\(activeTab?.id ?? "none")-\(paymentsRefreshNonce)") {
             await loadPayments()
         }
+    }
+
+    // MARK: - Apple Pay Reminder (compact)
+
+    private var applePayInGroupChatSupported: Bool {
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 26
+    }
+
+    @ViewBuilder
+    private func applePayPendingCompactCard(info: PendingApplePayInfo) -> some View {
+        let bg: Color = {
+            if let hex = info.tabColorHex { return Color(hex: hex) }
+            return Color(.secondarySystemBackground)
+        }()
+        let fg: Color = info.tabColorHex != nil ? .white : .primary
+        let sub: Color = info.tabColorHex != nil ? .white.opacity(0.75) : .secondary
+
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Image(systemName: "apple.logo")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(fg)
+                    Text("Sending \(ReceiptDisplay.money(info.amountCents)) to \(info.toName)")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(fg)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.85)
+                }
+
+                Text(applePayInGroupChatSupported
+                     ? "Tap the + button (top-left of the chat input) to open Apple Cash and send."
+                     : "Open a 1:1 chat with \(info.toName) to send via Apple Cash.")
+                    .font(.system(size: 12))
+                    .foregroundColor(sub)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Button {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    messageReceiptVM.pendingApplePayInfo = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(sub)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .background(bg)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Compact Inner Content (title + buttons + labels)
@@ -156,65 +248,68 @@ struct LootTabView: View {
                 Spacer()
             }
 
-            VStack(spacing: 6) {
-                HStack(spacing: 0) {
-                    Button(action: onUpload) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 48, weight: .regular))
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
+            HStack(spacing: 12) {
+                captureTile(
+                    icon: "camera.viewfinder",
+                    title: "Scan Receipt",
+                    color: Color(hex: "005377"),
+                    action: onScan
+                )
 
-                    Divider()
-                        .frame(height: 32)
-
-                    Button(action: onScan) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 48, weight: .regular))
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
-
-                    Divider()
-                        .frame(height: 32)
-
-                    Button(action: onFill) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 48, weight: .regular))
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.blue)
-                            .offset(y: -4)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(18)
-
-                HStack(spacing: 0) {
-                    Text("Upload")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
-                        .frame(maxWidth: .infinity)
-
-                    Text("Scan")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
-                        .frame(maxWidth: .infinity)
-
-                    Text("Enter Total")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
-                        .frame(maxWidth: .infinity)
-                }
+                captureTile(
+                    icon: "square.and.pencil",
+                    title: "Enter Total",
+                    color: Color(hex: "06A77D"),
+                    action: onFill
+                )
             }
             .padding(.horizontal, 16)
         }
     }
-    
+
+    @ViewBuilder
+    private func captureTile(
+        icon: String,
+        title: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        let onColored = isColoredCompact
+        Button(action: action) {
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(onColored ? Color.white : color)
+                    Image(systemName: icon)
+                        .font(.system(size: 23, weight: .semibold))
+                        .foregroundColor(onColored ? resolvedHeaderColor : .white)
+                }
+                .frame(width: 54, height: 54)
+                .shadow(
+                    color: onColored ? Color.black.opacity(0.12) : color.opacity(0.35),
+                    radius: 7, y: 4
+                )
+
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(onColored ? .white : .primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(
+                onColored ? Color.white.opacity(0.16) : Color(UIColor.secondarySystemBackground)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(
+                        onColored ? Color.white.opacity(0.22) : Color.primary.opacity(0.06),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(PressableTileStyle())
+    }
+
     // MARK: - Tab Bar (pill + circle, animates between compact/expanded layout)
 
     var tabBar: some View {
@@ -235,10 +330,16 @@ struct LootTabView: View {
                         .scaleEffect(isExpanded ? 1.0 : 20.0 / 24.0, anchor: .leading)
                         .lineLimit(1)
                     if activeTab != nil {
+                            Button(action: { showingTabSettings = true }) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.75))
+                            }
+                            .buttonStyle(.plain)
                             Button(action: { onClearTab?() }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 18))
-                                    .foregroundColor(activeTab != nil ? .white.opacity(0.5) : .secondary)
+                                    .foregroundColor(.white.opacity(0.5))
                             }
                             .buttonStyle(.plain)
                     } else if !isExpanded {
@@ -263,22 +364,6 @@ struct LootTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity,
                    alignment: isExpanded ? .bottomLeading : .leading)
 
-            // Tab settings button (only when a tab is active)
-            if activeTab != nil {
-                Button(action: { showingTabSettings = true }) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.white.opacity(0.9))
-                        .frame(width: 38, height: 38)
-                        .background(Color.white.opacity(0.15))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, maxHeight: .infinity,
-                       alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
-                .padding(.horizontal, activeTab == nil || showingAddReceiptPanel || !isExpanded ? 0 : 48)
-//                .padding(.vertical, 1)
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -304,20 +389,31 @@ struct LootTabView: View {
                     colorHex: tab.colorHex,
                     tabName: tab.name,
                     onSendSettlementCard: onSendSettlementCard,
+                    onApplePayHandoff: onApplePayHandoff,
                     onSendRequestCard: onSendRequestCard,
-                    openInSafari: openInSafari
+                    openInSafari: openInSafari,
+                    pendingPayRequest: pendingPayRequest,
+                    onConsumePendingPayRequest: onConsumePendingPayRequest,
+                    onRequestCollapse: onRequestCollapse,
+                    onApplePayPending: { toName, amountCents, colorHex in
+                        messageReceiptVM.pendingApplePayInfo = PendingApplePayInfo(
+                            toName: toName,
+                            amountCents: amountCents,
+                            tabColorHex: colorHex
+                        )
+                    },
+                    refreshNonce: paymentsRefreshNonce
                 )
             }
             segmentedPicker
             if selectedSegment == 0 {
                 paymentsSection
             } else {
-                membersList(for: tab)
-                inviteMembersButton
+                membersSection(for: tab)
             }
         } else if activeTab == nil && userTabs.isEmpty {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Add up this chat's transactions with Loot Tabs! We'll do the math to settle up. When Loot is opened from this chat, receipts will be added to the selected tab.")
+                Text("Add up this chat's transactions — we'll do the math to get even.")
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -349,13 +445,15 @@ struct LootTabView: View {
                                         Text(tab.name)
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(.primary)
-                                        Text(tab.members.count == 1 ? "1 member" : "\(tab.members.count) members")
+                                        let activeMembers = tab.members.filter(\.isActive)
+                                        Text(activeMembers.count == 1 ? "1 member" : "\(activeMembers.count) members")
                                             .font(.system(size: 13))
                                             .foregroundColor(.secondary)
                                     }
                                     Spacer()
                                     HStack(spacing: 8) {
-                                        ForEach(Array(tab.members.enumerated()), id: \.offset) { index, member in
+                                        let activeMembers = tab.members.filter(\.isActive)
+                                        ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
                                             ColoredCircleBadge(
                                                     text: BadgeColors.initials(from: member.displayName, fallback: index),
                                                     color: BadgeColors.color(for: index)
@@ -483,6 +581,16 @@ struct LootTabView: View {
         return activeTab?.members.first(where: { $0.memberId == memberId })?.displayName ?? memberId
     }
 
+    private func payerLabel(for receipt: TabReceipt) -> String {
+        let myId = KeychainHelper.getOrCreateUserId()
+        if receipt.payerMemberId == myId { return "You" }
+        if let name = receipt.payerDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !name.isEmpty {
+            return name
+        }
+        return memberName(receipt.payerMemberId)
+    }
+
     private func formatEventDate(_ date: Date?) -> String {
         guard let date = date else { return "" }
         let cal = Calendar.current
@@ -538,35 +646,50 @@ struct LootTabView: View {
     }
 
     @ViewBuilder
-    private func receiptEventRow(_ receipt: TabReceipt) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "doc.text")
-                .font(.system(size: 17))
-                .foregroundColor(.secondary)
-                .frame(width: 22)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(receipt.title.isEmpty ? "Receipt" : receipt.title)
-                    .font(.system(size: 15, weight: .medium))
-                    .lineLimit(1)
-                Text("Paid by \(memberName(receipt.payerMemberId))")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(ReceiptDisplay.money(receipt.totalCents))
-                    .font(.system(size: 15, weight: .semibold))
-                Text(formatEventDate(receipt.createdAt?.dateValue()))
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
+    private func membersSection(for tab: LootTab) -> some View {
+        if paymentsLoading {
+            HStack { Spacer(); ProgressView(); Spacer() }
+                .padding(.vertical, 24)
+        } else {
+            membersList(for: tab)
+            inviteMembersButton
         }
-        .padding(.vertical, 11)
-        .padding(.horizontal, 14)
+    }
+
+    @ViewBuilder
+    private func receiptEventRow(_ receipt: TabReceipt) -> some View {
+        Button (action: { onPreviewSplits?(receipt) }) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 17))
+                    .foregroundColor(.secondary)
+                    .frame(width: 22)
+                    .padding(.top, 2)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(receipt.title.isEmpty ? "Receipt" : receipt.title)
+                        .font(.system(size: 15, weight: .medium))
+                        .lineLimit(1)
+                    Text("Paid by \(payerLabel(for: receipt))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                
+                Spacer()
+                
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(ReceiptDisplay.money(receipt.totalCents))
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(formatEventDate(receipt.createdAt?.dateValue()))
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 11)
+            .padding(.horizontal, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -633,9 +756,12 @@ struct LootTabView: View {
 
     private func membersList(for tab: LootTab) -> some View {
         let currentUserId = KeychainHelper.getOrCreateUserId()
+        // Past members (left the tab) stay in `tab.members` for historical
+        // balance lookups but should not appear in the live members list.
+        let activeMembers = tab.members.filter(\.isActive)
 
         return VStack(spacing: 0) {
-            ForEach(Array(tab.members.enumerated()), id: \.element.id) { index, member in
+            ForEach(Array(activeMembers.enumerated()), id: \.element.id) { index, member in
                 HStack {
                     Text(member.displayName + (member.memberId == currentUserId ? " (You)" : ""))
                         .font(.system(size: 16, weight: .medium))
@@ -647,7 +773,7 @@ struct LootTabView: View {
                 .padding(.vertical, 12)
                 .padding(.horizontal, 14)
 
-                if index < tab.members.count - 1 {
+                if index < activeMembers.count - 1 {
                     Divider()
                         .padding(.horizontal, 14)
                 }
@@ -669,5 +795,14 @@ struct LootTabView: View {
                 .fill(Color(UIColor.separator))
                 .frame(height: 1)
         }
+    }
+}
+
+private struct PressableTileStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }

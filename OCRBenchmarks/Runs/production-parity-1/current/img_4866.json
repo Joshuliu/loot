@@ -1,0 +1,73 @@
+{
+  "capturedAt" : "2026-04-19T01:27:50Z",
+  "caseID" : "img_4866",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 13050,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 30314,
+    "itemValues" : 0.3076923076923077,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.10615384615384615,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -17264,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 650,
+        "label" : "State Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Wine Food cohol",
+      "total_cents" : 28950
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: I",
+        "Resolved rows differ from known total by 15900 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 3000,
+          "label" : "Wine",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Food",
+          "qty" : 1
+        },
+        {
+          "cents" : 4200,
+          "label" : "Alcohol",
+          "qty" : 1
+        },
+        {
+          "cents" : 3600,
+          "label" : "count",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 28300,
+      "tax_cents" : 650
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Wine|3000\nITEM|Food|1600\nITEM|Alcohol|4200\nITEM|count|3600\nUNKNOWN|I|1900\nTAX|State Tax|650\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4785480499267578,
+      "phase2Seconds" : 33.244226932525635,
+      "totalWorkflowSeconds" : 36.607438921928406,
+      "transcriptSeconds" : 2.884658932685852,
+      "transcriptToPhase1Seconds" : 0.4785480499267578,
+      "transcriptToPhase2Seconds" : 33.722779989242554,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "$30.00 $16.00 $17.00 $42.00 $20.00 $36 00 $32.00 $31.00 $19 00 $6.50 $9.00 $27.00 $4.00 $259.50 $30.00 $10 00 $289.50 $13.64\nfour Wine Food Total cohol Total count Total Sub Total I State Tax"
+  },
+  "sourceFilename" : "IMG_4866.jpeg",
+  "variantID" : "current"
+}

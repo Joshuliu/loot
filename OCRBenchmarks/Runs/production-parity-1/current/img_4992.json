@@ -1,0 +1,77 @@
+{
+  "capturedAt" : "2026-04-19T01:28:14Z",
+  "caseID" : "img_4992",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 598,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 4832,
+    "itemValues" : 0.2,
+    "lineItemValues" : 0,
+    "merchant" : 0.1111111111111111,
+    "overall" : 0.09,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -4234,
+    "total" : 0
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Tve-nru lack In Thi STO",
+      "total_cents" : 8409
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 7811 cents"
+      ],
+      "items" : [
+        {
+          "label" : "French Fries",
+          "qty" : 1
+        },
+        {
+          "label" : "Diet Coke Fountain Drink",
+          "qty" : 1
+        },
+        {
+          "label" : "Smashed Jack",
+          "qty" : 1
+        },
+        {
+          "cents" : 598,
+          "label" : "Jr. Chicken Sandwich",
+          "qty" : 1
+        },
+        {
+          "label" : "Bac Del Smash",
+          "qty" : 1
+        },
+        {
+          "label" : "Classic Tiny Tacos",
+          "qty" : 1
+        },
+        {
+          "label" : "Avocado Lime Dip",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8409
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|French Fries|\nITEM|Diet Coke Fountain Drink|\nITEM|Smashed Jack|\nITEM|Jr. Chicken Sandwich|598\nITEM|Bac Del Smash|\nITEM|Classic Tiny Tacos|\nITEM|Avocado Lime Dip|\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.6418499946594238,
+      "phase2Seconds" : 15.927793025970459,
+      "totalWorkflowSeconds" : 22.211781978607178,
+      "transcriptSeconds" : 5.642132997512817,
+      "transcriptToPhase1Seconds" : 0.6418509483337402,
+      "transcriptToPhase2Seconds" : 16.569648027420044,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "$14.57 $8.59 85.98 810.59 $4.50 844.23 84.09 448.32 848.32\nOr Tve-nru lack In Thi STO 8 Hamilton Ave Castell, CA 95008 SMS BTRY SHASH K DS, LE FRENCH FRIES FOUNTAIN DRINK DIET COKE SMASHED JACK No PICKLES JR. CHICKEN SANDWICH (2 • 2.99) BAC DEL SMASH JADI 13 CLASSIC TINY TACOS AVOCADO LIME DIP DUF Subtotal CA Sales Tax - 9.258 Total Visa Tendered"
+  },
+  "sourceFilename" : "IMG_4992.jpeg",
+  "variantID" : "current"
+}

@@ -1,0 +1,86 @@
+{
+  "capturedAt" : "2026-05-13T22:28:05Z",
+  "caseID" : "img_4866",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 15500,
+    "breakdown" : 0.6,
+    "expectedTotalCents" : 30314,
+    "itemValues" : 0.46153846153846156,
+    "lineItemValues" : 0,
+    "merchant" : 0,
+    "overall" : 0.2792307692307692,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -14814,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 2700,
+        "label" : "State Tax"
+      },
+      {
+        "cents" : 400,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Wine Food",
+      "total_cents" : 30314
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 14814 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 3000,
+          "label" : "Four",
+          "qty" : 1
+        },
+        {
+          "cents" : 1600,
+          "label" : "Wine",
+          "qty" : 1
+        },
+        {
+          "cents" : 1700,
+          "label" : "Food",
+          "qty" : 1
+        },
+        {
+          "cents" : 2000,
+          "label" : "Alcohol",
+          "qty" : 1
+        },
+        {
+          "cents" : 3200,
+          "label" : "Unknown Item",
+          "qty" : 1
+        },
+        {
+          "cents" : 900,
+          "label" : "Unknown Item",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 27214,
+      "tax_cents" : 3100
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Four|3000\nITEM|Wine|1600\nITEM|Food|1700\nITEM|Alcohol|2000\nITEM|Unknown Item|3200\nITEM|Unknown Item|900\nTAX|State Tax|2700\nTAX|Tax|400\nUNKNOWN|Unknown Item|25950\nUNKNOWN|Unknown Item|3000\nUNKNOWN|Unknown Item|1000\nUNKNOWN|Unknown Item|28950\nUNKNOWN|Unknown Item|1364\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 6.6017680168151855,
+      "phase2Seconds" : 33.69026696681976,
+      "totalWorkflowSeconds" : 41.25921595096588,
+      "transcriptSeconds" : 0.967168927192688,
+      "transcriptToPhase1Seconds" : 6.6017680168151855,
+      "transcriptToPhase2Seconds" : 40.29204702377319,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "$30 00 $16 00 $17.00 $42.00 $20.00 $36 00 $32.00 $31.00 $19 00 $6 50 $9.00 $27 00 $4.00 $259.50 $30.00 $10 00 $289.50 $13.64\nfour Wine Food Total cohol Total count Total Sub Total I State Tax"
+  },
+  "sourceFilename" : "IMG_4866.jpeg",
+  "variantID" : "current"
+}

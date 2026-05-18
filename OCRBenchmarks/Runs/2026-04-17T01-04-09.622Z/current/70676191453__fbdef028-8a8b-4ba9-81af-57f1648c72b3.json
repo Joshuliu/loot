@@ -1,0 +1,148 @@
+{
+  "capturedAt" : "2026-04-17T01:06:56Z",
+  "caseID" : "70676191453__fbdef028-8a8b-4ba9-81af-57f1648c72b3",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 16699,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 16699,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.9800000000000001,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "ARIGATO",
+      "total_cents" : 16699
+    },
+    "phase2" : {
+      "issues" : [
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Markdown",
+        "Ignored discount row: Temporary markdown",
+        "Ignored discount row: SAVING GRAND TOTAL"
+      ],
+      "items" : [
+        {
+          "cents" : 10,
+          "label" : "ARIGATO REUSABLE BAG",
+          "qty" : 1
+        },
+        {
+          "cents" : 599,
+          "label" : "GYOZA PORK",
+          "qty" : 1
+        },
+        {
+          "cents" : 1429,
+          "label" : "BEEF TONGUE YAKINIKU",
+          "qty" : 1
+        },
+        {
+          "cents" : 1351,
+          "label" : "US WAGYU FLAP MEAT YAKI",
+          "qty" : 1
+        },
+        {
+          "cents" : 1144,
+          "label" : "US WAGYU TRI TIP YAKINIKU",
+          "qty" : 1
+        },
+        {
+          "cents" : 2058,
+          "label" : "CAB PRIME CHUCK KIRIOTOS",
+          "qty" : 1
+        },
+        {
+          "cents" : 629,
+          "label" : "US WAGYU ROUND FLAT SHABU",
+          "qty" : 1
+        },
+        {
+          "cents" : 2660,
+          "label" : "WAGYU RIBEYE SHABU",
+          "qty" : 1
+        },
+        {
+          "cents" : 10,
+          "label" : "ARIGATO REUSABLE BAG",
+          "qty" : 1
+        },
+        {
+          "cents" : 126,
+          "label" : "ONION WHITE",
+          "qty" : 1
+        },
+        {
+          "cents" : 258,
+          "label" : "GARLIC",
+          "qty" : 1
+        },
+        {
+          "cents" : 115,
+          "label" : "JALAPENO CHILI",
+          "qty" : 1
+        },
+        {
+          "cents" : 260,
+          "label" : "BABY BOK CHOY [SHANGHAI]",
+          "qty" : 1
+        },
+        {
+          "cents" : 239,
+          "label" : "SPINACH",
+          "qty" : 1
+        },
+        {
+          "cents" : 99,
+          "label" : "GREEN ONION",
+          "qty" : 1
+        },
+        {
+          "cents" : 1400,
+          "label" : "SALMON SASHIMI",
+          "qty" : 1
+        },
+        {
+          "cents" : 2029,
+          "label" : "SALMON SASHIMI",
+          "qty" : 1
+        },
+        {
+          "cents" : 1784,
+          "label" : "SALMON SASHIMI",
+          "qty" : 1
+        },
+        {
+          "cents" : 499,
+          "label" : "GF LARGE GRADE AA",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 16699
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|ARIGATO REUSABLE BAG|10\nITEM|GYOZA PORK|599\nITEM|BEEF TONGUE YAKINIKU|1429\nITEM|US WAGYU FLAP MEAT YAKI|1351\nITEM|US WAGYU TRI TIP YAKINIKU|1144\nITEM|CAB PRIME CHUCK KIRIOTOS|2058\nDISCOUNT|Markdown|206\nITEM|US WAGYU ROUND FLAT SHABU|629\nITEM|WAGYU RIBEYE SHABU|2660\nITEM|ARIGATO REUSABLE BAG|10\nITEM|ONION WHITE|126\nITEM|GARLIC|258\nITEM|JALAPENO CHILI|115\nITEM|BABY BOK CHOY [SHANGHAI]|260\nITEM|SPINACH|239\nITEM|GREEN ONION|99\nITEM|SALMON SASHIMI|1400\nDISCOUNT|Markdown|120\nITEM|SALMON SASHIMI|2029\nDISCOUNT|Markdown|174\nITEM|SALMON SASHIMI|1784\nDISCOUNT|Markdown|153\nITEM|GF LARGE GRADE AA|499\nDISCOUNT|Temporary markdown|653\nDISCOUNT|SAVING GRAND TOTAL|653\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 1.6617299318313599,
+      "phase2Seconds" : 7.266183018684387,
+      "totalWorkflowSeconds" : 19.23355805873871,
+      "transcriptSeconds" : 10.305641055107117,
+      "transcriptToPhase1Seconds" : 1.6617299318313599,
+      "transcriptToPhase2Seconds" : 8.927917003631592,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "19750 Stevens Creek Blvd.\nCupertino, CA, 95014\n408-200-4850\n#026-004 5\/25\/2023 19:42:45 Karen\nInv#:00404411 Trs#: 405059\nARIGATO REUSABLE BAG $0.10\n1 @ $5.99 each (2\/$9.00)\nGYOZA PORK $5.99 F\nBEEF TONGUE YAKINIKU $14.29 F\nUS WAGYU FLAP MEAT YAKI $13.51 F\nUS WAGYU TRI TIP YAKINIKU $11.44 F\nCAB PRIME CHUCK KIRIOTOS $20.58 F\nMarkdown: $2.06\nUS WAGYU ROUND FLAT SHABU $6.29 F\nWAGYU RIBEYE SHABU $26.60 F\nARIGATO REUSABLE BAG $0.10\nTare: 0.01 lb\n1.59 lb @ $0.79\/lb\nONION WHITE $1.26 F\nTare: 0.01 lb\n0.43 lb @ $5.99\/lb\nGARLIC $2.58 F\nJALAPENO CHILI $1.15\nTare: 0.01 lb\n0.87 lb @ $2.99\/1b\nBABY BOK CHOY [SHANGHAI] $2.60 F\nSPINACH $2.39\n*GREEN ONION* $0.99 F\nSALMON SASHIMI $14.00 F\nMarkdown: $1.20\nSALMON SASHIMI $20.29 F\nMarkdown: $1,74\nSALMON SASHIMI $17.84 F\nMarkdown: $1.53\nGF LARGE GRADE AA $4.99 F\nNet Sales $166.99\nTOTAL SALES $166.99\nSUB TOTAL $166.99\nVisa $166.99\n# * *****3578\nBalance $0.00\nItem count 19\nTemporary markdown $6.53\nSAVING GRAND TOTAL $6.53"
+  },
+  "sourceFilename" : "70676191453__FBDEF028-8A8B-4BA9-81AF-57F1648C72B3.jpeg",
+  "variantID" : "current"
+}

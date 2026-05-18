@@ -1,0 +1,66 @@
+{
+  "capturedAt" : "2026-04-19T02:11:20Z",
+  "caseID" : "img_4672",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 359,
+    "breakdown" : 0.4,
+    "expectedTotalCents" : 318,
+    "itemValues" : 0.5,
+    "lineItemValues" : 0,
+    "merchant" : 1,
+    "overall" : 0.265,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 41,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 5,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 5,
+        "label" : "Fee"
+      },
+      {
+        "cents" : 36,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Safeway",
+      "total_cents" : 318
+    },
+    "phase2" : {
+      "fees_cents" : 10,
+      "issues" : [
+        "Resolved rows differ from known total by 41 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 313,
+          "label" : "Aquafina Water",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 272,
+      "tax_cents" : 36
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Aquafina Water|349\nFEE|Fee|5\nFEE|Fee|5\nDISCOUNT|Associate Savings|36\nTAX|Tax|36\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.39796900749206543,
+      "phase2Seconds" : 26.643070936203003,
+      "totalWorkflowSeconds" : 31.420205950737,
+      "transcriptSeconds" : 4.37916100025177,
+      "transcriptToPhase1Seconds" : 0.39796996116638184,
+      "transcriptToPhase2Seconds" : 27.04104495048523,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "You Pay Price 3.13 S 3.49 0.05 S 0.05 0.00 3.18 12\/23\/25 22:20 REF: 632035414070 AUTH: 0000272C 3.18 3.18 0.00 0.36 0.36 10% TOTAL NUMBER OF ITEMS SOLD = 8854 12\/23\/25 22:20 919 54 197 Thank you for shopping Safeway! For SAFEWAY FOR U questions call 877-276-9637 or Safeway.com\/foru\nAQUAFINA WATER 0159 CRV SFTDK SNGL NTX Assoclate Savings -0.36 TAX **** BALANCE Credit Purchase CARD # ************1407 PAYMENT AMOUNT AL VISA CREDIT AID A0000000031010 TVR 0000000000 Visa CHANGE YOUR SAVINGS ociate Savings al Savings Value YOUR POINTS Points Earned Today 3 Points Available 224"
+  },
+  "sourceFilename" : "IMG_4672.jpeg",
+  "variantID" : "current"
+}

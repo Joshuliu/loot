@@ -1,0 +1,72 @@
+{
+  "capturedAt" : "2026-04-25T18:58:10Z",
+  "caseID" : "img_5139",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 14480,
+    "breakdown" : 1,
+    "expectedTotalCents" : 14480,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 1286,
+        "label" : "Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Mama &",
+      "total_cents" : 14480
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 9196,
+          "label" : "Koobideh",
+          "qty" : 1
+        },
+        {
+          "cents" : 2299,
+          "label" : "Lamb Shank",
+          "qty" : 1
+        },
+        {
+          "cents" : 899,
+          "label" : "Mustard Moussier",
+          "qty" : 1
+        },
+        {
+          "cents" : 800,
+          "label" : "Shams Persian Beer",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 13194,
+      "tax_cents" : 1286
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Koobideh|9196\nITEM|Lamb Shank|2299\nITEM|Mustard Moussier|899\nITEM|Shams Persian Beer|800\nTAX|Tax|1286\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4321199655532837,
+      "phase2Seconds" : 4.385994076728821,
+      "totalWorkflowSeconds" : 4.818135023117065,
+      "transcriptSeconds" : 9.059906005859375e-06,
+      "transcriptToPhase1Seconds" : 0.4321199655532837,
+      "transcriptToPhase2Seconds" : 4.81812596321106,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "•Pay G Pay VISA DISCOVER АЛ МАUРЕ Mama &6\nServer: Pasha T\nCheck #71 Table B1\nGuest Count: 5\nOrdered: 2\/1\/26 7:07 PM\n4 Koobideh $91.96\nWhite Rice & Salad\n1 Lamb Shank (Mahicheh) $22.99\n1 Must 0 Mousier $8.99\n1 Shams Persian Beer $8.00\nSubtotal $131.94\nTax $12.86\nTotal $144.80\nSuggested Tip:\n18%: (Tip $23.75 Total $168.55)\n20%: (Tip $26.39 Total $171.19)\n22%: (Tip $29.03 Total $173.83)\nTip percentages are based on the check"
+  },
+  "sourceFilename" : "IMG_5139.jpeg",
+  "variantID" : "current"
+}

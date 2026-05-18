@@ -1,0 +1,72 @@
+{
+  "capturedAt" : "2026-04-25T18:58:14Z",
+  "caseID" : "img_8770",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 5620,
+    "breakdown" : 1,
+    "expectedTotalCents" : 5620,
+    "itemValues" : 1,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 1,
+    "passesTotalReconciliation" : true,
+    "reconciliation" : 1,
+    "reconciliationDifferenceCents" : 0,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 470,
+        "label" : "Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "Uzumakiya Udon",
+      "total_cents" : 5620
+    },
+    "phase2" : {
+      "issues" : [
+
+      ],
+      "items" : [
+        {
+          "cents" : 1675,
+          "label" : "Gobo Niku Udon",
+          "qty" : 1
+        },
+        {
+          "cents" : 1965,
+          "label" : "OxTail Udon",
+          "qty" : 1
+        },
+        {
+          "cents" : 860,
+          "label" : "Chicken Karaage",
+          "qty" : 1
+        },
+        {
+          "cents" : 650,
+          "label" : "Shishito Tempura",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 5150,
+      "tax_cents" : 470
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Gobo Niku Udon|1675\nITEM|OxTail Udon|1965\nITEM|Chicken Karaage|860\nITEM|Shishito Tempura|650\nTAX|Sales Tax|470\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4230780601501465,
+      "phase2Seconds" : 3.50386905670166,
+      "totalWorkflowSeconds" : 3.9269590377807617,
+      "transcriptSeconds" : 5.9604644775390625e-06,
+      "transcriptToPhase1Seconds" : 0.4230780601501465,
+      "transcriptToPhase2Seconds" : 3.926953077316284,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "Uzumakiya Udon\nCupertino, CA 95014 10789 S Blaney Ave\n408-490-4017\nServer: Admin 16796\nTO GO\n1\/13\/2024 7:35 PM\nTicket #: 57809 POS\nJash\n669-225-9338\nGobo Niku Udon 16.75 × 1 $16.75 T\nOxTail Udon 19.65 x 1 $19.65 T\nChicken Karaage 8.60 x 1 $8.60 T\nShishito Tempura 6.50 × 1 $6.50 T\nSUBTOTAL $51.50\nSALES TAX (9.13%) $4.70\nTOTAL $56.20\nPAID\nCREDIT (... 3578) $56.20\nItem Count: 4\nPowered by Blogic Systems"
+  },
+  "sourceFilename" : "IMG_8770.jpeg",
+  "variantID" : "current"
+}

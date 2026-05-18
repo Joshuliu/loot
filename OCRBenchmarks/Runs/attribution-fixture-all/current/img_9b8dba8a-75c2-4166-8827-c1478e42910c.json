@@ -1,0 +1,117 @@
+{
+  "capturedAt" : "2026-04-25T18:53:02Z",
+  "caseID" : "img_9b8dba8a-75c2-4166-8827-c1478e42910c",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 2615,
+    "breakdown" : 0.8,
+    "expectedTotalCents" : 2735,
+    "itemValues" : 0.9285714285714286,
+    "lineItemValues" : 1,
+    "merchant" : 1,
+    "overall" : 0.4192857142857143,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : -120,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+
+    ],
+    "phase1" : {
+      "merchant" : "Green Supermarket",
+      "total_cents" : 2735
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Misc",
+        "Unclassified priced row: TOTAL",
+        "Unclassified priced row: CASH",
+        "Unclassified priced row: CHANGE",
+        "Resolved rows differ from known total by 120 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 100,
+          "label" : "APPLE",
+          "qty" : 1
+        },
+        {
+          "cents" : 150,
+          "label" : "BANANA",
+          "qty" : 1
+        },
+        {
+          "cents" : 120,
+          "label" : "ORANGE",
+          "qty" : 1
+        },
+        {
+          "cents" : 75,
+          "label" : "PEAR",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "GRAPES",
+          "qty" : 1
+        },
+        {
+          "cents" : 250,
+          "label" : "STRAWBERRY",
+          "qty" : 1
+        },
+        {
+          "cents" : 200,
+          "label" : "BLUEBERRY",
+          "qty" : 1
+        },
+        {
+          "cents" : 180,
+          "label" : "KIWI",
+          "qty" : 1
+        },
+        {
+          "cents" : 450,
+          "label" : "WATERMELON",
+          "qty" : 1
+        },
+        {
+          "cents" : 60,
+          "label" : "LEMON",
+          "qty" : 1
+        },
+        {
+          "cents" : 300,
+          "label" : "RASPBERRY",
+          "qty" : 1
+        },
+        {
+          "cents" : 150,
+          "label" : "MILK",
+          "qty" : 1
+        },
+        {
+          "cents" : 280,
+          "label" : "CHEESE",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 2735
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|APPLE|100\nITEM|BANANA|150\nITEM|ORANGE|120\nITEM|PEAR|75\nITEM|GRAPES|300\nITEM|STRAWBERRY|250\nITEM|BLUEBERRY|200\nITEM|KIWI|180\nITEM|WATERMELON|450\nITEM|LEMON|60\nITEM|RASPBERRY|300\nITEM|MILK|150\nITEM|CHEESE|280\nUNKNOWN|Misc|120\nUNKNOWN|TOTAL|2735\nUNKNOWN|CASH|3000\nUNKNOWN|CHANGE|265\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.441802978515625,
+      "phase2Seconds" : 8.70965301990509,
+      "totalWorkflowSeconds" : 9.151471972465515,
+      "transcriptSeconds" : 2.9802322387695312e-06,
+      "transcriptToPhase1Seconds" : 0.441802978515625,
+      "transcriptToPhase2Seconds" : 9.15146803855896,
+      "usedPrefetchedTranscript" : true
+    },
+    "transcript" : "Rawpixel\n...\nSave Te\nGreen\nSupermarket\n2 APPLE 1.00\nceip 3 BANANA 1.50\nOC 2 ORANGE 1.20\n1 PEAR 0.75\n2 GRAPES 3.00\nSTRAWBERRY 2.50\nBLUEBERRY 2.00\nKIWI 1.80\nWATERMELON 4.50\nLEMON 0.60\nRASPBERRY 3.00\nMILK 1.50\nCHEESE 2.80\n> 1.20\nis R\nIns TOTAL 27.35\nCASH 30.00\nCHANGE 2.65\n123456 789012\nReceipt Images | Free Photos, PNG Stickers, Wallpapers... Visit ›\nCopyright: 2025 Rawpixel Ltd. Creator: rawpixel.com \/ audi"
+  },
+  "sourceFilename" : "IMG_9B8DBA8A-75C2-4166-8827-C1478E42910C.jpeg",
+  "variantID" : "current"
+}

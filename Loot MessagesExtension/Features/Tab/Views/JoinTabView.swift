@@ -6,12 +6,14 @@
 import SwiftUI
 
 struct JoinTabView: View {
-    @ObservedObject var uiModel: LootUIModel
+    @ObservedObject var coordinator: AppCoordinator
+    @ObservedObject var tabContextVM: TabContextViewModel
     var isExpanded: Bool = true
 
     let onRequestExpand: () -> Void
     let onBack: () -> Void
     let onJoined: (LootTab) -> Void
+    var onSendTabInviteUpdate: ((String) -> Void)? = nil
     var onAccountTapped: (() -> Void)? = nil
 
     @AppStorage(DefaultsKeys.myDisplayName) private var myDisplayName: String = ""
@@ -109,8 +111,12 @@ struct JoinTabView: View {
                         Text("Members")
                             .font(.system(size: isExpanded ? 14 : 12, weight: .semibold))
                             .foregroundStyle(.secondary)
+                        // Past members (left the tab) stay in `tab.members` for
+                        // historical balance/name lookups but should not appear
+                        // in the invite preview.
+                        let activeMembers = tab.members.filter(\.isActive)
                         if isExpanded {
-                            ForEach(Array(tab.members.enumerated()), id: \.offset) { index, member in
+                            ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
                                 HStack(spacing: 8) {
                                     ColoredCircleBadge(
                                         text: BadgeColors.initials(from: member.displayName, fallback: index),
@@ -122,7 +128,7 @@ struct JoinTabView: View {
                             }
                         } else {
                             HStack(spacing: 8) {
-                                ForEach(Array(tab.members.enumerated()), id: \.offset) { index, member in
+                                ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
                                     ColoredCircleBadge(
                                             text: BadgeColors.initials(from: member.displayName, fallback: index),
                                             color: BadgeColors.color(for: index)
@@ -178,25 +184,40 @@ struct JoinTabView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isExpanded)
-        .task {
+        // Re-fire the load when either the invite id changes OR the refresh
+        // nonce bumps (re-tap of the same invite bubble). Without the nonce
+        // the user could re-tap a stale invite and see no UI change.
+        .task(id: TaskKey(id: tabContextVM.pendingTabInviteId ?? "",
+                          nonce: tabContextVM.pendingTabInviteRefreshNonce)) {
             onRequestExpand()
             await loadTab()
         }
     }
 
+    private struct TaskKey: Hashable {
+        let id: String
+        let nonce: Int
+    }
+
     private func loadTab() async {
-        guard let tabId = uiModel.pendingTabInviteId else {
+        guard let tabId = tabContextVM.pendingTabInviteId else {
             errorMessage = "No tab invite ID"
             return
         }
         isLoading = true
         do {
             if let fetched = try await TabService.shared.fetchTab(id: tabId) {
-                // Already a member — just select the tab and go back
+                // Active membership shortcut — but past members (left the tab)
+                // need to fall through to the join flow so joinTab() can
+                // reactivate them. Checking memberIds alone isn't enough since
+                // it can drift from the actual `members[].isActive` state.
                 let myId = KeychainHelper.getOrCreateUserId()
-                if fetched.memberIds.contains(myId) {
-                    uiModel.activeTab = fetched
-                    uiModel.pendingTabInviteId = nil
+                let isActiveMember = fetched.members.contains { member in
+                    (member.memberId == myId || member.userId == myId) && member.isActive
+                }
+                if isActiveMember {
+                    tabContextVM.activeTab = fetched
+                    tabContextVM.pendingTabInviteId = nil
                     onJoined(fetched)
                     isLoading = false
                     return
@@ -233,9 +254,19 @@ struct JoinTabView: View {
             do {
                 let joined = try await TabService.shared.joinTab(
                     tabId: tab.id ?? "",
-                    conversationKey: uiModel.conversationKey ?? ""
+                    conversationKey: tabContextVM.conversationKey ?? ""
                 )
-                uiModel.activeTab = joined
+                self.tab = joined
+                tabContextVM.activeTab = joined
+                tabContextVM.conversationMemberIds = Set(joined.memberIds)
+                if let index = tabContextVM.userTabs.firstIndex(where: { $0.id == joined.id }) {
+                    tabContextVM.userTabs[index] = joined
+                } else {
+                    tabContextVM.userTabs.append(joined)
+                }
+                if let tabId = joined.id, !tabId.isEmpty {
+                    onSendTabInviteUpdate?(tabId)
+                }
                 onJoined(joined)
             } catch {
                 errorMessage = error.localizedDescription

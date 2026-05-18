@@ -1,0 +1,67 @@
+{
+  "capturedAt" : "2026-04-18T02:00:16Z",
+  "caseID" : "68741337286__37b757a3-7a96-421b-bb57-eeae1a8e7595",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 4583,
+    "breakdown" : 1,
+    "expectedTotalCents" : 1942,
+    "itemValues" : 0.3333333333333333,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.35,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 2641,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 144,
+        "label" : "General Sales Tax"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "ubway",
+      "total_cents" : 1942
+    },
+    "phase2" : {
+      "issues" : [
+        "Resolved rows differ from known total by 2641 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 699,
+          "label" : "Meatball Sub Steak & Cheese",
+          "qty" : 1
+        },
+        {
+          "cents" : 1798,
+          "label" : "Sub Total",
+          "qty" : 1
+        },
+        {
+          "cents" : 1942,
+          "label" : "Total",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 1798,
+      "tax_cents" : 144
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Meatball Sub Steak & Cheese|699\nUNKNOWN|Sub Total|1798\nTAX|General Sales Tax|144\nUNKNOWN|Total|1942\nUNKNOWN|Credit Card|0\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.4509390592575073,
+      "phase2Seconds" : 17.950485110282898,
+      "totalWorkflowSeconds" : 23.234454035758972,
+      "transcriptSeconds" : 4.833024978637695,
+      "transcriptToPhase1Seconds" : 0.4509390592575073,
+      "transcriptToPhase2Seconds" : 18.401429057121277,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "ubway#64183-0 Phone 3158027726 452 grant blvd\nserved by: 10 10\/14\/2022 12:08:14 am Term ID-Trans# 1\/A-134463 syracuse, ny, 13206\nPrice\nQty Size Item 10.99\n1 12\" Meatball Sub Steak & Chse FtPro 6.99\n17.98\nSub Total General Sales Tax (8%) 19.42 1.44\nTotal (Take Out) 19.42\nCredit Card 0.00\nChange Reference No: 5YZW001665720483030 Approval No: 04235D\nCard Issuer: Visa Account No: ************5931 Acquired: Contactless chip CVM: VERIFIED BY DEVICE\nApplication: VISA Amount: $19.42\nAID: A0000000031010 one: 10\/14\/2022 00:08:03 *D: 420429002127251\n: 75206218\nAPPROVED\nCUSTOMER COPY"
+  },
+  "sourceFilename" : "68741337286__37B757A3-7A96-421B-BB57-EEAE1A8E7595.jpeg",
+  "variantID" : "current"
+}

@@ -1,0 +1,64 @@
+{
+  "capturedAt" : "2026-04-19T01:32:16Z",
+  "caseID" : "img_9255",
+  "expectedReviewStatus" : "needsReview",
+  "score" : {
+    "actualComputedTotalCents" : 10585,
+    "breakdown" : 1,
+    "expectedTotalCents" : 10584,
+    "itemValues" : 0,
+    "lineItemValues" : 1,
+    "merchant" : 0,
+    "overall" : 0.3,
+    "passesTotalReconciliation" : false,
+    "reconciliation" : 0,
+    "reconciliationDifferenceCents" : 1,
+    "total" : 1
+  },
+  "snapshot" : {
+    "lineItems" : [
+      {
+        "cents" : 672,
+        "label" : "Tax"
+      },
+      {
+        "cents" : 1512,
+        "label" : "Tip"
+      }
+    ],
+    "phase1" : {
+      "merchant" : "TheRustyPelican.com",
+      "total_cents" : 10584
+    },
+    "phase2" : {
+      "issues" : [
+        "Unclassified priced row: Subtotal",
+        "Unclassified priced row: Total",
+        "Resolved rows differ from known total by 1 cents"
+      ],
+      "items" : [
+        {
+          "cents" : 8401,
+          "label" : "Turf",
+          "qty" : 1
+        }
+      ],
+      "subtotal_cents" : 8400,
+      "tax_cents" : 672,
+      "tip_cents" : 1512
+    },
+    "rawPhase2Response" : "BEGIN_ROWS\nITEM|Turf|8401\nUNKNOWN|Subtotal|8400\nTAX|Tax|672\nTIP|Tip|1512\nUNKNOWN|Total|10584\nEND_ROWS",
+    "timings" : {
+      "phase1Seconds" : 0.47988998889923096,
+      "phase2Seconds" : 7.942559003829956,
+      "totalWorkflowSeconds" : 13.832499980926514,
+      "transcriptSeconds" : 5.410045027732849,
+      "transcriptToPhase1Seconds" : 0.47989094257354736,
+      "transcriptToPhase2Seconds" : 8.422454953193665,
+      "usedPrefetchedTranscript" : false
+    },
+    "transcript" : "yenbacker Cswy Kes Biscayne, FL TheRustyPelican.com 305.361,3818 Server: Valentine A Table 25 3\/17\/24 6:57 P Turf $84.01 $84.00 $6.72 $15.12 $105.84 C (EMU Chip Read) xxxxxxxx3578 7:39 PM Sale Approved 08854D wxsbrLCpdwww\nCheck #356 Guest count: 1 Ordered: Surf and Subtotal Tax Tip Total Input Type VISA CREDIT Time Transaction Type Authorization Approval Code Payment ID Application ID"
+  },
+  "sourceFilename" : "IMG_9255.jpeg",
+  "variantID" : "current"
+}
