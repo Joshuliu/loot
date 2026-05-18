@@ -29,6 +29,11 @@ struct MessageReceiptViewer: View {
 
     @State private var editSplitPayload: LootMessagePayload? = nil
     @State private var showEditReceipt: Bool = false
+    /// Mirrors the compose-flow toast: after an Edit Splits save that
+    /// leaves item cents unclaimed in non-claim byItems mode, surface the
+    /// "remaining $X split evenly" rule so it doesn't look like a bug.
+    @State private var showSplitEvenlyBanner: Bool = false
+    @State private var splitEvenlyUnclaimedCents: Int = 0
 
     private var canEdit: Bool {
         let myUid = KeychainHelper.getOrCreateUserId()
@@ -66,9 +71,10 @@ struct MessageReceiptViewer: View {
         )
         .id(messageReceiptVM.openedMessageDocId ?? payload.r.id)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay { splitEvenlyBannerOverlay }
         .sheet(item: $editSplitPayload) { editPayload in
             let docId = messageReceiptVM.openedMessageDocId ?? editPayload.r.id
-            EditSplitView(payload: editPayload, docId: docId, onSave: { updatedPayload in
+            EditSplitView(payload: editPayload, docId: docId, receiptImage: receiptDraftVM.scanImageCropped, onSave: { updatedPayload in
                 handleSplitSave(updatedPayload)
                 editSplitPayload = nil
             }, onCancel: {
@@ -89,6 +95,71 @@ struct MessageReceiptViewer: View {
                 }
             )
         }
+        .task(id: messageReceiptVM.openedMessageDocId ?? payload.r.id) {
+            autoPresentClaimIfNeeded()
+        }
+    }
+
+    @ViewBuilder
+    private var splitEvenlyBannerOverlay: some View {
+        if showSplitEvenlyBanner {
+            UnclaimedSplitToast(amountCents: splitEvenlyUnclaimedCents)
+        }
+    }
+
+    /// After an Edit Splits save: if the bill is non-claim byItems and
+    /// still has unclaimed item cents, surface the same transient toast as
+    /// the compose flow so the "split evenly" redistribution doesn't read
+    /// as a math error. Claim bills (cl == true) intentionally leave
+    /// unclaimed unattributed, so they're excluded.
+    private func maybeShowSplitEvenlyBanner(for payload: LootMessagePayload) {
+        let s = payload.s
+        guard s.m == .byItems, s.cl != true else { return }
+        let slotPIDs = s.g.indices.map { s.g.personID(forSlot: $0) }
+        let unclaimed = payload.r.i.reduce(0) { acc, it in
+            acc + max(0, it.p - it.itemPartition(slotPersonIDs: slotPIDs)
+                .claimedCents(priceCents: it.p))
+        }
+        guard unclaimed > 0 else { return }
+        splitEvenlyUnclaimedCents = unclaimed
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            showSplitEvenlyBanner = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.5) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showSplitEvenlyBanner = false
+            }
+        }
+    }
+
+    /// First time a recipient opens a recipients-claim bill they haven't
+    /// claimed yet, jump straight into the claim popup (EditSplitView) so
+    /// they can pick their items and Save (or Cancel). Skipped for the
+    /// sender (they manage via Edit Splits) and once anything's claimed
+    /// (they re-enter via "Modify claimed items").
+    private func autoPresentClaimIfNeeded() {
+        guard payload.s.cl == true, editSplitPayload == nil else { return }
+        let myUid = KeychainHelper.getOrCreateUserId()
+        if let su = payload.su, !su.isEmpty, su == myUid { return }
+        // P0-4: a recipient who EXPLICITLY opted out (added to the per-bill
+        // ignored list via "Leave this bill" / opt-out) must NOT get the
+        // claim popup auto-re-presented on a subsequent re-tap. `claimed
+        // == 0` alone can't distinguish "hasn't claimed yet" from "opted
+        // out" — they both have zero claims. Re-entry for an opted-out
+        // recipient is only via the explicit "I'm in this bill"
+        // affordance, mirroring SplitsSummaryView's `didOptOut`
+        // discriminator (feedback_claim_bill_state_model.md).
+        let billId = messageReceiptVM.openedMessageDocId ?? payload.r.id
+        if messageReceiptVM.isIgnoredUUID(myUid, for: billId) { return }
+        let guests = payload.s.g
+        let slotPIDs = guests.indices.map { guests.personID(forSlot: $0) }
+        let myPID = PersonID(rawValue: myUid)
+        let claimed = payload.r.i.reduce(0) {
+            $0 + $1.itemPartition(slotPersonIDs: slotPIDs)
+                .centsClaimed(by: myPID, priceCents: $1.p)
+        }
+        guard claimed == 0 else { return }
+        editSplitPayload = messageReceiptVM.openedMessagePayload ?? payload
     }
 
     // MARK: - Receipt Edit Handler
@@ -217,6 +288,17 @@ struct MessageReceiptViewer: View {
         messageReceiptVM.openedMessagePayload = updatedPayload
         receiptDraftVM.currentReceipt = updatedPayload.toReceiptDisplay()
         persistPayload(updatedPayload, docId: docId)
+        // persistPayload broadcasts SYNCHRONOUSLY (bus.sendBillUpdate →
+        // conversation.send on the bubble's MSSession). The toast mutates
+        // host @State with an animation, which re-renders
+        // MessageReceiptViewer. Per project_bill_update_state_order.md a
+        // host re-render in the window between the broadcast and iOS
+        // finishing the MSSession send makes iOS silently drop the
+        // retract (no error, bubble unchanged). Defer the toast well
+        // clear of that window so it can't disturb the send.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            maybeShowSplitEvenlyBanner(for: updatedPayload)
+        }
     }
 
     private func removeFromTab() {

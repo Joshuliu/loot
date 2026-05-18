@@ -111,6 +111,22 @@ struct ConfirmationView: View {
     /// item cents in non-claim byItems mode — surfaces the "remaining items
     /// split evenly" rule that the bill card will apply.
     @State var showSplitEvenlyBanner: Bool = false
+    /// Total unclaimed item cents distributed evenly — shown in the toast
+    /// so the rule is concrete (e.g. "Remaining $12.50 split evenly…").
+    @State var splitEvenlyUnclaimedCents: Int = 0
+
+    /// Live presentation width (captured from the body GeometryReader).
+    /// Drives the adaptive card scale so the fixed-size bill card can't
+    /// overlap the side buttons under Display Zoom / on narrow devices.
+    @State private var screenWidth: CGFloat = 0
+
+    /// The ScrollView's own viewport height and the packed content's
+    /// height, both measured via background GeometryReaders. When compact
+    /// and content > viewport we request the expanded presentation
+    /// ("grow the sheet") instead of scrolling in the tiny strip; once
+    /// expanded (the host's max) the ScrollView scrolls.
+    @State private var scrollViewportH: CGFloat = 0
+    @State private var contentH: CGFloat = 0
 
 
 //    private let collapsedHeight: CGFloat = 60
@@ -132,19 +148,6 @@ struct ConfirmationView: View {
 
     var buttonBase: Color { Color(.secondarySystemBackground) }
     private var gold: Color { Color(hex: "#DAA806") }
-
-    private var shouldShowSendCue: Bool {
-        dragIntent == .none && !receiptDraftVM.isLoadingReceipt && !isLoadingItems && !hasSent
-    }
-
-    private var guidanceText: String {
-        if dragIntent == .left { return "Swipe left to delete" }
-        if dragIntent == .right { return "Swipe right to tip" }
-        if dragIntent == .down { return "Swipe down for split options" }
-        if receiptDraftVM.isLoadingReceipt { return "Swipe left to delete" }
-        if isLoadingItems { return "Swipe up to send without items" }
-        return "To send, swipe the receipt card up"
-    }
 
     private var buttonsOpacity: Double {
         if dragIntent == .up { return Double(1 - upProgress) }
@@ -232,6 +235,22 @@ struct ConfirmationView: View {
             participantCount: participantCount,
             totalCents: totalCents
         )
+
+        // Arriving in a mode that needs configuring (by-items → assign items;
+        // custom → set per-person amounts): skip the compact bill card and
+        // drop straight into the split editor so the user doesn't have to
+        // swipe the card open just to do the thing the mode requires.
+        if autoOpenSplitEditor {
+            splitEditorVM.confirmed = false
+        }
+    }
+
+    /// True when we should open directly into the split editor instead of the
+    /// compact "swipe up to send" card. By-items and custom both require input
+    /// (item assignment / per-person amounts), so revealing the panel up front
+    /// saves a pointless swipe. Equally needs no input, so it stays compact.
+    private var autoOpenSplitEditor: Bool {
+        (splitMode == .byItems || splitMode == .custom) && !cameFromManual
     }
 
     private func handleKeyboardWillShow(_ notif: Notification) {
@@ -358,6 +377,20 @@ struct ConfirmationView: View {
         onSend()
     }
 
+    /// Tap-to-send (the top pill). Mirrors the up-swipe gesture: fling the
+    /// card up, then run the same send path. Blocked while Phase 1 is still
+    /// loading (the total isn't known yet) — same guard as the swipe.
+    private func animateSendThenAct() {
+        guard !hasSent, !receiptDraftVM.isLoadingReceipt else { return }
+        hasSent = true
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            cardOffset = CGSize(width: 0, height: -400)
+            cardRotation = 0
+        }
+        performSwipeUpSend()
+    }
+
     /// Down-swipe (and Edit-Split-button) outcome: enter the split editor
     /// expanded state. Order mirrors the historical inline gesture body.
     private func performSwipeDownExpand() {
@@ -394,7 +427,7 @@ struct ConfirmationView: View {
     }
 
     /// Tap-Add-Tip outcome: matches the right-swipe gesture's animation
-    /// before opening the tip panel. Used by the BillActionButtons row.
+    /// before opening the tip panel. Used by the bill-card circle buttons.
     private func animateAddTipThenAct() {
         UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -476,103 +509,177 @@ struct ConfirmationView: View {
         )
     }
 
-    // MARK: - Confirmation Panel (card + swipe-to-send + bottom buttons)
-    private func confirmationPanel() -> some View {
-        let cardScale: CGFloat = !coordinator.isExpanded ? 0.9 : 0.9 //1.1
-        let cardH: CGFloat = 160 * cardScale
+    /// The fixed 260-pt bill card scaled so it always fits between the two
+    /// 64-pt side-button columns (+ row padding/spacing), capped at 0.85.
+    /// Driven by the live presentation width so Display Zoom / narrow
+    /// devices shrink the card instead of letting it cover Delete/Add tip.
+    private var adaptiveCardScale: CGFloat {
+        let avail = screenWidth > 1 ? screenWidth : UIScreen.main.bounds.width
+        let cardMaxW = max(170, avail - 2 * 64 - 2 * 6 - 2 * 4)
+        return min(0.85, cardMaxW / 260)
+    }
 
-        return VStack(spacing: 0) {
-            if coordinator.isExpanded {
-                Spacer(minLength: 0)
-                Spacer(minLength: 0)
+    /// Send pill label. Phase/loading state is conveyed by the caption
+    /// line (and the pill's opacity) instead, so this stays constant
+    /// across phases — only the tab vs. no-tab wording changes.
+    private var sendPillText: String {
+        tabContextVM.activeTab != nil ? "Swipe up to add to tab" : "Swipe up to send"
+    }
+
+    /// The always-present caption under the card. Constant 1-line height
+    /// so the Modify-splits pill never shifts; the text tracks the load
+    /// phase: total (phase 1) → items (phase 2) → tap to edit.
+    private var editCaptionText: String {
+        if receiptDraftVM.isLoadingReceipt { return "Loading receipt total" }
+        if isLoadingItems { return "Loading receipt items" }
+        return "Tap to edit receipt"
+    }
+
+    private func receiptCardView(cardScale: CGFloat, cardH: CGFloat) -> some View {
+        ReceiptCardView(
+            receiptName: receiptName,
+            displayAmount: displayAmount,
+            payerName: splitEditorVM.payerDisplayName(),
+            splitLabel: splitLabel,
+            owedAmounts: owedAmounts,
+            totalCents: totalCents,
+            tabName: tabContextVM.activeTab?.name,
+            tabColorHex: tabContextVM.activeTab?.colorHex,
+            participantCount: participantCount,
+            isLoadingReceipt: receiptDraftVM.isLoadingReceipt,
+            cardScale: cardScale,
+            cardHeight: cardH,
+            billCardRefreshNonce: billCardRefreshNonce,
+            cardOffset: $cardOffset,
+            cardRotation: $cardRotation,
+            dragIntent: $dragIntent,
+            hasSent: $hasSent,
+            introAnimationDone: $introAnimationDone,
+            billCardBounceYOffset: $billCardBounceYOffset,
+            onSwipeUpSend: { performSwipeUpSend() },
+            onSwipeLeftDelete: { onDeleteToLanding() },
+            onSwipeRightTip: { performSwipeRightTip() },
+            onSwipeDownExpand: { performSwipeDownExpand() },
+            onTap: {
+                // Card tap opens Edit Receipt — identical to the
+                // bottom-right receipt button. Edit Receipt needs BOTH
+                // the total (Phase 1) and the line items (Phase 2) to be
+                // ready, so block the tap until both have finished.
+                guard !receiptDraftVM.isLoadingReceipt, !isLoadingItems else { return }
+                showEditReceipt = true
             }
-            Text(guidanceText)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.secondary)
-                .padding(.top, 10)
+        )
+    }
 
-            if shouldShowSendCue {
-                SendCueView()
-                    .padding(.top, 10)
-            } else {
-                Color.clear.frame(height: 28)
+    @ViewBuilder
+    private func cardRow(cardScale: CGFloat, cardH: CGFloat, tipDisabled: Bool, showControls: Bool) -> some View {
+        HStack(spacing: 4) {
+            if showControls {
+                BillCardCircleButton(
+                    icon: "trash",
+                    theme: Color(hex: "#C76767"),
+                    progress: leftProgress,
+                    isActiveDrag: dragIntent == .left,
+                    buttonsOpacity: buttonsOpacity,
+                    buttonBase: buttonBase,
+                    label: "Delete",
+                    action: { animateDeleteThenAct() }
+                )
+                .frame(width: 64)
+                .transition(.opacity)
             }
 
-            ReceiptCardView(
-                receiptName: receiptName,
-                displayAmount: displayAmount,
-                payerName: splitEditorVM.payerDisplayName(),
-                splitLabel: splitLabel,
-                owedAmounts: owedAmounts,
-                totalCents: totalCents,
-                tabName: tabContextVM.activeTab?.name,
-                tabColorHex: tabContextVM.activeTab?.colorHex,
-                participantCount: participantCount,
-                isLoadingReceipt: receiptDraftVM.isLoadingReceipt,
-                isLoadingItems: isLoadingItems,
-                cardScale: cardScale,
-                cardHeight: cardH,
-                billCardRefreshNonce: billCardRefreshNonce,
-                arrowHintsOpacity: buttonsOpacity,
-                cardOffset: $cardOffset,
-                cardRotation: $cardRotation,
-                dragIntent: $dragIntent,
-                hasSent: $hasSent,
-                introAnimationDone: $introAnimationDone,
-                billCardBounceYOffset: $billCardBounceYOffset,
-                onSwipeUpSend: { performSwipeUpSend() },
-                onSwipeLeftDelete: { onDeleteToLanding() },
-                onSwipeRightTip: { performSwipeRightTip() },
-                onSwipeDownExpand: { performSwipeDownExpand() },
-                onTap: {
-                    // Don't open the editor while Phase 1 is still running —
-                    // there's no real receipt to edit yet, and the prompt text
-                    // below already reads "Loading receipt items..." rather
-                    // than "Tap to edit receipt" during this window.
-                    guard !receiptDraftVM.isLoadingReceipt else { return }
-                    showEditReceipt = true
-                }
-            )
+            receiptCardView(cardScale: cardScale, cardH: cardH)
 
-            VStack(spacing: 6) {
-                Text(isLoadingItems ? "Loading receipt items..." : "Tap to edit receipt")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundColor(.secondary)
+            if showControls {
+                BillCardCircleButton(
+                    icon: "dollarsign",
+                    theme: Color(hex: "#5f8bc9"),
+                    progress: rightProgress,
+                    isActiveDrag: dragIntent == .right,
+                    buttonsOpacity: buttonsOpacity,
+                    buttonBase: buttonBase,
+                    label: hasTip ? "Edit tip" : "Add tip",
+                    isDisabled: tipDisabled,
+                    action: { animateAddTipThenAct() }
+                )
+                .frame(width: 64)
+                .transition(.opacity)
             }
-            .padding(.top, 12)
-            .opacity(buttonsOpacity)
-
-            if coordinator.isExpanded { Spacer(minLength: 0) }
-
-            Group {
-                if splitEditorVM.splitModesExpanded {
-                    splitModePicker(closesExpanded: true, capturesSnapshot: true)
-                        .padding(.bottom, 7)
-                } else {
-                    BillActionButtons(
-                        hasTip: hasTip,
-                        tipAmount: tipAmount,
-                        isTipDisabled: displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt,
-                        trashProgress: dragIntent == .left ? leftProgress : 0,
-                        splitProgress: dragIntent == .down ? downProgress : 0,
-                        tipProgress: dragIntent == .right ? rightProgress : 0,
-                        isLeftDrag: dragIntent == .left,
-                        isDownDrag: dragIntent == .down,
-                        isRightDrag: dragIntent == .right,
-                        buttonsOpacity: buttonsOpacity,
-                        buttonBase: buttonBase,
-                        gold: gold,
-                        onTrash: { animateDeleteThenAct() },
-                        onEditSplit: { animateEditSplitThenAct() },
-                        onAddTip: { animateAddTipThenAct() }
-                    )
-                }
-            }
-            .padding(.horizontal, 40)
-            .padding(.vertical, 16)
-            .animation(.spring(response: 0.35, dampingFraction: 0.9), value: splitEditorVM.splitModesExpanded)
-
         }
+        .padding(.horizontal, 6)
+        .frame(height: cardH)
+    }
+
+    // MARK: - Confirmation Panel (send pill / card row / modify-splits pill)
+    private func confirmationPanel() -> some View {
+        let cardScale = adaptiveCardScale
+        let cardH: CGFloat = 160 * cardScale
+        let tipDisabled = displayAmount == "$0" || amount.isEmpty || amount == "0" || receiptDraftVM.isLoadingReceipt
+        let showControls = !splitEditorVM.splitModesExpanded
+
+        return VStack(spacing: 12) {
+            if showControls {
+                BillCardActionPill(
+                    text: sendPillText,
+                    arrowSystemName: "chevron.up",
+                    theme: Color(hex: "#06A77D"),
+                    progress: upProgress,
+                    isActiveDrag: dragIntent == .up,
+                    buttonsOpacity: buttonsOpacity,
+                    background: .none,
+                    isDisabled: receiptDraftVM.isLoadingReceipt || hasSent,
+                    action: { animateSendThenAct() }
+                )
+                // Phase 1: keep the pill in the layout (no shift) but
+                // fully hidden until the total is known.
+                .opacity(receiptDraftVM.isLoadingReceipt ? 0 : 1)
+                .transition(.opacity)
+            }
+
+            cardRow(cardScale: cardScale, cardH: cardH, tipDisabled: tipDisabled, showControls: showControls)
+
+            // Always present (constant height) so the Modify-splits pill
+            // below never shifts; the text tracks the load phase.
+            if showControls {
+                Text(editCaptionText)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .transition(.opacity)
+            }
+
+            if showControls {
+                BillCardActionPill(
+                    text: "Modify splits",
+                    arrowSystemName: "chevron.down",
+                    theme: gold,
+                    progress: downProgress,
+                    isActiveDrag: dragIntent == .down,
+                    buttonsOpacity: buttonsOpacity,
+                    background: .subtle,
+                    arrowsOpacity: coordinator.isExpanded ? 0 : 1,
+                    action: { animateEditSplitThenAct() }
+                )
+                .padding(.top, 6)
+                .transition(.opacity)
+            }
+
+            // Payer is chosen here only (under Modify splits) — the split
+            // editor no longer exposes it. Always present (unaffected by
+            // the load phases), shown in compact too.
+            if showControls {
+                guestPayerRow()
+                    .transition(.opacity)
+            }
+
+            if splitEditorVM.splitModesExpanded {
+                splitModePicker(closesExpanded: true, capturesSnapshot: true)
+                    .padding(.bottom, 7)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 16)
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.9), value: splitEditorVM.splitModesExpanded)
     }
 
     @ViewBuilder private var panelViews: some View {
@@ -597,15 +704,20 @@ struct ConfirmationView: View {
         // Confirmation card: always in compact mode, or when confirmed in expanded mode
         if (splitEditorVM.confirmed == true || !coordinator.isExpanded) && !showTipPanel {
             confirmationPanel()
-                .padding(.top, 10)
         }
     }
 
     var body: some View {
         GeometryReader { geo in
             bodyStack(panelH: min(geo.size.height * 0.55, 500),
-                      topPad: coordinator.isExpanded ? 20 : 4)
+                      topPad: 20)
+                .onAppear { captureWidth(geo.size.width) }
+                .onChange(of: geo.size.width) { _, w in captureWidth(w) }
         }
+    }
+
+    private func captureWidth(_ width: CGFloat) {
+        if abs(width - screenWidth) > 0.5 { screenWidth = width }
     }
 
     @ViewBuilder
@@ -624,7 +736,7 @@ struct ConfirmationView: View {
         .animation(.easeInOut(duration: 0.12), value: cardOffset)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification), perform: handleKeyboardWillShow)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in keyboardHeight = 0 }
-        .task { onRequestCollapse() }
+        .task { if autoOpenSplitEditor { onRequestExpand() } else { onRequestCollapse() } }
         .onAppear(perform: handleOnAppear)
         .onChange(of: splitEditorVM.draftGuests) { _, _ in notifyGuestsChanged() }
         .onChange(of: splitEditorVM.draftIncludedIDs) { _, _ in notifyGuestsChanged() }
@@ -687,31 +799,102 @@ struct ConfirmationView: View {
         splitEditorVM.ensureGuestArrays()
     }
 
+    /// Pin the panel region to a fixed `panelH` only when the donut /
+    /// by-items picker is showing (it needs a stable area, and the user
+    /// accepts that pressing Modify splits pushes the guest list down).
+    /// The resting confirmation panel is natural-height so the guest list
+    /// packs directly beneath it with no wasted gap.
+    private var pinsPanelHeight: Bool {
+        coordinator.isExpanded
+            && (splitEditorVM.splitModesExpanded || splitEditorVM.confirmed == false)
+    }
+
+    /// Compact strip can't fit the packed content → grow the sheet
+    /// (request expanded, the host's max). Once expanded it scrolls.
+    private func growSheetIfNeeded() {
+        guard !coordinator.isExpanded,
+              scrollViewportH > 1,
+              contentH > scrollViewportH + 1 else { return }
+        onRequestExpand()
+    }
+
+    /// The split editor (by-items / equal / custom) uses its own
+    /// viewport-filling layout with internal scroll regions and the mode
+    /// picker pinned at the bottom, so it bypasses the shared
+    /// ScrollView / panelH-pin path entirely.
+    private var isSplitEditState: Bool {
+        coordinator.isExpanded
+            && splitEditorVM.confirmed == false
+            && !showTipPanel
+    }
+
     @ViewBuilder
     private func mainScrollContent(panelH: CGFloat, topPad: CGFloat) -> some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // Single ZStack keeps view identity so animations survive the
-                // compact↔expanded transition. In expanded, minHeight==maxHeight==panelH
-                // pins the frame (Spacer fills, buttons land at a consistent position).
-                // In compact, min=0/max=∞ lets it size naturally so nothing gets clipped.
-                ZStack(alignment: .top) { panelViews }
-                    .frame(
-                        minHeight: coordinator.isExpanded ? panelH : 0,
-                        maxHeight: coordinator.isExpanded ? panelH : .infinity
-                    )
-
-                if coordinator.isExpanded {
-                    guestList()
-                        .padding(.horizontal, 10)
-                        .padding(.top, 16)
-                        .padding(.bottom, 50)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+        if isSplitEditState {
+            Group {
+                if splitEditorVM.mode == .byItems {
+                    byItemPanel()
+                } else {
+                    byGuestPanel(interactive: splitEditorVM.mode == .custom)
                 }
             }
+            .padding(.horizontal, 16)
             .padding(.top, topPad)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else if coordinator.isExpanded && !showTipPanel {
+            // Expanded confirmation card + guest list. Viewport-filling
+            // (NOT a scroll-everything ScrollView) so the guest list
+            // scrolls INTERNALLY and Add Guest / the reserved picker slot
+            // stay pinned a constant distance off the bottom — the SAME
+            // dock the split editors use. The card+pills area is a
+            // CONSTANT height (panelH), so the picker space is effectively
+            // reserved and nothing below it shifts when guests overflow or
+            // the user moves between this screen and the split editor.
+            VStack(spacing: 0) {
+                ZStack(alignment: .top) { panelViews }
+                    .frame(minHeight: panelH, maxHeight: panelH)
+
+                Spacer(minLength: 0)
+
+                splitBottomDock(showPicker: false, showCustomRemaining: true)
+                    .padding(.horizontal, 10)
+            }
+            .padding(.top, topPad)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+        // Compact strip (and expanded tip panel): a single ScrollView so
+        // the compact↔expanded change is a layout change, not a
+        // cross-faded subtree swap. Content is packed at the TOP; when the
+        // compact strip can't fit it we grow the sheet instead of
+        // scrolling in the tiny region.
+        ScrollView {
+            VStack(spacing: 0) {
+                ZStack(alignment: .top) { panelViews }
+                    .frame(
+                        minHeight: pinsPanelHeight ? panelH : nil,
+                        maxHeight: pinsPanelHeight ? panelH : nil
+                    )
+            }
+            .padding(.top, topPad)
+            .background(
+                GeometryReader { proxy in
+                    Color.clear
+                        .onAppear { contentH = proxy.size.height }
+                        .onChange(of: proxy.size.height) { _, h in contentH = h }
+                }
+            )
         }
         .scrollDismissesKeyboard(.interactively)
+        .background(
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { scrollViewportH = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, h in scrollViewportH = h }
+            }
+        )
+        .onChange(of: contentH) { _, _ in growSheetIfNeeded() }
+        .onChange(of: scrollViewportH) { _, _ in growSheetIfNeeded() }
+        }
     }
 
     @ViewBuilder
@@ -752,29 +935,7 @@ struct ConfirmationView: View {
     @ViewBuilder
     private var splitEvenlyBannerOverlay: some View {
         if showSplitEvenlyBanner {
-            VStack {
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.9))
-                    Text("Remaining items split evenly between guests.")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.leading)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.black.opacity(0.78))
-                )
-                .padding(.horizontal, 24)
-                .padding(.top, 12)
-                Spacer()
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .allowsHitTesting(false)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            UnclaimedSplitToast(amountCents: splitEvenlyUnclaimedCents)
         }
     }
 

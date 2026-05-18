@@ -338,10 +338,20 @@ final class TabService {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
 
         let encoded = try methods.map { try Firestore.Encoder().encode($0) }
-        try await db.collection("users").document(userId).updateData([
+        // Upsert (setData merge), NOT updateData: a user who only ever sets
+        // a payment method — without first setting a display name or
+        // claiming a slot (the two paths that call createOrUpdateUser and
+        // create users/{uid}) — has no doc yet. `updateData` THROWS on a
+        // missing doc, the error is swallowed in PaymentMethodView.save, so
+        // the methods live only in UserDefaults locally and never reach
+        // Firestore. The payer's other devices / other participants then
+        // fetch nil and the "Pay Now" button never renders (P1-6). merge:
+        // true creates the doc when absent and preserves displayName when
+        // present.
+        try await db.collection("users").document(userId).setData([
             "paymentMethods": encoded,
             "updatedAt": FieldValue.serverTimestamp()
-        ])
+        ], merge: true)
         print("[TabService] updatePaymentMethods: \(methods.count) methods for \(userId)")
     }
 

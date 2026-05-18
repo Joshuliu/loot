@@ -412,6 +412,13 @@ extension LootMessagePayload {
             }
         }
 
+        // Recipients-claim bills: ANY chat participant may open the editor —
+        // claiming your items IS editing the split distribution, and that's
+        // the recipient's only path. Without this, non-tab claim-bill
+        // recipients (not the original sender) get no Edit Splits button
+        // and can't claim at all.
+        if s.cl == true { return true }
+
         return false
     }
 }

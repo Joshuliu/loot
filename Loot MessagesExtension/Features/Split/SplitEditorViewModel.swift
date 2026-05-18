@@ -579,9 +579,11 @@ final class SplitEditorViewModel: ObservableObject {
         mode = newMode
 
         // Tap-to-Claim is a variant of byItems; switching to any other mode
-        // drops the variant flag.
+        // drops the variant flag. Also drop itemization intent so Phase 2
+        // stays skipped for Even Split / Custom (no-op if it already ran).
         if newMode != .byItems {
             claimMode = false
+            receiptDraftVM.cancelItemizationIntent()
         }
 
         if newMode == .equally {
@@ -598,6 +600,12 @@ final class SplitEditorViewModel: ObservableObject {
         }
 
         if newMode == .byItems {
+            // Phase 2 (item extraction) is lazy — kick it off the FIRST
+            // time By Items is chosen. No-op if it already ran or if this
+            // is a manual-entry receipt (no transcript). Must precede the
+            // seed so itemsLoadingState flips to .loading and the by-items
+            // panel shows its loading state until the items arrive.
+            receiptDraftVM.requestPhase2()
             if !didInitByItem { seedByItemsFromReceipt() }
             byItemSelectedGuestID = activeGuests.first?.id ?? PersonID(rawValue: "")
         }
@@ -884,6 +892,11 @@ final class SplitEditorViewModel: ObservableObject {
                 }
 
             case .byItems:
+                // Draft already says By Items (e.g. chosen on the scan-
+                // review screen). Ensure Phase 2 intent is recorded / fired
+                // even though mode is set here directly, not via selectMode.
+                // Idempotent — no-op if it already ran or has no starter.
+                receiptDraftVM.requestPhase2()
                 if !existingDraft.items.isEmpty {
                     didInitByItem = true
                     byItemItems = existingDraft.items.map { it in

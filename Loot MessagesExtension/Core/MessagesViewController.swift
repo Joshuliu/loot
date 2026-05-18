@@ -33,6 +33,51 @@ final class MessagesViewController: MSMessagesAppViewController {
     private var activeBillUpdateDocId: String?
     private var activeBillUpdateSession: MSSession?
 
+    // Content signature of the LAST warm re-broadcast we sent per docId,
+    // persisted to UserDefaults. MUST be disk-backed, NOT a static/instance
+    // var: iOS recreates the transcript MSMessagesAppViewController (and
+    // can spin a fresh extension process) on every transcript tap, so any
+    // in-memory cache is empty on the next tap and the dedup never fires
+    // (device-confirmed: re-tapping an unchanged bill kept re-sending).
+    // UserDefaults.standard is shared across this extension's transcript +
+    // app instances and survives process recreation.
+    private static let warmSigDefaultsPrefix = "loot.warmSig."
+    private static func persistedWarmSig(forDocId docId: String) -> String? {
+        UserDefaults.standard.string(forKey: warmSigDefaultsPrefix + docId)
+    }
+    private static func setPersistedWarmSig(_ sig: String, forDocId docId: String) {
+        UserDefaults.standard.set(sig, forKey: warmSigDefaultsPrefix + docId)
+    }
+    private static func clearPersistedWarmSig(forDocId docId: String, ifEquals sig: String) {
+        guard UserDefaults.standard.string(forKey: warmSigDefaultsPrefix + docId) == sig else { return }
+        UserDefaults.standard.removeObject(forKey: warmSigDefaultsPrefix + docId)
+    }
+    /// Canonical content signature for warm-dedup. The warm path and the
+    /// real send path BOTH use this so that, after we send any bill
+    /// update for a docId, reopening that bubble (same content) computes
+    /// the same signature and is correctly suppressed (no redundant warm
+    /// re-send). Per-device UserDefaults, so other participants still warm
+    /// their own session on first view (cross-sender retract preserved).
+    private static func warmContentSignature(payload: LootMessagePayload, ignored: [String]?) -> String {
+        // P0-5 ROOT CAUSE / FIX: the wire payload is round-tripped through
+        // SharedReceiptService's `JSONSerialization … as? [String: Any]`
+        // (Firestore store/merge), so its nested g/i/li objects become
+        // Swift dictionaries whose JSON key order is SEEDED PER PROCESS.
+        // iOS recreates the transcript VC/process on EVERY tap, so a plain
+        // `JSONEncoder()` produced a different signature every tap → the
+        // persisted-sig dedup could NEVER match → the warm broadcast
+        // re-sent on every tap (device-confirmed via warmDUMP: identical
+        // element order + values, only intra-object key order randomized).
+        // `.sortedKeys` forces deterministic key order so identical
+        // content hashes identically regardless of dictionary seeding.
+        // Signature-only — does not change what is sent.
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let payloadSig = (try? encoder.encode(payload))?.base64EncodedString() ?? ""
+        let ig = (ignored ?? []).sorted().joined(separator: ",")
+        return payloadSig + "|" + ig
+    }
+
     private func registerAsActiveDrawerControllerIfNeeded() {
         guard !isTranscript else { return }
         Self.activeDrawerControllerRef.controller = self
@@ -236,27 +281,38 @@ final class MessagesViewController: MSMessagesAppViewController {
     // MARK: - Transcript (lightweight UIKit-only path)
 
     @objc private func transcriptTapped() {
-        // Run the autojoin broadcast first, while we're still inside the user's
-        // tap gesture handler. iOS only auto-sends MSConversation.send when
-        // there's a fresh user-interaction context — and a delayed call from
-        // the drawer's .onAppear is too far removed (lands in the input field
-        // instead). The transcript tap is the closest synchronous path we
-        // have to a real user gesture, so we send from here.
-        if let conversation = activeConversation,
-           let message = conversation.selectedMessage {
-            broadcastTranscriptAutojoinIfPossible(from: message, conversation: conversation)
-        }
+        // WARM DISABLED 2026-05-17 (user, drop day). The tap-context warm
+        // re-broadcast fired a `conversation.send` of IDENTICAL content on
+        // every participant's first view of every new content state —
+        // pervasive pointless chat churn ("spams many times unless you
+        // last sent it"). Hypothesis, backed by repeated lived experience
+        // that Save-from-sheet retracts a sender's bubble in place: the
+        // warm is UNNECESSARY — the real in-place retract happens via
+        // `freshSelectedSession` (conversation.selectedMessage at Save
+        // time) in sendBillUpdate, not via a pre-warmed session.
+        // Disabled at the call site so the implementation stays fully
+        // compiled (no dead-code warning) and revert is one line: just
+        // re-enable the call below. If device testing shows claims/edits
+        // now APPEND a duplicate, the warm was load-bearing → revert.
+        //
+        // if let conversation = activeConversation,
+        //    let message = conversation.selectedMessage {
+        //     broadcastTranscriptBubbleToWarmSession(from: message, conversation: conversation)
+        // }
         requestExpansionFromTranscriptTap()
     }
 
-    /// Computes whether the current user can be auto-claimed into a slot of
-    /// the tapped bill bubble, and if so sends an MSMessage update with the
-    /// new state — reusing the bubble's MSSession so iMessage replaces the
-    /// bubble in place. Skips Firestore writes (transcript path doesn't
-    /// configure Firebase); the drawer's autojoin path will persist when it
-    /// loads, with broadcast=false so this update isn't duplicated.
-    private func broadcastTranscriptAutojoinIfPossible(from message: MSMessage,
-                                                       conversation: MSConversation) {
+    /// Re-broadcasts the tapped bill bubble UNCHANGED, on its own MSSession,
+    /// from the synchronous transcript-tap context. This does NOT auto-claim
+    /// a slot or change the payload — viewing never binds the viewer or
+    /// alters the bill (the #5 fix stays intact). Its sole purpose is to keep
+    /// the bubble's MSSession warm/established in iOS's send pipeline so the
+    /// recipient's later EXPLICIT "Save Claims" retract (drawer → sendBillUpdate)
+    /// replaces the bubble in place instead of inserting a new one. The
+    /// content is identical, so this is a silent in-place refresh — no new
+    /// bubble, no "claimed" summary, no participant change.
+    private func broadcastTranscriptBubbleToWarmSession(from message: MSMessage,
+                                                        conversation: MSConversation) {
         guard isTranscript else { return }
         guard let url = message.url,
               let decoded = LootMessageCodec.decodedInlinePayload(from: url),
@@ -264,41 +320,73 @@ final class MessagesViewController: MSMessagesAppViewController {
               let docId = messageDocId(from: url)
         else { return }
 
+        // Broadcast the payload UNCHANGED — no auto-claim mutation.
         let original = decoded.payload
+
         let myUid = KeychainHelper.getOrCreateUserId()
-
-        // Already claimed — nothing to broadcast.
-        if original.s.g.contains(where: { $0.uid == myUid }) { return }
-        // Opted out — skip.
-        if decoded.hasIgnoredUUIDsList, decoded.ignoredUUIDs.contains(myUid) { return }
-
-        let claimIndex: Int? = {
-            if original.s.m == .equally {
-                return original.s.g.firstIndex(where: { $0.uid == nil })
-            }
-            let free = original.s.g.indices.filter { original.s.g[$0].uid == nil }
-            return free.count == 1 ? free[0] : nil
+        // su empty/nil ⇒ legacy payload, sender unknown ⇒ treat as
+        // non-sender (the safe default keeps the warming path eligible).
+        let iAmSender: Bool = {
+            if let su = original.su, !su.isEmpty { return su == myUid }
+            return false
         }()
-        guard let claimIndex else { return }
 
-        var updated = original
-        updated.s.g[claimIndex].uid = myUid
+        // Signature FIRST: both the P0-6 sig-gated sender-skip and the
+        // P0-5 SKIP-UNCHANGED dedup need it. `.sortedKeys` inside makes it
+        // process-stable (device-confirmed 2026-05-17), so a match really
+        // means "live bubble == our last send for this docId".
+        let warmSignature = Self.warmContentSignature(
+            payload: original,
+            ignored: decoded.hasIgnoredUUIDsList ? decoded.ignoredUUIDs : nil
+        )
+        // Per-device warm-sig baseline for this docId (set at compose, on
+        // our own sends, and on prior warms). Drives both the P0-6
+        // sig-gated sender-skip and the P0-5 SKIP-UNCHANGED dedup below.
+        let _persisted = Self.persistedWarmSig(forDocId: docId)
 
-        // Per spec: g[i].n is sender-set and never overwritten by joiners.
-        // The drawer's autoClaimSlotAfterViewLoad path writes our user doc
-        // to Firestore so the sender's view can resolve our display name
-        // via the standard users/{uid} lookup. Transcript controller has
-        // no Firebase, so we can't write here — but the drawer always
-        // expands within ~200ms after this broadcast, and its claimSlot
-        // call upserts the user doc.
+        if iAmSender {
+            // P0-6 fix(1): the same-sender warm-skip is correct ONLY while
+            // the live bubble still reflects OUR last send (our MSSession
+            // is still the live one). After a CROSS-sender retract
+            // (someone else claimed/edited → replaced the bubble) the live
+            // session is THEIRS; ours is stale. The per-device sig is the
+            // discriminator: matches ⇒ bubble is still our last send ⇒
+            // skip (no churn, genuinely warm). Differs/absent ⇒ someone
+            // else changed it ⇒ we MUST warm to rebind, else our next
+            // drawer action falls back to a stale session and APPENDS
+            // (the locked P0-6 root cause).
+            if !warmSignature.isEmpty, _persisted == warmSignature {
+                print("[ConvSend] transcriptWarmSession SKIP: sender + live bubble is our last send, docId=\(docId)")
+                return
+            }
+            print("[ConvSend] transcriptWarmSession: sender BUT bubble changed since our last send → warming to rebind, docId=\(docId)")
+            // fall through to warm (rebind). The P0-5 dedup below cannot
+            // skip this — sig differs by definition to reach here.
+        }
+        // P0-1 RESOLVED → warm-once-on-view (user, 2026-05-17, decided on
+        // device evidence). NO recipient no-stake skip: a recipient
+        // viewing a byItems/claim bill warms the session so their FIRST
+        // claim retracts IN PLACE — avoiding the duplicate-bubble + Bryan
+        // consolidation-tap churn that the no-warm-until-claim variant
+        // produced in practice. The single warm is deduped to
+        // once-per-content-state by the P0-5 SKIP-UNCHANGED check below
+        // (per-device `.sortedKeys` sig), so a pure view is ONE silent
+        // in-place refresh, never per-tap churn.
+
+        // P0-5: warm fires once per content-state per device, then
+        // SKIP-UNCHANGED on every later tap of the unchanged bill.
+        if !warmSignature.isEmpty, _persisted == warmSignature {
+            print("[ConvSend] transcriptWarmSession SKIP-UNCHANGED: docId=\(docId) (no payload change since last warm)")
+            return
+        }
 
         let cardImage = renderCardImage(
-            receiptName: updated.r.t,
-            displayAmount: ReceiptDisplay.money(updated.r.tot),
-            participantCount: max(1, updated.s.g.count),
-            splitPayload: updated.s,
-            tabName: updated.tab?.n,
-            tabColorHex: updated.tab?.c
+            receiptName: original.r.t,
+            displayAmount: ReceiptDisplay.money(original.r.tot),
+            participantCount: max(1, original.s.g.count),
+            splitPayload: original.s,
+            tabName: original.tab?.n,
+            tabColorHex: original.tab?.c
         )
 
         var components = lootURLComponents()
@@ -306,7 +394,7 @@ final class MessagesViewController: MSMessagesAppViewController {
         let preservedIgnored: [String]? = decoded.hasIgnoredUUIDsList ? decoded.ignoredUUIDs : nil
         LootMessageCodec.writePayload(
             into: &components,
-            payload: updated,
+            payload: original,
             ignoredUUIDs: preservedIgnored
         )
 
@@ -314,17 +402,28 @@ final class MessagesViewController: MSMessagesAppViewController {
         alternateLayout.image = cardImage
         let liveLayout = MSMessageLiveLayout(alternateLayout: alternateLayout)
 
+        // No summaryText: nothing changed, so no "X updated the bill" line.
         let outgoing = MSMessage(session: session)
         outgoing.layout = liveLayout
         outgoing.url = components.url
-        outgoing.summaryText = BillUpdateAction.claimed.summaryText
 
-        print("[ConvSend] transcriptAutojoin: docId=\(docId) sessionPtr=\(ObjectIdentifier(session))")
+        // Record optimistically BEFORE send so a rapid re-tap while this
+        // send is in flight is also suppressed; clear on failure so a
+        // failed warm can be retried. Persisted to UserDefaults so it
+        // survives iOS recreating the transcript VC/process between taps.
+        if !warmSignature.isEmpty {
+            Self.setPersistedWarmSig(warmSignature, forDocId: docId)
+        }
+
+        print("[ConvSend] transcriptWarmSession: docId=\(docId) sessionPtr=\(ObjectIdentifier(session))")
         conversation.send(outgoing) { error in
             if let error {
-                print("[transcriptAutojoin] send failed for \(docId): \(error)")
+                if !warmSignature.isEmpty {
+                    Self.clearPersistedWarmSig(forDocId: docId, ifEquals: warmSignature)
+                }
+                print("[transcriptWarmSession] send failed for \(docId): \(error)")
             } else {
-                print("[transcriptAutojoin] broadcast autojoin for \(docId)")
+                print("[transcriptWarmSession] re-broadcast (unchanged) for \(docId)")
             }
         }
     }
@@ -443,7 +542,10 @@ final class MessagesViewController: MSMessagesAppViewController {
     }
 
     private func embedTranscriptCard(_ cardView: AnyView) {
-        let host = UIHostingController(rootView: cardView)
+        // Clamp Dynamic Type to .large so a large/accessibility text
+        // setting can't blow out the fixed-size transcript card. Phones
+        // at/below normal size are unaffected.
+        let host = UIHostingController(rootView: cardView.dynamicTypeSize(...DynamicTypeSize.large))
         host.view.backgroundColor = .clear
         host.view.isUserInteractionEnabled = false
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -695,6 +797,18 @@ extension MessagesViewController {
             into: &components,
             payload: payload,
             ignoredUUIDs: ignoredToWrite
+        )
+
+        // We're sending this exact content NOW, so record it as the warm
+        // signature for this docId on THIS device. Effect: after you
+        // claim/edit/leave, reopening that bubble (same content) is
+        // suppressed by the warm dedup instead of re-sending. Other
+        // participants have their own per-device UserDefaults, so they
+        // still warm their session on first view (cross-sender retract
+        // preserved).
+        Self.setPersistedWarmSig(
+            Self.warmContentSignature(payload: payload, ignored: ignoredToWrite),
+            forDocId: docId
         )
 
         if !signature.isEmpty {
@@ -1041,8 +1155,14 @@ extension MessagesViewController {
     // MARK: - Shared helpers
 
     /// Renders any SwiftUI view into a UIImage at the given size.
+    /// Dynamic Type is clamped to `.large` (the standard non-accessibility
+    /// size): the transcript card is a fixed-size chat graphic, so a
+    /// device's accessibility text setting must not blow it out. Phones
+    /// at/below normal size are unaffected; only large/accessibility
+    /// sizes are clamped down. (Receipt detail in the drawer still
+    /// respects the user's accessibility size.)
     private func renderView<T: View>(_ view: T, size: CGSize) -> UIImage {
-        let hosting = UIHostingController(rootView: view)
+        let hosting = UIHostingController(rootView: view.dynamicTypeSize(...DynamicTypeSize.large))
         hosting.view.backgroundColor = .clear
         hosting.safeAreaRegions = []
         hosting.view.frame = CGRect(origin: .zero, size: size)
@@ -1227,7 +1347,15 @@ extension MessagesViewController {
             tabColorHex: tabColorHex
         )
 
-        return renderView(card, size: CGSize(width: 250, height: 150))
+        // Render at BillCardView's TRUE intrinsic size (260×160, fixed by
+        // its own `.frame(width: 260, height: 160)`). A 250×150 canvas is
+        // SMALLER than the card, so `renderView`'s drawHierarchy clips the
+        // centered card ~5pt on every edge — that's the L/R bubble clip
+        // (P1-7), a canvas-size mismatch, NOT a Dynamic-Type / text-size
+        // issue. iOS then scales this correctly-sized image to the bubble
+        // width preserving aspect, so nothing is lost. Matches the 260×160
+        // render used by the other card path in this file.
+        return renderView(card, size: CGSize(width: 260, height: 160))
     }
     
     private func splitLabelFromMode(_ mode: SplitPayload.Mode) -> String {
@@ -1284,10 +1412,25 @@ extension MessagesViewController {
 
         var components = lootURLComponents()
         components.queryItems = [URLQueryItem(name: "id", value: docId)]
+        let composeIgnored = messageReceiptVM.ignoredUUIDs(for: docId)
         LootMessageCodec.writePayload(
             into: &components,
             payload: payload,
-            ignoredUUIDs: messageReceiptVM.ignoredUUIDs(for: docId)
+            ignoredUUIDs: composeIgnored
+        )
+
+        // P0-6 fix(1) prerequisite: record the warm-sig BASELINE for this
+        // docId on the SENDER's device at compose time. Without this the
+        // sender has no per-device sig for a bill they composed, so the
+        // sig-gated sender-skip in broadcastTranscriptBubbleToWarmSession
+        // computes match=false and re-warms the sender's own untouched
+        // bill (regression). With the baseline: reopening your own
+        // unchanged bill → match=true → SKIP (no churn); after a
+        // cross-sender retract the live content differs → match=false →
+        // warm-to-rebind. Same form as sendBillUpdateMessage's record.
+        Self.setPersistedWarmSig(
+            Self.warmContentSignature(payload: payload, ignored: composeIgnored),
+            forDocId: docId
         )
 
         let alternateLayout = MSMessageTemplateLayout()

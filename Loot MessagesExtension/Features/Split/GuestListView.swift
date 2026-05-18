@@ -12,44 +12,46 @@ import SwiftUI
 
 extension ConfirmationView {
 
-    // MARK: - Shared guest list (used by all split modes)
-    func guestList() -> some View {
-        VStack(spacing: 8) {
-            // "Paid by [Name]" payer selector
-            HStack(spacing: 4) {
-                Text("Paid by")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
+    // MARK: - "Paid by [Name]" payer selector
+    func guestPayerRow() -> some View {
+        HStack(spacing: 4) {
+            Text("Paid by")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
 
-                Menu {
-                    ForEach(splitEditorVM.activeGuests) { guest in
-                        Button {
-                            splitEditorVM.payerID = guest.id
-                            splitEditorVM.draftPayerID = guest.id
-                        } label: {
-                            HStack {
-                                Text(splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: guest.id)))
-                                if guest.id == splitEditorVM.payerID {
-                                    Image(systemName: "checkmark")
-                                }
+            Menu {
+                ForEach(splitEditorVM.activeGuests) { guest in
+                    Button {
+                        splitEditorVM.payerID = guest.id
+                        splitEditorVM.draftPayerID = guest.id
+                    } label: {
+                        HStack {
+                            Text(splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: guest.id)))
+                            if guest.id == splitEditorVM.payerID {
+                                Image(systemName: "checkmark")
                             }
                         }
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Text(splitEditorVM.payerDisplayName())
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.blue)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.blue)
-                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(splitEditorVM.payerDisplayName())
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.blue)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.blue)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.bottom, 4)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 4)
+    }
 
-            ScrollView {
+    // MARK: - Scrollable guest rows (selectable / editable)
+    @ViewBuilder
+    func guestRowsList() -> some View {
+            VStack(spacing: 0) {
                 ForEach(0..<splitEditorVM.activeCount, id: \.self) { i in
                     let guest = splitEditorVM.activeGuests[i]
                     let gid = guest.id
@@ -184,83 +186,92 @@ extension ConfirmationView {
                     .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
             }
-            .frame(maxHeight: 230)
-            .defaultScrollAnchor(.bottom)
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            // Custom mode remaining
-            if splitEditorVM.mode == .custom {
-                let remaining = max(0, totalCents - splitEditorVM.guestAmountsCents.reduce(0, +))
-                HStack {
-                    Text("Remaining")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(ReceiptDisplay.money(remaining))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(remaining == 0 ? .secondary : .orange)
-                }
-                .padding(.top, 4)
-            }
+    }
 
-            // Add guest button (hidden when tab is active — guests come from tab members)
-            if tabContextVM.activeTab == nil {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        splitEditorVM.addGuestInline(totalCents: totalCents)
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.system(size: 16))
-                        Text("Add Guest")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundColor(.blue)
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 8)
+    // MARK: - Custom-mode remaining row
+    @ViewBuilder
+    func guestCustomRemaining() -> some View {
+        if splitEditorVM.mode == .custom {
+            let remaining = max(0, totalCents - splitEditorVM.guestAmountsCents.reduce(0, +))
+            HStack {
+                Text("Remaining")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Text(ReceiptDisplay.money(remaining))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(remaining == 0 ? .secondary : .orange)
             }
-
-            // Excluded guests section (only guests with UIDs)
-            let excludedWithUid = splitEditorVM.guests.filter { !splitEditorVM.includedIDs.contains($0.id) && !(($0.userId ?? "").isEmpty) }
-            if !excludedWithUid.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Not Included")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .padding(.top, 4)
-
-                    ForEach(excludedWithUid) { guest in
-                        HStack(spacing: 8) {
-                            ColoredCircleBadge(
-                                text: BadgeColors.initials(from: splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: guest.id)), fallback: splitEditorVM.allIndex(for: guest.id) ?? 0),
-                                color: splitEditorVM.colorForGuestId(guest.id)
-                            )
-                            Text(splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: guest.id)))
-                                .font(.system(size: 15))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    splitEditorVM.reIncludeGuest(guestId: guest.id, totalCents: totalCents)
-                                }
-                            } label: {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 18))
-                                    .foregroundColor(.blue.opacity(0.7))
-                            }
-                            .buttonStyle(.plain)
-                        }
-                        .padding(.vertical, 8)
-                    }
-                }
-                .padding(.horizontal, 14)
-            }
+            .padding(.top, 4)
         }
-        .onChange(of: guestNameFocusedID) { _, newValue in
-            if newValue == nil {
-                splitEditorVM.editingGuestNameID = nil
+    }
+
+    // MARK: - Add guest button (kept OUTSIDE the scrollable rows so it
+    // stays pinned as a sticky footer in the by-items edit layout).
+    @ViewBuilder
+    func guestAddButton() -> some View {
+        // Hidden when a tab is active (guests come from tab members), OR
+        // once the guest count reaches the number of people in the chat —
+        // you can't split with more people than are in the conversation,
+        // so the button goes away at that cap. `participantCount` is
+        // `conversation.remoteParticipantIdentifiers.count + 1`.
+        if tabContextVM.activeTab == nil
+            && splitEditorVM.guests.count < participantCount {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    splitEditorVM.addGuestInline(totalCents: totalCents)
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                    Text("Add Guest")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundColor(.blue)
             }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+        }
+    }
+
+    // MARK: - Excluded ("Not Included") guests
+    @ViewBuilder
+    func guestNotIncluded() -> some View {
+        let excludedWithUid = splitEditorVM.guests.filter { !splitEditorVM.includedIDs.contains($0.id) && !(($0.userId ?? "").isEmpty) }
+        if !excludedWithUid.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Not Included")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
+
+                ForEach(excludedWithUid) { guest in
+                    HStack(spacing: 8) {
+                        ColoredCircleBadge(
+                            text: BadgeColors.initials(from: splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: guest.id)), fallback: splitEditorVM.allIndex(for: guest.id) ?? 0),
+                            color: splitEditorVM.colorForGuestId(guest.id)
+                        )
+                        Text(splitEditorVM.displayName(for: guest, fallbackIndexInAllGuests: splitEditorVM.allIndex(for: guest.id)))
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Button {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                splitEditorVM.reIncludeGuest(guestId: guest.id, totalCents: totalCents)
+                            }
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 18))
+                                .foregroundColor(.blue.opacity(0.7))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .padding(.horizontal, 14)
         }
     }
 }

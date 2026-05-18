@@ -6,36 +6,22 @@ import UIKit
 
 // MARK: - Top-level SwiftUI wrapper
 
-/// Manages the full capture → crop → review flow.
-/// The review screen is pure SwiftUI so it is never inside the
-/// UIImagePickerController's view hierarchy (and therefore unaffected
-/// by its cameraViewTransform).
+/// Live-camera capture only. The library picker and the review step
+/// (preview, payer, split mode) live together in the unified scan sheet;
+/// this full-screen cover just shoots a photo (`capturedImage`) or hands
+/// off to that sheet's library step via `onLibrary`.
 struct CustomCameraView: View {
     @Binding var capturedImage: UIImage?
     let onCancel: () -> Void
-    var onReviewImage: ((UIImage) -> Void)? = nil
-
-    @State private var reviewImage: UIImage? = nil
+    let onLibrary: () -> Void
 
     var body: some View {
-        if let review = reviewImage {
-            CameraReviewView(
-                image: review,
-                onRetake: { reviewImage = nil },
-                onUse: { capturedImage = review }
-            )
-            .ignoresSafeArea()
-        } else {
-            CameraPickerView(
-                onCapture: { raw in
-                    let img = cropTopAndLeft(raw)
-                    reviewImage = img
-                    onReviewImage?(img)
-                },
-                onCancel: onCancel
-            )
-            .ignoresSafeArea()
-        }
+        CameraPickerView(
+            onCapture: { raw in capturedImage = cropTopAndLeft(raw) },
+            onCancel: onCancel,
+            onLibrary: onLibrary
+        )
+        .ignoresSafeArea()
     }
 
     /// Receipt sits in the bottom-right of the full sensor image because the
@@ -61,45 +47,12 @@ struct CustomCameraView: View {
     }
 }
 
-// MARK: - SwiftUI review screen
-
-private struct CameraReviewView: View {
-    let image: UIImage
-    let onRetake: () -> Void
-    let onUse: () -> Void
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            Color.black.ignoresSafeArea()
-
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            HStack(spacing: 0) {
-                Button("Retake", action: onRetake)
-                    .frame(maxWidth: .infinity, minHeight: 60)
-                Rectangle()
-                    .fill(Color.white.opacity(0.3))
-                    .frame(width: 1, height: 36)
-                Button("Use Photo", action: onUse)
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity, minHeight: 60)
-            }
-            .font(.system(size: 18))
-            .foregroundColor(.white)
-            .frame(height: 90)
-            .background(Color.black.opacity(0.65))
-        }
-    }
-}
-
 // MARK: - UIImagePickerController wrapper (capture only)
 
 private struct CameraPickerView: UIViewControllerRepresentable {
     let onCapture: (UIImage) -> Void
     let onCancel: () -> Void
+    let onLibrary: () -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
 
@@ -150,6 +103,7 @@ private struct CameraPickerView: UIViewControllerRepresentable {
             overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
             overlay.onShutter = { [weak self] in self?.picker?.takePicture() }
             overlay.onCancel = { [weak self] in self?.parent.onCancel() }
+            overlay.onLibrary = { [weak self] in self?.parent.onLibrary() }
             picker.cameraOverlayView = overlay
         }
 
@@ -172,10 +126,12 @@ private struct CameraPickerView: UIViewControllerRepresentable {
 final class CameraLiveOverlayView: UIView {
     var onShutter: (() -> Void)?
     var onCancel: (() -> Void)?
+    var onLibrary: (() -> Void)?
 
     private var receiptFrame: CGRect = .zero
     private let cancelBtn = UIButton(type: .custom)
     private let shutterBtn = UIButton(type: .custom)
+    private let libraryBtn = UIButton(type: .custom)
     private let hintLabel = UILabel()
 
     override init(frame: CGRect) {
@@ -204,6 +160,20 @@ final class CameraLiveOverlayView: UIView {
         shutterBtn.addTarget(self, action: #selector(shutterTapped), for: .touchUpInside)
         addSubview(shutterBtn)
 
+        libraryBtn.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
+        libraryBtn.setPreferredSymbolConfiguration(
+            UIImage.SymbolConfiguration(pointSize: 22, weight: .medium),
+            forImageIn: .normal
+        )
+        libraryBtn.tintColor = .white
+        libraryBtn.backgroundColor = UIColor.white.withAlphaComponent(0.18)
+        libraryBtn.layer.cornerRadius = 12
+        libraryBtn.layer.borderColor = UIColor.white.withAlphaComponent(0.5).cgColor
+        libraryBtn.layer.borderWidth = 1
+        libraryBtn.clipsToBounds = true
+        libraryBtn.addTarget(self, action: #selector(libraryTapped), for: .touchUpInside)
+        addSubview(libraryBtn)
+
         hintLabel.text = "Align receipt within frame"
         hintLabel.textColor = .white
         hintLabel.font = .systemFont(ofSize: 15, weight: .medium)
@@ -228,6 +198,15 @@ final class CameraLiveOverlayView: UIView {
         cancelBtn.frame = CGRect(x: 12, y: 56, width: 60, height: 48)
         let d: CGFloat = 68
         shutterBtn.frame = CGRect(x: (w - d) / 2, y: h - d - 56, width: d, height: d)
+
+        let libSize: CGFloat = 52
+        libraryBtn.frame = CGRect(
+            x: w * 0.2 - libSize / 2,
+            y: shutterBtn.frame.midY - libSize / 2,
+            width: libSize,
+            height: libSize
+        )
+
         hintLabel.frame = CGRect(x: frameX, y: receiptFrame.maxY + 16, width: frameW, height: 24)
 
         setNeedsDisplay()
@@ -263,4 +242,5 @@ final class CameraLiveOverlayView: UIView {
 
     @objc private func cancelTapped() { onCancel?() }
     @objc private func shutterTapped() { onShutter?() }
+    @objc private func libraryTapped() { onLibrary?() }
 }

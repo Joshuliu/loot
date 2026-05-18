@@ -68,7 +68,7 @@ struct RootContainerView: View {
     // DEBUG: Set to true to only run VisionKit OCR and print JSON (no AI)
     private let DEBUG_OCR_ONLY = false
     // DEBUG: Set to true to copy OCR transcript to clipboard after each scan
-    private let DEBUG_COPY_TRANSCRIPT = true
+    private let DEBUG_COPY_TRANSCRIPT = false
     // DEBUG: Set to true to show OCR chunk images in Edit Receipt view
     private let DEBUG_SHOW_CHUNKS = true
     // DEBUG: Set to true to print the raw phase 2 LLM response in the console
@@ -76,16 +76,25 @@ struct RootContainerView: View {
     @State private var debugOCRResult: OCRResult? = nil
     @State private var debugOriginalImage: UIImage? = nil
 
-    // Camera sheet state
+    // Camera (full-screen) + unified scan sheet (library → review) state.
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
-    
-    // Photo library state
-    @State private var showPhotoLibrary: Bool = false
-    @State private var photoLibraryImage: UIImage? = nil
-    
+    @State private var showScanSheet: Bool = false
+    @State private var scanSheetStep: ScanSheetStep = .library
+    // Camera and the scan sheet are separate presentations on the same view;
+    // hand off through onDismiss flags so we never present one while the
+    // other is still dismissing.
+    @State private var pendingScanSheet: Bool = false
+    @State private var pendingShowCamera: Bool = false
+
+    private enum ScanSheetStep { case library, review }
+
     @State private var analyzeError: String?
     @State private var pendingTranscriptTask: Task<String, Error>? = nil
+    // Phase 1 (merchant + total) is prefetched off the transcript while the
+    // user is on the review screen, so the confirmation step can consume it
+    // instead of cold-starting the LLM.
+    @State private var pendingPhase1Task: Task<Phase1Result, Error>? = nil
 
     // Backend user restore state
     @State private var isCheckingBackendUser: Bool = true
@@ -202,15 +211,6 @@ struct RootContainerView: View {
         showCamera = true
     }
 
-    private func startPhotoLibraryFlow() {
-        tabContextVM.resetForNewReceipt()
-        receiptDraftVM.reset()
-        messageReceiptVM.reset()
-        analyzeError = nil
-        photoLibraryImage = nil
-        showPhotoLibrary = true
-    }
-
     private func analyzeCaptured(image: UIImage) {
         if DEBUG_OCR_ONLY {
             debugOCROnly(image: image)
@@ -259,9 +259,90 @@ struct RootContainerView: View {
     /// Two-phase receipt analysis:
     /// Phase 1: Quick merchant + total extraction → Navigate immediately
     /// Phase 2: Full items + breakdown (runs in background)
+    /// Image chosen (camera or library) → start transcript + Phase 1 in the
+    /// background and seed the split draft, so the review step of the scan
+    /// sheet can show payer/mode while the LLM works. Presentation (showing
+    /// the sheet at `.review`) is handled by the caller.
+    private func handleScannedImage(_ img: UIImage) {
+        pendingTranscriptTask?.cancel()
+        pendingPhase1Task?.cancel()
+        let transcriptTask = Task { () throws -> String in
+            let cropped = await withCheckedContinuation { cont in
+                ReceiptCrop.run(img) { cont.resume(returning: $0) }
+            }
+            return try await TranscriptGenerator.generate(from: cropped)
+        }
+        pendingTranscriptTask = transcriptTask
+        pendingPhase1Task = Task {
+            let transcript = try await transcriptTask.value
+            return try await LLMClient.shared.analyzeReceiptPhase1(transcript: transcript)
+        }
+        ReceiptCrop.run(img) { cropped in
+            receiptDraftVM.scanImageOriginal = img
+            receiptDraftVM.scanImageCropped = cropped
+            confirmationCameFromManual = false
+            seedScanReviewDraftIfNeeded()
+        }
+    }
+
+    /// Seed a `SplitDraft` (guests + payer + default mode) so the payer/mode
+    /// pickers in the scan sheet's review step have something to mutate.
+    /// Mirrors the seeding
+    /// `SplitEditorViewModel.initializeSplitState` uses, so ConfirmationView
+    /// later adopts these choices verbatim instead of reseeding.
+    private func seedScanReviewDraftIfNeeded() {
+        guard receiptDraftVM.currentSplitDraft == nil else { return }
+        let myUid = KeychainHelper.getOrCreateUserId()
+        let seeded: [Person]
+        let payer: PersonID
+        if let tab = tabContextVM.activeTab {
+            seeded = tab.members.filter(\.isActive).map { member in
+                let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
+                return Person.identified(userId: uid, displayName: member.displayName)
+            }
+            payer = seeded.first(where: { $0.isMe(localUserId: myUid) })?.id
+                ?? seeded.first?.id
+                ?? PersonID(rawValue: myUid)
+        } else {
+            let meName = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+            var s: [Person] = [Person.identified(userId: myUid, displayName: meName)]
+            if participantCount > 1 {
+                for _ in 1..<participantCount { s.append(Person.newGuest(displayName: "")) }
+            }
+            seeded = s
+            payer = seeded.first?.id ?? PersonID(rawValue: myUid)
+        }
+        receiptDraftVM.currentSplitDraft = SplitDraft(
+            guests: seeded,
+            includedIDs: Set(seeded.map(\.id)),
+            payerID: payer,
+            mode: .equally,
+            totalCents: stringToCents(totalAmount),
+            perGuestCents: [],
+            items: [],
+            feesCents: receiptDraftVM.currentReceipt?.feesCents ?? 0,
+            discountCents: receiptDraftVM.currentReceipt?.discountCents ?? 0,
+            taxCents: receiptDraftVM.currentReceipt?.taxCents ?? 0,
+            tipCents: receiptDraftVM.currentReceipt?.tipCents ?? stringToCents(tipAmount)
+        )
+    }
+
+    /// "Use Photo" in the scan sheet → go to confirmation and run the
+    /// two-phase analyze, which consumes the transcript + Phase 1 prefetched.
+    private func continueFromScanReview() {
+        guard let cropped = receiptDraftVM.scanImageCropped else { return }
+        receiptDraftVM.isLoadingReceipt = true
+        confirmationCameFromManual = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            coordinator.currentScreen = .confirmation
+        }
+        analyzeCapturedTwoPhase(image: cropped)
+    }
+
     private func analyzeCapturedTwoPhase(image: UIImage) {
         analyzeError = nil
         let capturedTranscriptTask = pendingTranscriptTask
+        let capturedPhase1Task = pendingPhase1Task
 
         Task {
             do {
@@ -287,9 +368,15 @@ struct RootContainerView: View {
                     print("[Scan] \(chunks.count) chunk image(s) saved for debug")
                 }
 
-                // PHASE 1: Quick merchant + total extraction
+                // PHASE 1: Quick merchant + total extraction. Reuse the task
+                // prefetched during review if available; otherwise run now.
                 print("[Scan] Phase 1: Extracting merchant and total...")
-                let phase1 = try await LLMClient.shared.analyzeReceiptPhase1(transcript: transcript)
+                let phase1: Phase1Result
+                if let p1Task = capturedPhase1Task {
+                    phase1 = try await p1Task.value
+                } else {
+                    phase1 = try await LLMClient.shared.analyzeReceiptPhase1(transcript: transcript)
+                }
                 print("[Scan] Phase 1 complete: merchant=\(phase1.merchant ?? "nil"), total=\(phase1.total_cents ?? 0)")
 
                 let total = max(0, phase1.total_cents ?? 0)
@@ -316,20 +403,56 @@ struct RootContainerView: View {
                         items: []  // Empty - loading
                     )
 
-                    receiptDraftVM.itemsLoadingState = .loading
+                    // Phase 2 is LAZY: item extraction (the expensive
+                    // second LLM round-trip) only runs if the user picks
+                    // "By Items". Even Split / Custom never need line
+                    // items, so itemsLoadingState stays .idle until
+                    // requestPhase2() fires the stored starter below.
+                    receiptDraftVM.itemsLoadingState = .idle
+                    receiptDraftVM.startPhase2 = {
+                        startPhase2Extraction(
+                            transcript: transcript,
+                            knownTotal: total,
+                            phase1: phase1
+                        )
+                    }
+                    // If the user already chose By Items (e.g. on the
+                    // scan-review screen), fire Phase 2 NOW — the earliest
+                    // correct point, since it needs Phase 1's total. This
+                    // is a no-op for Even Split / Custom (no intent).
+                    receiptDraftVM.startPhase2IfWanted()
                     // Phase 1 complete — clear loading state (navigation already happened)
                     receiptDraftVM.isLoadingReceipt = false
                 }
 
-                // PHASE 2: Background item extraction (reuses transcript)
-                let knownTotal = total
-                receiptDraftVM.phase2Task = Task { @MainActor in
-                    do {
-                        print("[Scan] Phase 2: Extracting items and breakdown...")
-                        let phase2 = try await LLMClient.shared.analyzeReceiptPhase2(
-                            transcript: transcript,
-                            knownTotalCents: knownTotal
-                        )
+            } catch {
+                print("[Scan] analyzeReceipt failed: \(error)")
+                await MainActor.run {
+                    receiptDraftVM.isLoadingReceipt = false
+                    analyzeError = "Scan failed: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    /// Phase 2 (itemized line extraction). Deferred out of the scan flow
+    /// and invoked lazily the first time the user picks "By Items" (via
+    /// `ReceiptDraftViewModel.requestPhase2`). Reuses the transcript and
+    /// Phase 1 result captured at scan time.
+    @MainActor
+    private func startPhase2Extraction(
+        transcript: String,
+        knownTotal: Int,
+        phase1: Phase1Result
+    ) {
+        receiptDraftVM.itemsLoadingState = .loading
+        receiptDraftVM.phase2Task = Task { @MainActor in
+            do {
+                print("[Scan] Phase 2: Extracting items and breakdown...")
+                let phase2 = try await LLMClient.shared.analyzeReceiptPhase2(
+                    transcript: transcript,
+                    knownTotalCents: knownTotal
+                )
                         let resolvedLineItems = LLMClient.shared.lastPhase2LineItems
                         if DEBUG_PRINT_PHASE2_RESPONSE {
                             print("[Scan] Phase 2 raw response:\n\(LLMClient.shared.lastRawPhase2Response ?? "<nil>")")
@@ -422,20 +545,11 @@ struct RootContainerView: View {
                             receiptDraftVM.currentSplitDraft = draft
                         }
 
-                        receiptDraftVM.itemsLoadingState = .loaded(phase2)
-                    } catch {
-                        print("[Scan] Phase 2 failed: \(error)")
-                        receiptDraftVM.itemsLoadingState = .failed(error)
-                        // Receipt is still usable with merchant/total from phase 1
-                    }
-                }
-
+                receiptDraftVM.itemsLoadingState = .loaded(phase2)
             } catch {
-                print("[Scan] analyzeReceipt failed: \(error)")
-                await MainActor.run {
-                    receiptDraftVM.isLoadingReceipt = false
-                    analyzeError = "Scan failed: \(error.localizedDescription)"
-                }
+                print("[Scan] Phase 2 failed: \(error)")
+                receiptDraftVM.itemsLoadingState = .failed(error)
+                // Receipt is still usable with merchant/total from phase 1
             }
         }
     }
@@ -584,58 +698,45 @@ struct RootContainerView: View {
             Color(.systemBackground).ignoresSafeArea()
             screenContent
         }
-        .fullScreenCover(isPresented: $showCamera) {
+        .fullScreenCover(isPresented: $showCamera, onDismiss: {
+            if pendingScanSheet {
+                pendingScanSheet = false
+                showScanSheet = true
+            }
+        }) {
             CustomCameraView(
                 capturedImage: $capturedImage,
                 onCancel: {
                     pendingTranscriptTask?.cancel()
                     pendingTranscriptTask = nil
+                    pendingPhase1Task?.cancel()
+                    pendingPhase1Task = nil
+                    pendingScanSheet = false
                     showCamera = false
                 },
-                onReviewImage: { img in
-                    pendingTranscriptTask?.cancel()
-                    pendingTranscriptTask = Task {
-                        let cropped = await withCheckedContinuation { cont in
-                            ReceiptCrop.run(img) { cont.resume(returning: $0) }
-                        }
-                        return try await TranscriptGenerator.generate(from: cropped)
-                    }
+                onLibrary: {
+                    scanSheetStep = .library
+                    pendingScanSheet = true
+                    showCamera = false
                 }
             )
             .ignoresSafeArea()
             .onChange(of: capturedImage) { _, img in
                 guard let img else { return }
+                handleScannedImage(img)
+                scanSheetStep = .review
+                pendingScanSheet = true
                 showCamera = false
-                ReceiptCrop.run(img) { cropped in
-                    receiptDraftVM.scanImageOriginal = img
-                    receiptDraftVM.scanImageCropped = cropped
-                    receiptDraftVM.isLoadingReceipt = true
-                    confirmationCameFromManual = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        coordinator.currentScreen = .confirmation
-                    }
-                    analyzeCapturedTwoPhase(image: cropped)
-                }
             }
         }
-        .sheet(
-            isPresented: $showPhotoLibrary,
-            onDismiss: {
-                guard let img = photoLibraryImage else { return }
-                ReceiptCrop.run(img) { cropped in
-                    pendingTranscriptTask?.cancel()
-                    pendingTranscriptTask = Task { try await TranscriptGenerator.generate(from: cropped) }
-                    receiptDraftVM.scanImageOriginal = img
-                    receiptDraftVM.scanImageCropped = cropped
-                    receiptDraftVM.isLoadingReceipt = true
-                    confirmationCameFromManual = false
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        coordinator.currentScreen = .confirmation
-                    }
-                    analyzeCapturedTwoPhase(image: cropped)
-                }
+        .fullScreenCover(isPresented: $showScanSheet, onDismiss: {
+            if pendingShowCamera {
+                pendingShowCamera = false
+                showCamera = true
             }
-        ) { PhotoLibraryPicker(image: $photoLibraryImage).ignoresSafeArea() }
+        }) {
+            scanFlowSheet
+        }
         .alert("Scan failed", isPresented: Binding(
             get: { analyzeError != nil },
             set: { _ in analyzeError = nil }
@@ -737,7 +838,6 @@ struct RootContainerView: View {
             coordinator: coordinator,
             messageReceiptVM: messageReceiptVM,
             tabContextVM: tabContextVM,
-            onUpload: { startPhotoLibraryFlow() },
             onScan: { startScanFlow() },
             onFill: {
                 tabContextVM.resetForNewReceipt()
@@ -957,10 +1057,64 @@ struct RootContainerView: View {
         )
     }
 
+    /// The single unified scan sheet: library picker → review, no extra
+    /// presentation changes between the two steps.
     @ViewBuilder
+    private var scanFlowSheet: some View {
+        switch scanSheetStep {
+        case .library:
+            PhotoLibraryPicker(
+                onPicked: { img in
+                    handleScannedImage(img)
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        scanSheetStep = .review
+                    }
+                },
+                onCancel: { showScanSheet = false }
+            )
+            .ignoresSafeArea()
+
+        case .review:
+            ScanReviewView(
+                receiptDraftVM: receiptDraftVM,
+                onRetake: {
+                    pendingShowCamera = true
+                    showScanSheet = false
+                },
+                onContinue: {
+                    showScanSheet = false
+                    continueFromScanReview()
+                },
+                onSelectMode: { newMode in
+                    if var d = receiptDraftVM.currentSplitDraft {
+                        d.mode = newMode
+                        receiptDraftVM.currentSplitDraft = d
+                    }
+                    // Capture itemization intent here, on the review
+                    // screen, BEFORE Phase 1 has run. requestPhase2() just
+                    // records the intent now; it fires the instant Phase 1
+                    // finishes (see startPhase2IfWanted in
+                    // analyzeCapturedTwoPhase). Switching back to
+                    // Evenly/Custom drops the intent so Phase 2 is skipped.
+                    if newMode == .byItems {
+                        receiptDraftVM.requestPhase2()
+                    } else {
+                        receiptDraftVM.cancelItemizationIntent()
+                    }
+                },
+                onSelectPayer: { pid in
+                    if var d = receiptDraftVM.currentSplitDraft {
+                        d.payerID = pid
+                        receiptDraftVM.currentSplitDraft = d
+                    }
+                }
+            )
+        }
+    }
+
     private var confirmationContent: some View {
         let activeSplitDraft = receiptDraftVM.currentSplitDraft
-        ConfirmationView(
+        return ConfirmationView(
             coordinator: coordinator,
             receiptDraftVM: receiptDraftVM,
             tabContextVM: tabContextVM,
@@ -1016,11 +1170,12 @@ struct RootContainerView: View {
                     messageReceiptVM.reset()
                     pendingTranscriptTask?.cancel()
                     pendingTranscriptTask = nil
+                    pendingPhase1Task?.cancel()
+                    pendingPhase1Task = nil
                     receiptName = ""
                     amountString = "0"
                     tipAmount = ""
                     capturedImage = nil
-                    photoLibraryImage = nil
                     analyzeError = nil
                 }
             },
@@ -1030,11 +1185,12 @@ struct RootContainerView: View {
                 messageReceiptVM.reset()
                 pendingTranscriptTask?.cancel()
                 pendingTranscriptTask = nil
+                pendingPhase1Task?.cancel()
+                pendingPhase1Task = nil
                 receiptName = ""
                 amountString = "0"
                 tipAmount = ""
                 capturedImage = nil
-                photoLibraryImage = nil
                 analyzeError = nil
                 coordinator.currentScreen = .tabview
             },

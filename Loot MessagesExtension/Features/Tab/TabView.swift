@@ -14,7 +14,6 @@ struct LootTabView: View {
     @ObservedObject var messageReceiptVM: MessageReceiptViewModel
     @ObservedObject var tabContextVM: TabContextViewModel
 
-    var onUpload: () -> Void
     var onScan: () -> Void
     var onFill: () -> Void
 
@@ -144,6 +143,13 @@ struct LootTabView: View {
                     .frame(width: 38, height: 38)
                     .background(activeTab != nil ? Color.white : Color.black)
                     .clipShape(Circle())
+                    .overlay(
+                        Circle().stroke(
+                            activeTab != nil ? Color.white.opacity(0.6) : Color(UIColor.separator),
+                            lineWidth: 1
+                        )
+                    )
+                    .shadow(color: Color.black.opacity(0.15), radius: 3, y: 1)
             }
             .buttonStyle(.plain)
             .padding(.top, 14)
@@ -242,65 +248,68 @@ struct LootTabView: View {
                 Spacer()
             }
 
-            VStack(spacing: 6) {
-                HStack(spacing: 0) {
-                    Button(action: onUpload) {
-                        Image(systemName: "paperclip")
-                            .font(.system(size: 48, weight: .regular))
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
+            HStack(spacing: 12) {
+                captureTile(
+                    icon: "camera.viewfinder",
+                    title: "Scan Receipt",
+                    color: Color(hex: "005377"),
+                    action: onScan
+                )
 
-                    Divider()
-                        .frame(height: 32)
-
-                    Button(action: onScan) {
-                        Image(systemName: "camera.viewfinder")
-                            .font(.system(size: 48, weight: .regular))
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.blue)
-                    }
-                    .buttonStyle(.plain)
-
-                    Divider()
-                        .frame(height: 32)
-
-                    Button(action: onFill) {
-                        Image(systemName: "square.and.pencil")
-                            .font(.system(size: 48, weight: .regular))
-                            .frame(maxWidth: .infinity)
-                            .foregroundColor(.blue)
-                            .offset(y: -4)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity)
-                .background(Color(UIColor.secondarySystemBackground))
-                .cornerRadius(18)
-
-                HStack(spacing: 0) {
-                    Text("Upload")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
-                        .frame(maxWidth: .infinity)
-
-                    Text("Scan")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
-                        .frame(maxWidth: .infinity)
-
-                    Text("Enter Total")
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(isColoredCompact ? .white.opacity(0.85) : .primary)
-                        .frame(maxWidth: .infinity)
-                }
+                captureTile(
+                    icon: "square.and.pencil",
+                    title: "Enter Total",
+                    color: Color(hex: "06A77D"),
+                    action: onFill
+                )
             }
             .padding(.horizontal, 16)
         }
     }
-    
+
+    @ViewBuilder
+    private func captureTile(
+        icon: String,
+        title: String,
+        color: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        let onColored = isColoredCompact
+        Button(action: action) {
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle().fill(onColored ? Color.white : color)
+                    Image(systemName: icon)
+                        .font(.system(size: 23, weight: .semibold))
+                        .foregroundColor(onColored ? resolvedHeaderColor : .white)
+                }
+                .frame(width: 54, height: 54)
+                .shadow(
+                    color: onColored ? Color.black.opacity(0.12) : color.opacity(0.35),
+                    radius: 7, y: 4
+                )
+
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(onColored ? .white : .primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(
+                onColored ? Color.white.opacity(0.16) : Color(UIColor.secondarySystemBackground)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(
+                        onColored ? Color.white.opacity(0.22) : Color.primary.opacity(0.06),
+                        lineWidth: 1
+                    )
+            )
+        }
+        .buttonStyle(PressableTileStyle())
+    }
+
     // MARK: - Tab Bar (pill + circle, animates between compact/expanded layout)
 
     var tabBar: some View {
@@ -321,10 +330,16 @@ struct LootTabView: View {
                         .scaleEffect(isExpanded ? 1.0 : 20.0 / 24.0, anchor: .leading)
                         .lineLimit(1)
                     if activeTab != nil {
+                            Button(action: { showingTabSettings = true }) {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundColor(.white.opacity(0.75))
+                            }
+                            .buttonStyle(.plain)
                             Button(action: { onClearTab?() }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 18))
-                                    .foregroundColor(activeTab != nil ? .white.opacity(0.5) : .secondary)
+                                    .foregroundColor(.white.opacity(0.5))
                             }
                             .buttonStyle(.plain)
                     } else if !isExpanded {
@@ -349,21 +364,6 @@ struct LootTabView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity,
                    alignment: isExpanded ? .bottomLeading : .leading)
 
-            // Tab settings button (only when a tab is active)
-            if activeTab != nil {
-                Button(action: { showingTabSettings = true }) {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 18))
-                        .foregroundColor(.white.opacity(0.9))
-                        .frame(width: 38, height: 38)
-                        .background(Color.white.opacity(0.15))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-                .frame(maxWidth: .infinity, maxHeight: .infinity,
-                       alignment: activeTab == nil || showingAddReceiptPanel || !isExpanded ? .trailing : .topTrailing)
-                .padding(.horizontal, activeTab == nil || showingAddReceiptPanel || !isExpanded ? 0 : 48)
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
@@ -413,7 +413,7 @@ struct LootTabView: View {
             }
         } else if activeTab == nil && userTabs.isEmpty {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Add up this chat's transactions with Loot Tabs! We'll do the math to get even. When Loot is opened from this chat, receipts will be added to the selected tab.")
+                Text("Add up this chat's transactions — we'll do the math to get even.")
                     .font(.system(size: 16))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -795,5 +795,14 @@ struct LootTabView: View {
                 .fill(Color(UIColor.separator))
                 .frame(height: 1)
         }
+    }
+}
+
+private struct PressableTileStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
