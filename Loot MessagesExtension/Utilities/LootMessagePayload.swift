@@ -644,11 +644,53 @@ extension Array where Element == SplitPayload.Guest {
     /// localize the local user's slot to "Me" when its name is empty.
     func displayName(for personID: PersonID, meUid: String? = nil) -> String {
         guard let idx = slotIndex(for: personID) else { return "Guest" }
+        return slotDisplayName(at: idx, meUid: meUid)
+    }
+
+    /// Canonical name resolver for a guest slot. Mirrors
+    /// `SplitsSummaryView.displayName(for:)` so the transcript bubble,
+    /// the baked card image, the splits summary, and the tab receipts list
+    /// all show the same name for the same slot.
+    ///
+    /// Precedence:
+    ///   1. `slot.uid == meUid`            → live `myDisplayNameFromDefaults()`
+    ///   2. `slot.uid` resolves via cache  → live Firestore-fetched name
+    ///   3. `slot.n` (frozen at compose)   → use it
+    ///   4. fallback                        → "Guest N+1"
+    func slotDisplayName(at idx: Int, meUid: String? = nil) -> String {
+        guard indices.contains(idx) else { return "Guest" }
         let g = self[idx]
+
+        if let uid = g.uid, !uid.isEmpty {
+            if let meUid, uid == meUid {
+                let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+                if !me.isEmpty { return me }
+            } else if let cached = DisplayNameCache.lookup(uid) {
+                return cached
+            }
+        }
+
         let trimmed = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { return trimmed }
+
         if let meUid, g.uid == meUid { return "Me" }
         return "Guest \(idx + 1)"
+    }
+}
+
+extension SplitPayload {
+    /// Resolves the payer's display name using the canonical rule. Pass the
+    /// local user's keychain UID so the local-name @AppStorage override wins
+    /// over a stale frozen `n`.
+    func payerDisplayName(meUid: String) -> String {
+        return g.slotDisplayName(at: pi, meUid: meUid)
+    }
+
+    /// Same as above but for an arbitrary slot index. Use this for
+    /// non-payer guests anywhere the splits summary / card image need to
+    /// match.
+    func displayName(forSlot idx: Int, meUid: String) -> String {
+        return g.slotDisplayName(at: idx, meUid: meUid)
     }
 }
 

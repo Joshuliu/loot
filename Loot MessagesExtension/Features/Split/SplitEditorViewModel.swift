@@ -840,9 +840,21 @@ final class SplitEditorViewModel: ObservableObject {
                 payerID = draftPayerID
             } else if let tab = tabContextVM.activeTab {
                 let myUid = KeychainHelper.getOrCreateUserId()
+                // Prefer the live name (DisplayNameCache for other users,
+                // @AppStorage for me) over `tab.members[i].displayName`,
+                // which is frozen at join time and stale after an Account
+                // screen edit. The frozen value is still the fallback.
                 let seeded = tab.members.filter { $0.isActive }.map { member -> Person in
                     let uid = (member.userId?.isEmpty == false) ? member.userId! : member.memberId
-                    return Person.identified(userId: uid, displayName: member.displayName)
+                    let liveName: String = {
+                        if uid == myUid {
+                            let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
+                            if !me.isEmpty { return me }
+                        }
+                        if let cached = DisplayNameCache.lookup(uid) { return cached }
+                        return member.displayName
+                    }()
+                    return Person.identified(userId: uid, displayName: liveName)
                 }
                 guests = seeded
                 includedIDs = Set(seeded.map(\.id))

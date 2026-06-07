@@ -48,6 +48,7 @@ struct TabSettleUpCard: View {
     @State private var members: [TabMember] = []
     @State private var loading = true
     @State private var paymentSheetTxn: DebtSimplifier.Transaction? = nil
+    @State private var showingExplainer = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -95,10 +96,21 @@ struct TabSettleUpCard: View {
                         Spacer()
                     }
                 } else {
-                    HStack {
+                    HStack(spacing: 4) {
                         Text(myBal < 0 ? "To be sent" : "To be received")
                             .font(.system(size: 13))
                             .foregroundStyle(.white.opacity(0.75))
+                        // Info button — opens the settle-up explainer
+                        // sheet. The math we show here can look surprising
+                        // when chains of debt get collapsed (A→B→C → A→C),
+                        // so users get a Venmo-style walkthrough on demand.
+                        Button { showingExplainer = true } label: {
+                            Image(systemName: "info.circle")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.75))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("How we calculate this")
                         Spacer()
                         Text(ReceiptDisplay.money(abs(myBal)))
                             .font(.system(size: 15, weight: .bold))
@@ -163,6 +175,22 @@ struct TabSettleUpCard: View {
                     }
                     Task { await recordSettlement(txn: txn, methodName: method.type.displayName) }
                 }
+            )
+        }
+        .sheet(isPresented: $showingExplainer) {
+            // Pipe the already-loaded balance + transactions + members
+            // into the sheet so the personalized walkthrough has the
+            // exact numbers we just showed in the card. No extra
+            // Firestore round-trip when opening the explainer.
+            let myBal = balances[myId] ?? 0
+            let myTxns = transactions.filter { $0.from == myId || $0.to == myId }
+            SettleUpExplainerSheet(
+                myBalanceCents: myBal,
+                myTransactions: myTxns,
+                allTransactions: transactions,
+                members: members,
+                memberNames: memberNames,
+                balances: balances
             )
         }
         .task(id: "\(tabId)-\(refreshNonce)") { await load() }

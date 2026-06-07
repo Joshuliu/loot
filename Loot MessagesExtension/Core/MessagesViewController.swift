@@ -460,16 +460,14 @@ final class MessagesViewController: MSMessagesAppViewController {
                 case .equally: return "Split evenly"
                 }
             }()
-            let senderName: String = {
-                if let pi = split.g.indices.contains(split.pi) ? split.g[split.pi].n : nil,
-                   !pi.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    return pi
-                }
-                return myDisplayNameFromDefaults()
-            }()
-
             // Find the viewer's slot to highlight + pulse
             let myUid = KeychainHelper.getOrCreateUserId()
+            // The payer name MUST resolve via the same rule used in the
+            // splits summary, otherwise the bubble disagrees with the
+            // detail view. The old code returned the VIEWER's local name
+            // when the payer slot's `n` was empty — wrong on every device
+            // that isn't the payer.
+            let senderName = split.payerDisplayName(meUid: myUid)
             let mySlot: Int? = split.g.firstIndex(where: { $0.uid == myUid })
             let myOwed: String? = {
                 guard let slot = mySlot, owedAmounts.indices.contains(slot) else { return nil }
@@ -503,13 +501,20 @@ final class MessagesViewController: MSMessagesAppViewController {
             let creatorName = comps?.queryItems?.first(where: { $0.name == "cn" })?.value ?? ""
             let joinedCount = Int(comps?.queryItems?.first(where: { $0.name == "jc" })?.value ?? "") ?? 0
             let targetCount = Int(comps?.queryItems?.first(where: { $0.name == "mc" })?.value ?? "") ?? 0
+            // The transcript controller is the lightweight render path
+            // (no Firestore auth, no userTabs fetch) so we can't ask
+            // `tabContextVM.userTabs.contains` here. `TabMembershipCache`
+            // is the UserDefaults mirror of that list, kept current by
+            // `TabContextViewModel.userTabs.didSet`.
+            let iAmMember = TabMembershipCache.isMember(of: tabId)
             let card = TabInviteCardView(
                 tabName: tabName,
                 tabColorHex: tabColorHex ?? "#007AFF",
                 creatorName: creatorName,
                 joinedCount: joinedCount,
                 targetCount: targetCount,
-                showJoinPulse: true
+                showJoinPulse: true,
+                iAmMember: iAmMember
             )
             embedTranscriptCard(AnyView(card))
             return
@@ -1322,19 +1327,12 @@ extension MessagesViewController {
             splitPayload.g[idx].inc && splitPayload.o.indices.contains(idx) ? max(0, splitPayload.o[idx]) : 0
         }
 
-        let payerDisplayName: String = {
-            guard splitPayload.g.indices.contains(splitPayload.pi) else {
-                return myDisplayNameFromDefaults()
-            }
-            let payer = splitPayload.g[splitPayload.pi]
-            let trimmed = payer.n.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty { return trimmed }
-            if payer.uid == KeychainHelper.getOrCreateUserId() {
-                let me = myDisplayNameFromDefaults().trimmingCharacters(in: .whitespacesAndNewlines)
-                return me.isEmpty ? "Me" : me
-            }
-            return "Guest \(splitPayload.pi + 1)"
-        }()
+        // Same resolver as applyMessage / SplitsSummaryView — the baked
+        // card image must agree with both, otherwise the bubble's
+        // alternate-layout image disagrees with the live BillCardView.
+        let payerDisplayName = splitPayload.payerDisplayName(
+            meUid: KeychainHelper.getOrCreateUserId()
+        )
 
         let card = BillCardView(
             receiptName: receiptName,

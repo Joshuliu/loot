@@ -24,7 +24,10 @@ final class TabService {
         let snapshot = try await db.collection("users").document(userId).getDocument()
         guard snapshot.exists, let data = snapshot.data() else { return nil }
         let name = data["displayName"] as? String
-        return (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : name
+        let trimmed = (name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        DisplayNameCache.remember(uid: userId, name: trimmed)
+        return trimmed
     }
 
     func createOrUpdateUser(userId: String, displayName: String) async throws {
@@ -47,6 +50,10 @@ final class TabService {
                 "updatedAt": FieldValue.serverTimestamp()
             ])
         }
+        // Keep the shared cache in lockstep with what we just wrote, so
+        // sync renderers (transcript bubble, baked card image, tab list)
+        // can resolve this uid → name without a Firestore round trip.
+        DisplayNameCache.remember(uid: userId, name: displayName)
         print("[TabService] createOrUpdateUser: \(userId)")
     }
 
@@ -139,6 +146,7 @@ final class TabService {
             }
             try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
             print("[TabService] joinTab: \(tabId) (already active member, no-op)")
+            cacheDisplayNames(from: tab)
             return tab
         }
 
@@ -168,6 +176,7 @@ final class TabService {
         let encoded = try Firestore.Encoder().encode(tab)
         try await docRef.setData(encoded)
         try await writeConversationMapping(tabId: tabId, conversationKey: conversationKey)
+        cacheDisplayNames(from: tab)
         return tab
     }
 
@@ -191,6 +200,10 @@ final class TabService {
             return cleaned
         }
         print("[TabService] fetchUserTabs: \(tabs.count) tabs")
+        // Populate the shared display-name cache from every active member
+        // we just observed, so synchronous renderers can resolve names by
+        // uid without an async Firestore fetch.
+        for tab in tabs { cacheDisplayNames(from: tab) }
         return tabs
     }
 
@@ -208,6 +221,7 @@ final class TabService {
             print("[TabService] fetchTab(\(id)) deduped \(raw.members.count - tab.members.count) duplicate member(s); writing back")
             Task { try? await healDuplicateMembers(tab: tab) }
         }
+        cacheDisplayNames(from: tab)
         return tab
     }
 
@@ -241,6 +255,7 @@ final class TabService {
                 return
             }
             let tab = raw.dedupedMembers()
+            self.cacheDisplayNames(from: tab)
             Task { @MainActor in
                 onChange(tab)
             }
@@ -330,6 +345,55 @@ final class TabService {
         try await SharedReceiptService.shared.ensureAnonymousAuth()
         try await db.collection("tabs").document(tabId).delete()
         print("[TabService] deleteTab: \(tabId)")
+    }
+
+    // MARK: - Display Name Sync
+
+    /// Updates the local user's `displayName` inside every tab.members[i]
+    /// entry for tabs they're an active member of, so that downstream
+    /// readers (tab receipt list, settlement card, etc.) that consult
+    /// `tab.members[i].displayName` see the new name. Without this, the
+    /// account-screen name edit only writes `@AppStorage` locally, the
+    /// tab member doc stays at whatever value it had at join time, and
+    /// the splits summary (live) diverges from the tab receipts list
+    /// (frozen). Best-effort: failures are logged, not thrown.
+    func updateMyDisplayNameAcrossTabs(_ newName: String) async {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let myId = KeychainHelper.getOrCreateUserId()
+        do {
+            let tabs = try await fetchUserTabs()
+            for tab in tabs {
+                guard let tabId = tab.id else { continue }
+                guard let idx = tab.members.firstIndex(where: { $0.memberId == myId }) else { continue }
+                if tab.members[idx].displayName == trimmed { continue }
+                var updated = tab
+                updated.members[idx].displayName = trimmed
+                let encodedMembers = try updated.members.map { try Firestore.Encoder().encode($0) }
+                try await db.collection("tabs").document(tabId).updateData([
+                    "members": encodedMembers,
+                    "updatedAt": FieldValue.serverTimestamp()
+                ])
+                print("[TabService] updateMyDisplayNameAcrossTabs: \(tabId) -> \(trimmed)")
+            }
+        } catch {
+            print("[TabService] updateMyDisplayNameAcrossTabs failed: \(error)")
+        }
+    }
+
+    /// Mirrors every active member's (userId → displayName) pair from a tab
+    /// into the shared `DisplayNameCache`. Call after any read path that
+    /// loads tab membership (fetch / listen / join) so that synchronous
+    /// renderers (transcript bubble, baked card image, tab receipts list)
+    /// can resolve names by uid without a Firestore round trip.
+    func cacheDisplayNames(from tab: LootTab) {
+        let pairs: [(uid: String, name: String)] = tab.members.compactMap { m in
+            guard let uid = m.userId, !uid.isEmpty else { return nil }
+            let name = m.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { return nil }
+            return (uid, name)
+        }
+        DisplayNameCache.remember(pairs)
     }
 
     // MARK: - Payment Methods
