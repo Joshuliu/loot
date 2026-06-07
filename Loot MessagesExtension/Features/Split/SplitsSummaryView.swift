@@ -373,7 +373,25 @@ struct SplitsSummaryView: View {
     }
 
     private var includedIndices: [Int] {
-        split.g.indices.filter { split.o.indices.contains($0) && split.o[$0] > 0 }
+        var result = split.g.indices.filter { split.o.indices.contains($0) && split.o[$0] > 0 }
+        // The payer is the focal "Paid by" anchor of the bill and MUST
+        // appear here even when their owed is $0 (e.g. A paid $60 on
+        // behalf of B — A is the payer with no items of their own, B has
+        // the $60 of items). Filtering the payer out silently:
+        //   1. erases their row from the list, so the bill looks like B
+        //      paid for themselves with no donor; and
+        //   2. lets the "Payer" chip land on whichever guest's array
+        //      position happens to collide with `split.pi` (the chip
+        //      check below compares slot index against array position).
+        // Keep the inc=true guard so a payer who's been explicitly
+        // excluded from the split (unusual edge case) stays excluded.
+        if split.g.indices.contains(split.pi),
+           split.g[split.pi].inc,
+           !result.contains(split.pi) {
+            result.append(split.pi)
+            result.sort()
+        }
+        return result
     }
 
     private var safeTotal: Int {
@@ -381,26 +399,21 @@ struct SplitsSummaryView: View {
     }
 
     private func displayName(for idx: Int) -> String {
-        let g = split.g[idx]
+        // Delegates to the canonical resolver in LootMessagePayload so the
+        // splits summary, the transcript bubble, the baked card image,
+        // and the tab receipts list all agree on the same name. The
+        // in-view `uidDisplayNames` is still consulted as a state-driven
+        // override so a freshly fetched name re-renders this view
+        // immediately (DisplayNameCache reads off UserDefaults but won't
+        // by itself trigger a SwiftUI invalidation).
         let myUid = KeychainHelper.getOrCreateUserId()
-
-        // 1. If this slot has a uid, show that user's display name
-        if let uid = g.uid, !uid.isEmpty {
-            if uid == myUid {
-                let myName = myDisplayNameFromDefaults()
-                return myName.isEmpty ? "Me" : myName
-            }
-            if let cached = uidDisplayNames[uid], !cached.isEmpty {
-                return cached
-            }
+        let g = split.g[idx]
+        if let uid = g.uid, !uid.isEmpty, uid != myUid,
+           let cached = uidDisplayNames[uid]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !cached.isEmpty {
+            return cached
         }
-
-        // 2. If the bill creator manually entered a name, show it
-        let t = g.n.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !t.isEmpty { return t }
-
-        // 3. Fallback
-        return "Guest \(idx + 1)"
+        return split.displayName(forSlot: idx, meUid: myUid)
     }
 
     private func owed(for idx: Int) -> Int {
@@ -421,6 +434,10 @@ struct SplitsSummaryView: View {
             do {
                 if let name = try await TabService.shared.fetchUserDisplayName(userId: uid) {
                     uidDisplayNames[uid] = name
+                    // Mirror to the shared cache so the transcript bubble,
+                    // baked card image, and tab receipts list also pick
+                    // up this freshly-resolved name on their next render.
+                    DisplayNameCache.remember(uid: uid, name: name)
                 }
             } catch {
                 print("[SplitsSummaryView] Failed to fetch name for \(uid): \(error)")
@@ -651,7 +668,14 @@ struct SplitsSummaryView: View {
                 Text(displayName(for: gi))
                     .font(.system(size: 15, weight: i == selectedIndex ? .semibold : .regular))
 
-                if split.pi == i {
+                // Compare the payer's SLOT index to this row's slot index,
+                // NOT the row's array position in `included`. Using `i`
+                // here meant the chip landed on whichever included guest
+                // happened to occupy the same array index as split.pi —
+                // visible when the payer themselves was filtered out
+                // (owed=$0) and the loop's i collided with the absent
+                // payer's slot number.
+                if split.pi == gi {
                     Text("Payer")
                         .font(.system(size: 12, weight: .semibold))
                         .padding(.horizontal, 10)
@@ -881,6 +905,20 @@ struct SplitsSummaryView: View {
         // `.choosing` "Modify claimed items" affordance. `.notInBill`'s
         // "I'm in this bill" reopens the claim popup (see splitPeopleSection).
         if split.cl == true {
+            billState = .notInBill
+            return
+        }
+
+        // Tab receipts created before the local user joined the tab leave
+        // them with no slot of their own AND every existing slot already
+        // claimed by an original member. "Which one are you?" is
+        // nonsensical in that state — there's nothing to claim — so
+        // collapse to "You're not in this bill". Non-tab receipts keep
+        // the recipient self-identification flow: a 1:1 iMessage
+        // recipient may still want to claim a slot, even when the
+        // sender pre-filled placeholder names, so we don't short-
+        // circuit them here.
+        if isTabReceipt && !hasClaimableSlots {
             billState = .notInBill
             return
         }

@@ -39,8 +39,50 @@ enum BadgeColors {
         Color(red: 0.388, green: 0.902, blue: 0.886)  // mint
     ]
 
+    /// Returns a color for `slotIndex`, with per-cycle hue + brightness +
+    /// saturation modulation so consecutive cycles through the palette
+    /// don't collide. Cycle 0 returns the literal palette color; each
+    /// subsequent cycle offsets the hue by half a palette step (so its
+    /// colors land between the originals on the hue wheel) and
+    /// alternates lighter/darker brightness with a slight desaturation
+    /// pull. Keeps "similar bright vibe" without two slots reading as
+    /// the same color past 8 members.
     static func color(for slotIndex: Int) -> Color {
-        palette[slotIndex % palette.count]
+        let n = palette.count
+        let cycle = max(0, slotIndex) / n
+        let baseIdx = max(0, slotIndex) % n
+        if cycle == 0 {
+            return palette[baseIdx]
+        }
+        return shifted(palette[baseIdx], cycle: cycle, paletteCount: n)
+    }
+
+    private static func shifted(_ base: Color, cycle: Int, paletteCount n: Int) -> Color {
+        let baseUI = UIColor(base)
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard baseUI.getHue(&h, saturation: &s, brightness: &b, alpha: &a) else {
+            return base
+        }
+        // Hue: rotate by half a palette step per cycle so cycle-1 colors
+        // sit between cycle-0 entries on the wheel; cycle-2 rotates a
+        // full step further; etc. Wraps via truncatingRemainder.
+        let hueShift = CGFloat(cycle) / CGFloat(2 * n)
+        let newH = (h + hueShift).truncatingRemainder(dividingBy: 1.0)
+
+        // Brightness: alternate lighter (even cycles >0) and darker (odd
+        // cycles). Magnitude grows slightly with cycle but is clamped so
+        // we never go invisibly dark or washed-out white.
+        let magnitude = min(0.32, 0.16 + CGFloat(cycle - 1) * 0.04)
+        let bDelta: CGFloat = (cycle % 2 == 1) ? -magnitude : magnitude
+        let newB = max(0.42, min(0.98, b + bDelta))
+
+        // Saturation: pull slightly toward mid-saturation each cycle so
+        // colors keep a "soft pop" rather than fluorescent overload.
+        let sTarget: CGFloat = 0.72
+        let sBlend: CGFloat = min(0.45, 0.12 * CGFloat(cycle))
+        let newS = max(0.45, min(1.0, s * (1 - sBlend) + sTarget * sBlend))
+
+        return Color(UIColor(hue: newH, saturation: newS, brightness: newB, alpha: a))
     }
     
     /// Generate initials for a badge from a name

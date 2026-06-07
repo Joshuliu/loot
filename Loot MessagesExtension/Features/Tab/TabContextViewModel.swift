@@ -91,8 +91,16 @@ final class TabContextViewModel: ObservableObject {
     @Published var tabReceiptsRefreshNonce: Int = 0
 
     /// All tabs the local user is a member of. Refreshed on extension launch
-    /// and after join/leave/create operations.
-    @Published var userTabs: [LootTab] = []
+    /// and after join/leave/create operations. didSet mirrors the IDs to
+    /// `TabMembershipCache` so the lightweight transcript-bubble render
+    /// path (which has no Firestore access) can answer "am I in this
+    /// tab?" synchronously when deciding what the invite bubble pill
+    /// should say.
+    @Published var userTabs: [LootTab] = [] {
+        didSet {
+            TabMembershipCache.replaceAll(tabIds: userTabs.compactMap(\.id))
+        }
+    }
 
     /// Local participant UUID (from MSConversation.localParticipantIdentifier).
     /// Cached for sorting userTabs by overlap with the current chat.
