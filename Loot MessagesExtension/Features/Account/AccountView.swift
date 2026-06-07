@@ -115,7 +115,25 @@ struct AccountView: View {
 
     private func save() {
         guard hasChanges else { return }
-        displayName = trimmed
+        let newName = trimmed
+        displayName = newName
+
+        // Mirror the change to every place that the splits summary, the
+        // transcript bubble, the baked card image, and the tab receipts
+        // list might look. Previously this function only wrote to
+        // `@AppStorage` locally — so the live splits summary picked up
+        // the new name immediately (uid → @AppStorage) while every
+        // frozen surface (g[i].n in shipped payloads, tab.members[i]
+        // .displayName at join time) stayed at the old value.
+        let myUid = KeychainHelper.getOrCreateUserId()
+        DisplayNameCache.remember(uid: myUid, name: newName)
+        Task {
+            try? await TabService.shared.createOrUpdateUser(
+                userId: myUid,
+                displayName: newName
+            )
+            await TabService.shared.updateMyDisplayNameAcrossTabs(newName)
+        }
         onBack()
     }
 }

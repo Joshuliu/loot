@@ -12,6 +12,12 @@ struct TabInviteCardView: View {
     /// interactivity; the confirmation preview and the static alternate-layout
     /// snapshot leave it off.
     var showJoinPulse: Bool = false
+    /// When true (the local user is already a tab member), the pulsing
+    /// "Tap to Join" CTA is replaced with a static "Joined" indicator —
+    /// otherwise a late joiner kept seeing the call-to-action even after
+    /// they'd already joined. Driven by a sync UserDefaults membership
+    /// cache so it works inside the lightweight transcript controller.
+    var iAmMember: Bool = false
 
     @State private var pulseOn: Bool = false
 
@@ -50,7 +56,11 @@ struct TabInviteCardView: View {
                 .foregroundColor(.white.opacity(0.85))
 
             if showJoinPulse {
-                tapToJoinPill
+                if iAmMember {
+                    joinedPill
+                } else {
+                    tapToJoinPill
+                }
             }
         }
         .padding(.vertical, 14)
@@ -60,7 +70,10 @@ struct TabInviteCardView: View {
         .cornerRadius(13)
         .shadow(color: Color.black.opacity(0.1), radius: 6, x: 0, y: 2)
         .onAppear {
-            guard showJoinPulse else { return }
+            // Pulse animation only runs for the un-joined CTA. A member
+            // gets a static "Joined" badge — no movement, no implication
+            // of "act on this".
+            guard showJoinPulse, !iAmMember else { return }
             withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
                 pulseOn = true
             }
@@ -85,5 +98,21 @@ struct TabInviteCardView: View {
         .opacity(pulseOn ? 0.95 : 1.0)
         .shadow(color: Color.black.opacity(pulseOn ? 0.18 : 0.06),
                 radius: pulseOn ? 8 : 3, x: 0, y: 2)
+    }
+
+    private var joinedPill: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 11, weight: .bold))
+            Text("Joined")
+                .font(.system(size: 12, weight: .bold))
+        }
+        .foregroundColor(Color(hex: tabColorHex))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.92))
+        )
     }
 }

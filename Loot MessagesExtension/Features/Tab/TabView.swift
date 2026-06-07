@@ -49,6 +49,7 @@ struct LootTabView: View {
     @State private var receipts: [TabReceipt] = []
     @State private var settlements: [Settlement] = []
     @State private var paymentsLoading: Bool = false
+    @State private var memberSheetTarget: TabMember? = nil
 
     private var sortedUserTabs: [LootTab] {
         guard !conversationMemberIds.isEmpty else { return userTabs }
@@ -164,6 +165,28 @@ struct LootTabView: View {
                     onSave: { updatedTab in onTabUpdated?(updatedTab) },
                     onLeft: { onTabLeft?() },
                     onDeleted: { onTabDeleted?() }
+                )
+            }
+        }
+        .sheet(item: $memberSheetTarget) { member in
+            if let tab = activeTab {
+                MemberSettleUpSheet(
+                    tabId: tab.id ?? "",
+                    tabName: tab.name,
+                    colorHex: tab.colorHex,
+                    memberId: member.memberId,
+                    onSendSettlementCard: onSendSettlementCard,
+                    onApplePayHandoff: onApplePayHandoff,
+                    onSendRequestCard: onSendRequestCard,
+                    openInSafari: openInSafari,
+                    onRequestCollapse: onRequestCollapse,
+                    onApplePayPending: { toName, amountCents, colorHex in
+                        messageReceiptVM.pendingApplePayInfo = PendingApplePayInfo(
+                            toName: toName,
+                            amountCents: amountCents,
+                            tabColorHex: colorHex
+                        )
+                    }
                 )
             }
         }
@@ -445,21 +468,26 @@ struct LootTabView: View {
                                         Text(tab.name)
                                             .font(.system(size: 16, weight: .medium))
                                             .foregroundColor(.primary)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                         let activeMembers = tab.members.filter(\.isActive)
                                         Text(activeMembers.count == 1 ? "1 member" : "\(activeMembers.count) members")
                                             .font(.system(size: 13))
                                             .foregroundColor(.secondary)
+                                            .lineLimit(1)
                                     }
-                                    Spacer()
-                                    HStack(spacing: 8) {
-                                        let activeMembers = tab.members.filter(\.isActive)
-                                        ForEach(Array(activeMembers.enumerated()), id: \.offset) { index, member in
-                                            ColoredCircleBadge(
-                                                    text: BadgeColors.initials(from: member.displayName, fallback: index),
-                                                    color: BadgeColors.color(for: index)
-                                                )
-                                        }
-                                    }
+                                    .layoutPriority(1)
+                                    Spacer(minLength: 8)
+                                    // Tabs with many members previously stacked every
+                                    // ColoredCircleBadge in an unbounded HStack — which
+                                    // squeezed the tab name's VStack so narrow that the
+                                    // name wrapped onto multiple lines, ballooning the
+                                    // row vertically. Cap visible badges to a few,
+                                    // overlap them slightly, and tack on a "+N" chip
+                                    // for the remainder. Layout stays a fixed width
+                                    // regardless of member count.
+                                    membersStrip(for: tab)
+                                        .layoutPriority(0)
                                 }
                                 .padding(.vertical, 10)
                                 .padding(.horizontal, 14)
@@ -492,7 +520,45 @@ struct LootTabView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
+    /// Renders the trailing badge strip for a tab in the tabs-list entry.
+    /// Shows up to `visibleLimit` member badges (overlapped slightly with
+    /// negative spacing) and appends a "+N" chip when more members exist.
+    /// Cap + overlap keeps the strip a bounded width regardless of how
+    /// many people are in the tab, so the tab name's VStack always has
+    /// room and never wraps onto a second line.
+    @ViewBuilder
+    private func membersStrip(for tab: LootTab) -> some View {
+        let activeMembers = tab.members.filter(\.isActive)
+        let visibleLimit = 4
+        let visible = Array(activeMembers.prefix(visibleLimit).enumerated())
+        let overflow = max(0, activeMembers.count - visibleLimit)
+        HStack(spacing: -8) {
+            ForEach(visible, id: \.offset) { index, member in
+                ColoredCircleBadge(
+                    text: BadgeColors.initials(from: member.displayName, fallback: index),
+                    color: BadgeColors.color(for: index)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color(UIColor.secondarySystemBackground), lineWidth: 2)
+                )
+            }
+            if overflow > 0 {
+                Text("+\(overflow)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.secondary))
+                    .overlay(
+                        Circle()
+                            .stroke(Color(UIColor.secondarySystemBackground), lineWidth: 2)
+                    )
+            }
+        }
+        .fixedSize()
+    }
+
     private var startNewTabButton: some View {
         Button(action: { onStartTab?() }) {
             HStack(spacing: 8) {
@@ -578,17 +644,44 @@ struct LootTabView: View {
     private func memberName(_ memberId: String) -> String {
         let myId = KeychainHelper.getOrCreateUserId()
         if memberId == myId { return "You" }
-        return activeTab?.members.first(where: { $0.memberId == memberId })?.displayName ?? memberId
+        // Prefer live name via uid → DisplayNameCache (kept current by
+        // SplitsSummaryView's Firestore fetch, AccountView edits, and
+        // TabService fetch/listen). Falls back to the tab.member's
+        // frozen displayName, and lastly the raw memberId. Keeping all
+        // three rendering paths on the same precedence is what stops
+        // the bubble / summary / list from disagreeing.
+        if let m = activeTab?.members.first(where: { $0.memberId == memberId }) {
+            if let uid = m.userId, !uid.isEmpty,
+               let cached = DisplayNameCache.lookup(uid) {
+                return cached
+            }
+            let frozen = m.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !frozen.isEmpty { return frozen }
+        }
+        return memberId
     }
 
     private func payerLabel(for receipt: TabReceipt) -> String {
         let myId = KeychainHelper.getOrCreateUserId()
         if receipt.payerMemberId == myId { return "You" }
+
+        // Live name via tab member → DisplayNameCache, identical
+        // precedence to memberName() above. The frozen receipt
+        // .payerDisplayName is only used when we have no tab-member
+        // entry to map memberId → uid (e.g. a former member).
+        if let m = activeTab?.members.first(where: { $0.memberId == receipt.payerMemberId }) {
+            if let uid = m.userId, !uid.isEmpty,
+               let cached = DisplayNameCache.lookup(uid) {
+                return cached
+            }
+            let frozen = m.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !frozen.isEmpty { return frozen }
+        }
         if let name = receipt.payerDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines),
            !name.isEmpty {
             return name
         }
-        return memberName(receipt.payerMemberId)
+        return receipt.payerMemberId
     }
 
     private func formatEventDate(_ date: Date?) -> String {
@@ -762,16 +855,37 @@ struct LootTabView: View {
 
         return VStack(spacing: 0) {
             ForEach(Array(activeMembers.enumerated()), id: \.element.id) { index, member in
-                HStack {
-                    Text(member.displayName + (member.memberId == currentUserId ? " (You)" : ""))
-                        .font(.system(size: 16, weight: .medium))
-                    Spacer()
-                    Text(ReceiptDisplay.money(member.balanceCents))
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(member.balanceCents > 0 ? .green : member.balanceCents < 0 ? .red : .secondary)
+                // Color the badge by the member's full-list index (incl.
+                // inactive members) so it stays stable for a given member
+                // even if someone else leaves and the active-list order
+                // shifts. Matches MemberSettleUpSheet and TabSettleUpCard,
+                // which both index against tab.members.
+                let badgeIdx = tab.members.firstIndex(where: { $0.memberId == member.memberId }) ?? index
+                Button {
+                    memberSheetTarget = member
+                } label: {
+                    HStack(spacing: 10) {
+                        ColoredCircleBadge(
+                            text: BadgeColors.initials(from: member.displayName, fallback: badgeIdx),
+                            color: BadgeColors.color(for: badgeIdx)
+                        )
+                        Text(member.displayName + (member.memberId == currentUserId ? " (You)" : ""))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                        Spacer()
+                        Text(ReceiptDisplay.money(member.balanceCents))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(member.balanceCents > 0 ? .green : member.balanceCents < 0 ? .red : .secondary)
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 14)
+                    .contentShape(Rectangle())
                 }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 14)
+                .buttonStyle(.plain)
 
                 if index < activeMembers.count - 1 {
                     Divider()
