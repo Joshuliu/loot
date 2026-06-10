@@ -56,8 +56,15 @@ struct SplitsSummaryView: View {
         let amountCents: Int
         let guestIndex: Int
         let methods: [PaymentMethod]
+        /// Original requested cents when a request card's amount has
+        /// drifted from the live owed amount (bill edited since send).
+        var originalAmountCents: Int? = nil
     }
     @State private var paySheetInfo: PaySheetInfo? = nil
+    /// Set when a tapped request card can't open the pay sheet (already
+    /// paid / amount went to zero). Presented as an alert — previously
+    /// these cases failed silently and the tap did nothing.
+    @State private var pendingRequestResolution: String? = nil
     @State private var selectedSection: DetailSection = .splits
     @State private var showCapture: Bool = false
     @State private var headerScrollOffset: CGFloat = 0
@@ -362,12 +369,28 @@ struct SplitsSummaryView: View {
               let methods = payerPaymentMethods, !methods.isEmpty
         else { return }
 
+        // The LIVE owed amount is the source of truth — the card's
+        // amountCents is a snapshot from request-send time and the bill
+        // may have been edited since. Paying the stale amount would
+        // over- or under-settle.
+        let liveOwed = owed(for: debtorIndex)
+
+        // Already paid (pd flag) or owed dropped to zero → tell the user
+        // instead of silently opening nothing / charging a stale amount.
+        if liveOwed <= 0 || isPaid(guestIndex: debtorIndex) {
+            pendingRequestResolution =
+                "Nothing to pay — this request has already been settled or the bill changed."
+            messageReceiptVM.pendingPayRequest = nil
+            return
+        }
+
         paySheetInfo = PaySheetInfo(
             toName: displayName(for: split.pi),
             fromName: displayName(for: debtorIndex),
-            amountCents: pending.amountCents,
+            amountCents: liveOwed,
             guestIndex: debtorIndex,
-            methods: methods
+            methods: methods,
+            originalAmountCents: (liveOwed != pending.amountCents) ? pending.amountCents : nil
         )
         messageReceiptVM.pendingPayRequest = nil
     }
@@ -1541,6 +1564,17 @@ struct SplitsSummaryView: View {
         .onChange(of: payerPaymentMethods) { _, _ in
             presentPendingRequestIfPossible()
         }
+        .alert(
+            "Payment Request",
+            isPresented: Binding(
+                get: { pendingRequestResolution != nil },
+                set: { if !$0 { pendingRequestResolution = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { pendingRequestResolution = nil }
+        } message: {
+            Text(pendingRequestResolution ?? "")
+        }
         .sheet(item: $paySheetInfo) { info in
             let note = messageReceiptVM.openedMessagePayload?.r.t ?? "Loot"
             TabPayNowSheet(
@@ -1548,6 +1582,7 @@ struct SplitsSummaryView: View {
                 amountCents: info.amountCents,
                 methods: info.methods,
                 tabColorHex: nil,
+                originalAmountCents: info.originalAmountCents,
                 onSelectMethod: { method in
                     // ORDERING RULE: togglePaid (which broadcasts the bill
                     // update via persistSplit → bus.sendBillUpdate) MUST fire

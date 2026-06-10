@@ -49,6 +49,13 @@ struct TabSettleUpCard: View {
     @State private var loading = true
     @State private var paymentSheetTxn: DebtSimplifier.Transaction? = nil
     @State private var showingExplainer = false
+    /// Set when a tapped request card can't open the pay sheet (already
+    /// settled, direction flipped, or creditor has no payment methods).
+    /// Presented as an alert — previously these cases failed silently.
+    @State private var pendingRequestResolution: String? = nil
+    /// Original requested cents when it differs from the live simplified
+    /// amount; passed to TabPayNowSheet for the "Updated — was $X" note.
+    @State private var pendingRequestOriginalCents: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -127,7 +134,18 @@ struct TabSettleUpCard: View {
         .padding(.vertical, 12)
         .background(colorHex.map { Color(hex: $0) } ?? Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
-        .sheet(item: $paymentSheetTxn) { txn in
+        .alert(
+            "Payment Request",
+            isPresented: Binding(
+                get: { pendingRequestResolution != nil },
+                set: { if !$0 { pendingRequestResolution = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { pendingRequestResolution = nil }
+        } message: {
+            Text(pendingRequestResolution ?? "")
+        }
+        .sheet(item: $paymentSheetTxn, onDismiss: { pendingRequestOriginalCents = nil }) { txn in
             let fromName = memberName(txn.from)
             let toName = memberName(txn.to)
             TabPayNowSheet(
@@ -135,6 +153,7 @@ struct TabSettleUpCard: View {
                 amountCents: txn.amountCents,
                 methods: creditorMethods[txn.to] ?? [],
                 tabColorHex: colorHex,
+                originalAmountCents: pendingRequestOriginalCents,
                 onSelectMethod: { method in
                     // Apple Pay: stage the compact-mode reminder, send the
                     // settlement card, then collapse the extension. The sheet
@@ -355,19 +374,39 @@ struct TabSettleUpCard: View {
               let debtorId = pending.debtorId
         else { return }
 
+        // Before the first load completes, transactions/methods are empty —
+        // evaluating "no match" against that would wrongly report "already
+        // settled". Wait for the load-completion call (which passes fresh
+        // data explicitly).
+        if transactions == nil && loading { return }
+
         let candidateTransactions = transactions ?? self.transactions
         let candidateMethods = creditorMethods ?? self.creditorMethods
-        guard let txn = candidateTransactions.first(where: {
-            $0.to == creditorId && $0.from == debtorId && $0.amountCents == pending.amountCents
-        }),
-        let methods = candidateMethods[creditorId],
-        !methods.isEmpty
-        else { return }
 
-        paymentSheetTxn = txn
-        if !methods.isEmpty {
+        // Match on the debtor→creditor PAIR only. The live simplified
+        // amount is the source of truth — requiring the card's exact
+        // amountCents meant any balance drift between request-send and
+        // tap (new receipt, partial settle, rounding) made the Pay tap
+        // silently do nothing.
+        guard let txn = candidateTransactions.first(where: {
+            $0.to == creditorId && $0.from == debtorId
+        }) else {
+            pendingRequestResolution =
+                "Nothing to pay right now — this request has already been settled or your balance with \(memberName(creditorId)) changed."
             onConsumePendingPayRequest?()
+            return
         }
+        guard let methods = candidateMethods[creditorId], !methods.isEmpty else {
+            pendingRequestResolution =
+                "\(memberName(creditorId)) hasn't set up payment methods yet, so this request can't be paid in Loot."
+            onConsumePendingPayRequest?()
+            return
+        }
+
+        pendingRequestOriginalCents =
+            (txn.amountCents != pending.amountCents) ? pending.amountCents : nil
+        paymentSheetTxn = txn
+        onConsumePendingPayRequest?()
     }
 
     private func recordSettlement(txn: DebtSimplifier.Transaction, methodName: String) async {

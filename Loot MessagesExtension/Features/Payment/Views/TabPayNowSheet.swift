@@ -5,6 +5,11 @@ struct TabPayNowSheet: View {
     let amountCents: Int
     let methods: [PaymentMethod]
     var tabColorHex: String? = nil
+    /// When this sheet was opened from a request card whose amount has
+    /// since drifted (balances changed between request-send and tap),
+    /// the original requested cents land here and a small caption
+    /// explains why the number differs from the card.
+    var originalAmountCents: Int? = nil
     let onSelectMethod: (PaymentMethod) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -35,6 +40,12 @@ struct TabPayNowSheet: View {
                     Text("to \(toName)")
                         .font(.system(size: 17, weight: .medium))
                         .foregroundStyle(.secondary)
+                    if let original = originalAmountCents, original != amountCents {
+                        Text("Updated — was \(ReceiptDisplay.money(original)) when requested")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 2)
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 32)
