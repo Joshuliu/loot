@@ -53,6 +53,10 @@ struct TabSettleUpCard: View {
     /// settled, direction flipped, or creditor has no payment methods).
     /// Presented as an alert — previously these cases failed silently.
     @State private var pendingRequestResolution: String? = nil
+    /// Set when a selected payment method's deep link can't be built
+    /// (bad identifier / missing bank URL). Nothing is recorded in
+    /// that case — this alert tells the user why nothing opened.
+    @State private var paymentLinkFailure: String? = nil
     /// Original requested cents when it differs from the live simplified
     /// amount; passed to TabPayNowSheet for the "Updated — was $X" note.
     @State private var pendingRequestOriginalCents: Int? = nil
@@ -145,6 +149,17 @@ struct TabSettleUpCard: View {
         } message: {
             Text(pendingRequestResolution ?? "")
         }
+        .alert(
+            "Couldn't Open Payment App",
+            isPresented: Binding(
+                get: { paymentLinkFailure != nil },
+                set: { if !$0 { paymentLinkFailure = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { paymentLinkFailure = nil }
+        } message: {
+            Text(paymentLinkFailure ?? "")
+        }
         .sheet(item: $paymentSheetTxn, onDismiss: { pendingRequestOriginalCents = nil }) { txn in
             let fromName = memberName(txn.from)
             let toName = memberName(txn.to)
@@ -183,6 +198,22 @@ struct TabSettleUpCard: View {
                         payeeName: toName,
                         zelleData: method.zelleData
                     )
+
+                    // GATE: if the handoff can't actually happen, bail
+                    // BEFORE sending the settlement card or recording.
+                    // Previously a nil deep link (bad identifier, missing
+                    // bank URL) still recorded a settlement — the tab
+                    // marked money as paid that never moved. Zelle keeps
+                    // its copy-identifier fallback; .cash never has a
+                    // link by design.
+                    let zelleFallbackUsable =
+                        method.type == .zelle && !method.identifier.isEmpty
+                    if deepLink == nil && method.type != .cash && !zelleFallbackUsable {
+                        paymentLinkFailure =
+                            "Couldn't open \(method.type.displayName) — \(toName)'s \(method.type.identifierLabel.lowercased()) looks invalid. Nothing was recorded."
+                        return
+                    }
+
                     onSendSettlementCard?(fromName, toName, txn.amountCents,
                                          method.type.displayName, colorHex)
                     if let url = deepLink {
@@ -410,18 +441,19 @@ struct TabSettleUpCard: View {
     }
 
     private func recordSettlement(txn: DebtSimplifier.Transaction, methodName: String) async {
-        let settlement = Settlement(
+        // Outbox-backed: the settlement is persisted locally BEFORE the
+        // Firestore attempt and retried on next launch if the write
+        // fails or the extension is torn down mid-flight. Previously a
+        // failed write was print-and-forget — money sent in the payment
+        // app with no record in the tab.
+        await SettlementOutbox.submit(
+            tabId: tabId,
             createdBy: myId,
             fromMemberId: txn.from,
             toMemberId: txn.to,
             amountCents: txn.amountCents,
             note: "via \(methodName)"
         )
-        do {
-            try await TabService.shared.recordSettlement(settlement, forTab: tabId)
-        } catch {
-            print("[TabSettleUpCard] recordSettlement failed: \(error)")
-        }
         loading = true
         await load()
     }

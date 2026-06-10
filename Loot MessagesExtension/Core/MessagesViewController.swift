@@ -1120,6 +1120,13 @@ extension MessagesViewController {
                         displayName: displayName
                     )
                 }
+
+                // Retry any settlement whose Firestore write failed or
+                // was cut off by extension teardown last session. The
+                // outbox is the durability layer between "user was
+                // handed off to the payment app" and "tab ledger
+                // recorded it".
+                await SettlementOutbox.flush()
             }
         }
 

@@ -15,6 +15,10 @@ struct TabPayNowSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var myMethods: [PaymentMethod] = []
     @State private var showingPaymentMethodSetup = false
+    /// Once-guard: a double-tap on a method row fired onSelectMethod
+    /// twice (two settlement records, two deep-link opens) before the
+    /// dismiss animation removed the sheet.
+    @State private var hasSelectedMethod = false
 
     private var mutualMethods: [PaymentMethod] {
         let myTypes = Set(myMethods.map(\.type))
@@ -204,6 +208,8 @@ struct TabPayNowSheet: View {
         VStack(spacing: 0) {
             ForEach(Array(methods.enumerated()), id: \.element.id) { index, method in
                 Button {
+                    guard !hasSelectedMethod else { return }
+                    hasSelectedMethod = true
                     onSelectMethod(method)
                     dismiss()
                 } label: {

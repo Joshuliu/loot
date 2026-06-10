@@ -99,15 +99,25 @@ enum PaymentMethodType: String, Codable, CaseIterable {
             return comps.url
 
         case .cashapp:
+            // Percent-encode the cashtag: raw interpolation made
+            // URL(string:) return nil for identifiers with a space or
+            // '%', and the caller then recorded a settlement without
+            // ever opening Cash App.
             let tag = identifier.trimmingCharacters(in: .whitespaces)
                 .replacingOccurrences(of: "$", with: "")
-            guard !tag.isEmpty else { return nil }
-            return URL(string: "https://cash.app/$\(tag)/\(dollars)")
+            guard !tag.isEmpty,
+                  let safeTag = tag.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            else { return nil }
+            return URL(string: "https://cash.app/$\(safeTag)/\(dollars)")
 
         case .paypal:
+            // Same encoding treatment — PayPal identifiers are often
+            // emails; '@' is path-safe but spaces/'%' are not.
             let user = identifier.trimmingCharacters(in: .whitespaces)
-            guard !user.isEmpty else { return nil }
-            return URL(string: "https://paypal.me/\(user)/\(dollars)")
+            guard !user.isEmpty,
+                  let safeUser = user.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            else { return nil }
+            return URL(string: "https://paypal.me/\(safeUser)/\(dollars)")
 
         case .zelle:
             guard let bankURL, !bankURL.isEmpty else { return nil }

@@ -51,6 +51,9 @@ struct MemberSettleUpSheet: View {
     @State private var creditorMethods: [String: [PaymentMethod]] = [:]
     @State private var loading = true
     @State private var paymentSheetTxn: DebtSimplifier.Transaction? = nil
+    /// Set when a selected method's deep link can't be built — shown as
+    /// an alert; nothing is recorded in that case.
+    @State private var paymentLinkFailure: String? = nil
 
     private let myId = KeychainHelper.getOrCreateUserId()
 
@@ -138,6 +141,17 @@ struct MemberSettleUpSheet: View {
                     handlePay(method: method, txn: txn, fromName: fromName, toName: toName)
                 }
             )
+        }
+        .alert(
+            "Couldn't Open Payment App",
+            isPresented: Binding(
+                get: { paymentLinkFailure != nil },
+                set: { if !$0 { paymentLinkFailure = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { paymentLinkFailure = nil }
+        } message: {
+            Text(paymentLinkFailure ?? "")
         }
         .task { await load() }
     }
@@ -363,6 +377,19 @@ struct MemberSettleUpSheet: View {
             payeeName: toName,
             zelleData: method.zelleData
         )
+
+        // GATE: bail before sending the settlement card or recording
+        // when the handoff can't happen (nil deep link for an app-based
+        // method). Mirrors TabSettleUpCard — a settlement must not be
+        // recorded for a payment that never got the chance to happen.
+        let zelleFallbackUsable =
+            method.type == .zelle && !method.identifier.isEmpty
+        if deepLink == nil && method.type != .cash && !zelleFallbackUsable {
+            paymentLinkFailure =
+                "Couldn't open \(method.type.displayName) — \(toName)'s \(method.type.identifierLabel.lowercased()) looks invalid. Nothing was recorded."
+            return
+        }
+
         onSendSettlementCard?(fromName, toName, txn.amountCents,
                              method.type.displayName, colorHex)
         if let url = deepLink {
@@ -374,18 +401,16 @@ struct MemberSettleUpSheet: View {
     }
 
     private func recordSettlement(txn: DebtSimplifier.Transaction, methodName: String) async {
-        let settlement = Settlement(
+        // Outbox-backed: persisted before the Firestore attempt, retried
+        // on next launch if the write fails or the extension dies.
+        await SettlementOutbox.submit(
+            tabId: tabId,
             createdBy: myId,
             fromMemberId: txn.from,
             toMemberId: txn.to,
             amountCents: txn.amountCents,
             note: "via \(methodName)"
         )
-        do {
-            try await TabService.shared.recordSettlement(settlement, forTab: tabId)
-        } catch {
-            print("[MemberSettleUpSheet] recordSettlement failed: \(error)")
-        }
         await load()
     }
 }
