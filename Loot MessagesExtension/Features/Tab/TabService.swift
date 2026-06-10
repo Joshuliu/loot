@@ -702,23 +702,41 @@ final class TabService {
     private func applyBalanceDelta(from payload: LootMessagePayload, into balances: inout [String: Int]) {
         let split = payload.s
 
+        // Ledger rule: a debt doesn't exist until it has a debtor. The
+        // payer is credited only the owed amounts that are actually
+        // attributed to an identified guest — the SAME slots the debit
+        // loop below touches. Crediting the full split.tot meant every
+        // unclaimed slot's share was owed "by nobody": balances didn't
+        // sum to zero, the payer's "To be received" header overstated
+        // reality, and DebtSimplifier emitted transactions that couldn't
+        // cover it. As recipients claim slots, computeTabBalances
+        // re-runs from scratch and the payer's credit grows by exactly
+        // the newly attributed amount — no migration needed.
+        var attributedCents = 0
         for (i, guest) in split.g.enumerated() {
             guard guest.inc,
                   let uid = guest.uid, !uid.isEmpty,
                   split.o.indices.contains(i) else { continue }
             balances[uid, default: 0] -= split.o[i]
+            attributedCents += split.o[i]
         }
 
         if split.g.indices.contains(split.pi),
            let payerUid = split.g[split.pi].uid, !payerUid.isEmpty {
-            balances[payerUid, default: 0] += split.tot
+            balances[payerUid, default: 0] += attributedCents
         }
     }
 
     private func applyBalanceDelta(from receipt: TabReceipt, into balances: inout [String: Int]) {
+        // Same attributed-only rule as the payload overload: legacy
+        // receipt docs' splits[] only contain identified members, so
+        // credit the payer Σ owedCents rather than totalCents (which
+        // would over-credit by any unattributed remainder).
+        var attributedCents = 0
         for split in receipt.splits {
             balances[split.memberId, default: 0] -= split.owedCents
+            attributedCents += split.owedCents
         }
-        balances[receipt.payerMemberId, default: 0] += receipt.totalCents
+        balances[receipt.payerMemberId, default: 0] += attributedCents
     }
 }

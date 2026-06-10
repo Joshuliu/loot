@@ -393,15 +393,20 @@ extension LootTab {
 
 extension LootTab {
     /// Apply a receipt to member balances. Call within a Firestore transaction.
-    /// The payer gets +totalCents, each split member gets -owedCents.
+    /// The payer is credited the sum of attributed owedCents (NOT
+    /// totalCents) — a debt doesn't exist until it has a debtor, so
+    /// unattributed/unclaimed amounts never enter the ledger. Mirrors
+    /// `TabService.applyBalanceDelta`; keep the two in lockstep.
     mutating func applyReceipt(_ receipt: TabReceipt) {
+        var attributedCents = 0
         for split in receipt.splits {
             if let idx = members.firstIndex(where: { $0.memberId == split.memberId }) {
                 members[idx].balanceCents -= split.owedCents
+                attributedCents += split.owedCents
             }
         }
         if let payerIdx = members.firstIndex(where: { $0.memberId == receipt.payerMemberId }) {
-            members[payerIdx].balanceCents += receipt.totalCents
+            members[payerIdx].balanceCents += attributedCents
         }
         receiptCount += 1
     }
